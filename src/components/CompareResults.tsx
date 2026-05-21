@@ -2,9 +2,8 @@ import React, { useState } from 'react';
 import { DetailedEstimate, ComparisonResult } from '../types';
 import { calculateEstimate } from '../utils/calculations';
 import { 
-  AlertTriangle, Check, CheckCircle2, TrendingUp, TrendingDown, 
-  ArrowRight, ShieldCheck, Scale, Copy, ChevronDown, ChevronUp, 
-  MessageSquareCode, HelpCircle, AlertCircle, Sparkles, Mail, Loader2
+  TrendingUp, TrendingDown, Scale, Clipboard, AlertCircle, Sparkles, Mail, Check, 
+  HelpCircle, ChevronRight, FileSpreadsheet
 } from 'lucide-react';
 
 interface CompareResultsProps {
@@ -22,533 +21,432 @@ export const CompareResults: React.FC<CompareResultsProps> = ({
   isLoading,
   onRunComparison,
 }) => {
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
-  const [generatedMail, setGeneratedMail] = useState<string>('');
-  const [showMailGenerator, setShowMailGenerator] = useState<boolean>(false);
-  const [selectedTipIndex, setSelectedTipIndex] = useState<number>(0);
+  const [copiedMail, setCopiedMail] = useState(false);
+  const [createdMailDraft, setCreatedMailDraft] = useState('');
 
-  // 新旧それぞれの計算値
   const oldCalc = calculateEstimate(oldEstimate);
   const newCalc = calculateEstimate(newEstimate);
 
-  // 単価全体の差分
-  const totalDiff = newCalc.grandTotalUnitPrice - oldCalc.grandTotalUnitPrice;
-  const percentChange = oldCalc.grandTotalUnitPrice !== 0 ? (totalDiff / oldCalc.grandTotalUnitPrice) * 100 : 0;
-  const isIncrease = totalDiff > 0;
+  // Totals
+  const oldPrice = oldCalc.grandTotalUnitPrice;
+  const newPrice = newCalc.grandTotalUnitPrice;
+  const priceDelta = newPrice - oldPrice;
+  const percentDelta = oldPrice !== 0 ? (priceDelta / oldPrice) * 100 : 0;
+  const direction = priceDelta > 0 ? 'up' : priceDelta < 0 ? 'down' : 'none';
 
-  // 材料費の差
-  const materialDiff = newCalc.netMaterialCost - oldCalc.netMaterialCost;
-  
-  // 加工費総額の差
-  const processDiff = newCalc.totalProcessCost - oldCalc.totalProcessCost;
+  // Generate a draft email to supplier politely requesting a breakdown or VE discussion
+  const handleGenerateDraftMail = () => {
+    const draft = `【価格交渉用アジェンダ確認メール（下書き）】
 
-  // 諸費用の差
-  const otherDiff = newCalc.totalOtherExpenses - oldCalc.totalOtherExpenses;
+【お取引先サプライヤー企業名】 御中
+調達・営業総括部 ご担当者様
 
-  const copyToClipboard = (text: string, index: number) => {
-    navigator.clipboard.writeText(text);
-    setCopiedIndex(index);
-    setTimeout(() => setCopiedIndex(null), 2000);
+平素より大変お世話になっております。
+提示いただきました見積書（品番: ${newEstimate.partNumber}）の新旧査定内容を確認いたしました。
+
+つきましては、今回の価格改定要求（現行合意 ¥${oldPrice.toFixed(2)} → 今回提示 ¥${newPrice.toFixed(2)}、改定差額 +¥${priceDelta.toFixed(2)}）について、VE利益確保に関係する下記項目の査定要因につきまして、一度お打合せをさせていただきたく存じます。
+
+【主な確認項目】
+・素材料価格（旧 ¥${oldEstimate.material.basePricePerKg}/kg → 新 ¥${newEstimate.material.basePricePerKg}/kg）の上昇に伴う、スクラップ回収補填率の変動妥当性
+・加工費工順における設備稼働賃率、および生産出来高（サイクルタイム）の諸元
+・配送料、一般管理費の配賦基準
+
+お忙しいところ恐縮ではございますが、改めて相互理解を深めるため、協議のお時間をいただけますと幸いです。
+何卒よろしくお願い申し上げます。
+`;
+    setCreatedMailDraft(draft);
   };
 
-  // サプライヤー交渉用の回答メール自動作成
-  const handleGenerateMail = (tipText: string, index: number) => {
-    setSelectedTipIndex(index);
-    const draft = `三美プラスチック工業株式会社
-調達・購買ご担当者様
-
-いつも大変お世話になっております。
-提示いただきました見積書（品番: ${newEstimate.partNumber}）の最新改定案を拝見いたしました。
-
-世界的な材料高騰や物流価格および動力料金の改定等、貴社を取り巻く厳しい調達環境ならびに価格改定の背景については一定の理解をしております。
-しかしながら、今回の査定結果に基づき、以下の点について協議および具体的なデータを提示いただけますでしょうか。
-
-【交渉・お伺い事項】
-${tipText}
-
-これらについて、VE/VA（価値分析・価値工学）を含めた最適なアプローチを共同で検討したく存じます。
-ご多忙の中恐縮ですが、一度協議のお時間をいただけますと幸いです。
-
-何卒よろしくお願い申し上げます。`;
-    setGeneratedMail(draft);
-    setShowMailGenerator(true);
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedMail(true);
+    setTimeout(() => setCopiedMail(false), 2000);
   };
 
   return (
     <div className="space-y-6">
       
-      {/* 1. Quantitative Price Difference Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden divide-y md:divide-y-0 md:divide-x divide-gray-100">
+      {/* 1. EXCEL-STYLE OVERVIEW CARDS */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         
-        {/* Old Grand Total */}
-        <div className="p-5 flex flex-col justify-between">
+        {/* Old cost overview card */}
+        <div className="bg-slate-50 border border-slate-300 rounded-xl p-4 shadow-3xs flex flex-col justify-between">
           <div>
-            <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest block">前回 (旧単価) の見積額</span>
-            <span className="text-2xl font-black text-gray-700 font-mono mt-1.5 block">
-              ¥{oldCalc.grandTotalUnitPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            <div className="flex items-center gap-1.5 text-slate-450 uppercase font-extrabold text-[10px] tracking-wider mb-2">
+              <span className="inline-block w-2 h-2 rounded-full bg-slate-400" />
+              <span>前回合意単価 [旧価格シート]</span>
+            </div>
+            <span className="text-2xl font-black font-mono text-slate-700">
+              ¥{oldPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
-          <div className="text-[10px] text-gray-500 mt-2 font-semibold">
-            材料: ¥{oldCalc.netMaterialCost.toFixed(1)} | 加工: ¥{oldCalc.totalProcessCost.toFixed(1)} | 諸費: ¥{oldCalc.totalOtherExpenses.toFixed(1)}
-          </div>
+          <p className="text-[10px] text-slate-450 mt-3 border-t pt-2 border-slate-200">
+            材料比: ¥{oldCalc.netMaterialCost.toFixed(1)} / 加工比: ¥{oldCalc.totalProcessCost.toFixed(1)} / 諸費分: ¥{oldCalc.totalOtherExpenses.toFixed(1)}
+          </p>
         </div>
 
-        {/* New Grand Total */}
-        <div className="p-5 flex flex-col justify-between bg-gray-50/25">
+        {/* New cost overview card */}
+        <div className="bg-indigo-50/40 border border-indigo-250 rounded-xl p-4 shadow-3xs flex flex-col justify-between">
           <div>
-            <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest block">今回 (新単価) の見積額</span>
-            <span className="text-2xl font-black text-gray-900 font-mono mt-1.5 block">
-              ¥{newCalc.grandTotalUnitPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            <div className="flex items-center gap-1.5 text-indigo-700 uppercase font-extrabold text-[10px] tracking-wider mb-2">
+              <span className="inline-block w-2 h-2 rounded-full bg-indigo-505 bg-indigo-500 animate-pulse" />
+              <span>最新提示単価 [新価格シート]</span>
+            </div>
+            <span className="text-2xl font-black font-mono text-indigo-900">
+              ¥{newPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
-          <div className="text-[10px] text-gray-500 mt-2 font-semibold">
-            材料: ¥{newCalc.netMaterialCost.toFixed(1)} | 加工: ¥{newCalc.totalProcessCost.toFixed(1)} | 諸費: ¥{newCalc.totalOtherExpenses.toFixed(1)}
-          </div>
+          <p className="text-[10px] text-indigo-700 mt-3 border-t pt-2 border-indigo-200/55">
+            材料比: ¥{newCalc.netMaterialCost.toFixed(1)} / 加工比: ¥{newCalc.totalProcessCost.toFixed(1)} / 諸費分: ¥{newCalc.totalOtherExpenses.toFixed(1)}
+          </p>
         </div>
 
-        {/* Price Delta Variance */}
-        <div className={`p-5 flex flex-col justify-between ${
-          isIncrease ? 'bg-rose-50/40' : totalDiff === 0 ? 'bg-gray-50/50' : 'bg-emerald-50/40'
+        {/* Delta Card */}
+        <div className={`border rounded-xl p-4 shadow-3xs flex flex-col justify-between ${
+          direction === 'up' 
+            ? 'bg-rose-50/60 border-rose-250 text-rose-900' 
+            : direction === 'down' 
+              ? 'bg-emerald-50/50 border-emerald-250 text-emerald-900' 
+              : 'bg-slate-50 border-slate-250 text-slate-700'
         }`}>
           <div>
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-extrabold text-gray-450 uppercase tracking-widest block">新旧見積の差異額</span>
-              {isIncrease ? (
-                <span className="flex items-center gap-1 text-[9px] font-extrabold text-rose-700 bg-rose-100/80 border border-rose-200 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                  <TrendingUp className="w-3.5 h-3.5" />価格高騰
+            <div className="flex items-center justify-between mb-2">
+              <span className="uppercase font-extrabold text-[10px] tracking-wider text-slate-500">
+                新旧見積価格差額（デルタ）
+              </span>
+              {direction === 'up' && (
+                <span className="text-[9px] font-extrabold px-2 py-0.5 bg-rose-100 border border-rose-200 text-rose-700 rounded-full flex items-center gap-0.5">
+                  <TrendingUp className="w-3 h-3" /> 要交渉
                 </span>
-              ) : totalDiff === 0 ? (
-                <span className="flex items-center gap-1 text-[9px] font-extrabold text-gray-600 bg-gray-150 border px-2 py-0.5 rounded-full">
-                  変動なし
-                </span>
-              ) : (
-                <span className="flex items-center gap-1 text-[9px] font-extrabold text-emerald-700 bg-emerald-100/80 border border-emerald-200 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                  <TrendingDown className="w-3.5 h-3.5" />コストダウン
+              )}
+              {direction === 'down' && (
+                <span className="text-[9px] font-extrabold px-2 py-0.5 bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-full flex items-center gap-0.5">
+                  <TrendingDown className="w-3 h-3" /> 合理化成功
                 </span>
               )}
             </div>
-            
-            <div className={`text-2xl font-black font-mono mt-1.5 block ${
-              isIncrease ? 'text-rose-600' : totalDiff === 0 ? 'text-gray-700' : 'text-emerald-600'
-            }`}>
-              {isIncrease ? '+' : ''}
-              {totalDiff.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}円
-            </div>
+            <span className="text-2xl font-black font-mono">
+              {direction === 'up' ? '+' : ''}
+              {priceDelta.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}円
+            </span>
           </div>
-
-          <div className={`text-[10px] font-extrabold mt-2 flex items-center justify-between ${
-            isIncrease ? 'text-rose-700' : totalDiff === 0 ? 'text-gray-500' : 'text-emerald-700'
-          }`}>
-            <span>価格改定率:</span>
-            <span>{isIncrease ? '+' : ''}{percentChange.toFixed(2)} %</span>
+          <div className="text-[10px] flex items-center justify-between mt-3 border-t pt-2 border-slate-200/60">
+            <span className="font-semibold text-slate-500">改定要求率:</span>
+            <span className="font-mono font-black text-xs">
+              {direction === 'up' ? '+' : ''}{percentDelta.toFixed(2)}%
+            </span>
           </div>
         </div>
+
       </div>
 
-      {/* 2. Structured Comparison Breakdown per Excel Section */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden">
-        <div className="p-3.5 bg-gray-50/75 border-b border-gray-150 flex items-center justify-between">
-          <span className="text-xs font-bold text-gray-800">新旧詳細明細・単価要因変動シート（全パラメータ自動追従）</span>
-          <span className="text-[10px] text-gray-400">エクセル関数100%Web移植</span>
+      {/* 2. RECONCILIATION SHEET GRID */}
+      <div className="overflow-hidden border border-slate-300 rounded-xl shadow-3xs bg-white">
+        
+        {/* Tab top */}
+        <div className="bg-slate-50 p-3 border-b border-slate-250 flex items-center justify-between text-xs select-none">
+          <div className="flex items-center gap-1.5 font-bold text-slate-700">
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+            <span>新旧詳細比較・変位分析表（明細対比パラメータ）</span>
+          </div>
+          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-none">
+            Sheet3!デルタ監査計算
+          </span>
         </div>
 
+        {/* Comparison grid body */}
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-100 text-[11px]">
-            <thead className="bg-gray-50/50 text-[9px] font-bold text-gray-500 uppercase tracking-wider">
-              <tr>
-                <th scope="col" className="px-3 py-2 text-left w-14">区分</th>
-                <th scope="col" className="px-3 py-2 text-left">内訳・明細変更点</th>
-                <th scope="col" className="px-3 py-2 text-right w-24">定価 (旧)</th>
-                <th scope="col" className="px-3 py-2 text-right w-24">定価 (新)</th>
-                <th scope="col" className="px-3 py-2 text-right w-24">変動額</th>
-                <th scope="col" className="px-3 py-2 text-right w-20">変位％</th>
-                <th scope="col" className="px-3 py-2 text-left w-48 font-medium">仕様差分・変動トリガー</th>
+          <table className="min-w-full text-xs font-sans divide-y divide-slate-150">
+            <thead>
+              <tr className="bg-slate-100 text-[10px] text-slate-500 font-bold tracking-wider text-left border-b border-slate-250 select-none">
+                <th className="px-3 py-2">大項目区分</th>
+                <th className="px-3 py-2">細分費目パラメータ [Excel cell]</th>
+                <th className="px-3 py-2 text-right w-24 bg-slate-50">旧通常値</th>
+                <th className="px-3 py-2 text-right w-24 bg-indigo-50/20">新要求値</th>
+                <th className="px-3 py-2 text-right w-24 bg-slate-100">変動差異額 (円)</th>
+                <th className="px-3 py-2 text-center w-20">騰落率 %</th>
+                <th className="px-3 py-2 text-left w-52">相関・要因チェック</th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-100">
+            <tbody className="divide-y divide-slate-150 bg-white">
               
-              {/* 1. 材料費 */}
-              <tr className="hover:bg-gray-50/30 font-semibold bg-gray-50/5 text-gray-900 border-l-4 border-amber-400">
-                <td className="px-3 py-2.5">材料費</td>
+              {/* Material Fee Comparison */}
+              <tr className="hover:bg-slate-50/40">
+                <td className="px-3 py-2.5 font-black text-slate-800 bg-slate-50/10">1. 材料費</td>
                 <td className="px-3 py-2.5">
-                  <div className="font-bold">材料費小計 / 個 (①-②)</div>
-                  <div className="text-[9px] text-gray-400 font-normal">
-                    旧: {oldEstimate.material.materialName} ({oldEstimate.material.inputWeightG}g) → 新: {newEstimate.material.materialName}
+                  <div className="font-bold text-slate-700">正味材料費 / 個 [Sheet2!E8 - Sheet1!E8]</div>
+                  <div className="text-[10px] text-slate-400 font-normal mt-0.5">
+                    材質: {oldEstimate.material.materialName} ({oldEstimate.material.inputWeightG}g) → {newEstimate.material.materialName} ({newEstimate.material.inputWeightG}g)
                   </div>
                 </td>
-                <td className="px-3 py-2.5 text-right font-mono text-gray-600">
+                <td className="px-3 py-2.5 text-right font-mono font-semibold text-slate-500 bg-slate-50/10">
                   ¥{oldCalc.netMaterialCost.toFixed(2)}
                 </td>
-                <td className="px-3 py-2.5 text-right font-mono">
+                <td className="px-3 py-2.5 text-right font-mono font-semibold text-indigo-900 bg-indigo-50/10">
                   ¥{newCalc.netMaterialCost.toFixed(2)}
                 </td>
-                <td className={`px-3 py-2.5 text-right font-mono ${
-                  materialDiff > 0 ? 'text-rose-600' : materialDiff < 0 ? 'text-emerald-600' : 'text-gray-400'
-                }`}>
-                  {materialDiff > 0 ? '+' : ''}{materialDiff.toFixed(2)}
-                </td>
-                <td className={`px-3 py-2.5 text-right font-mono text-[10px] ${materialDiff > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
-                  {oldCalc.netMaterialCost > 0 ? `${(materialDiff / oldCalc.netMaterialCost * 100).toFixed(1)}%` : '0%'}
-                </td>
-                <td className="px-3 py-2.5 text-[10px] text-gray-500 font-normal">
-                  単価: 旧 ¥{oldEstimate.material.basePricePerKg}/kg → 新 ¥{newEstimate.material.basePricePerKg}/kg
+                {(() => {
+                  const diff = newCalc.netMaterialCost - oldCalc.netMaterialCost;
+                  const pct = oldCalc.netMaterialCost !== 0 ? (diff / oldCalc.netMaterialCost) * 100 : 0;
+                  return (
+                    <>
+                      <td className={`px-3 py-2.5 text-right font-mono font-extrabold ${
+                        diff > 0 ? 'text-rose-600 bg-rose-50/20' : diff < 0 ? 'text-emerald-600 bg-emerald-50/20' : 'text-slate-400'
+                      }`}>
+                        {diff > 0 ? '+' : ''}{diff.toFixed(2)}
+                      </td>
+                      <td className={`px-3 py-2.5 text-center font-mono font-bold ${diff > 0 ? 'text-rose-550' : 'text-emerald-550'}`}>
+                        {diff !== 0 ? `${pct.toFixed(1)}%` : '0%'}
+                      </td>
+                    </>
+                  );
+                })()}
+                <td className="px-3 py-2.5 text-[10px] text-slate-500">
+                  建値価格差: ¥{oldEstimate.material.basePricePerKg} → ¥{newEstimate.material.basePricePerKg}/kg
                 </td>
               </tr>
 
-              {/* 2. 加工費 (工順ごとの連動表示) */}
-              <tr className="bg-indigo-50/15">
-                <td colSpan={7} className="px-3 py-1 text-[10px] font-bold text-gray-400 select-none bg-indigo-50/10">
-                  加工費内訳
+              {/* Processes comparison */}
+              <tr className="bg-slate-50/50 text-[10px] font-bold text-slate-400 select-none">
+                <td colSpan={7} className="px-3 py-1 bg-slate-100/50">
+                  2. 設備加工工賃個別対比：旧工順 vs 新工順
                 </td>
               </tr>
-              
+
               {newEstimate.processes.map((newProc, idx) => {
                 const oldProc = oldEstimate.processes.find(o => o.index === newProc.index) || {
-                  processName: '', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, directProcessingCost: 0, isDirectInput: false, kgPrice: 0
+                  processName: '', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, directProcessingCost: 0
                 };
-                
+
                 const oldCost = oldCalc.processCosts[idx] || 0;
                 const newCost = newCalc.processCosts[idx] || 0;
                 const pDiff = newCost - oldCost;
-
+                
                 if (!newProc.processName.trim() && !oldProc.processName?.trim()) return null;
 
-                const hasRateChange = oldProc.hourlyRate !== newProc.hourlyRate;
-                const isProcessAdded = !oldProc.processName && newProc.processName;
-                const isProcessRemoved = oldProc.processName && !newProc.processName;
+                const hourlyRateDiff = newProc.hourlyRate - (oldProc.hourlyRate || 0);
+                const yieldDiff = newProc.yieldPerHour - (oldProc.yieldPerHour || 0);
 
                 return (
-                  <tr key={idx} className="hover:bg-gray-50/20 text-gray-800">
-                    <td className="px-3 py-1.5 text-center text-gray-400 font-mono font-bold">工順{newProc.index}</td>
-                    <td className="px-3 py-1.5">
-                      <span className="font-bold">{newProc.processName || oldProc.processName}</span>
-                      <span className="text-[9px] text-gray-400 block font-sans">
-                        {newProc.workContent || oldProc.workContent || '設備加工作業'}
-                      </span>
+                  <tr key={idx} className="hover:bg-slate-50/25">
+                    <td className="px-3 py-2 font-mono text-slate-400 text-center font-bold">工順{newProc.index}</td>
+                    <td className="px-3 py-2">
+                      <div className="font-black text-slate-700">{newProc.processName || oldProc.processName}</div>
+                      <div className="text-[10px] text-slate-400 font-normal truncate mt-0.5 max-w-[200px]">
+                        仕様: {newProc.workContent || oldProc.workContent || '設備内製加工'}
+                      </div>
                     </td>
-                    <td className="px-3 py-1.5 text-right font-mono text-gray-600">
-                      {oldProc.processName ? `¥${oldCost.toFixed(2)}` : '-'}
+                    <td className="px-3 py-2 text-right font-mono text-slate-550 bg-slate-50/10">
+                      {oldProc.processName ? `¥${oldCost.toFixed(2)}` : '未計上'}
                     </td>
-                    <td className="px-3 py-1.5 text-right font-mono">
-                      {newProc.processName ? `¥${newCost.toFixed(2)}` : '-'}
+                    <td className="px-3 py-2 text-right font-mono text-indigo-950 bg-indigo-50/10">
+                      {newProc.processName ? `¥${newCost.toFixed(2)}` : '削除/未計上'}
                     </td>
-                    <td className={`px-3 py-1.5 text-right font-mono ${
-                      pDiff > 0 ? 'text-rose-600 font-bold' : pDiff < 0 ? 'text-emerald-600 font-bold' : 'text-gray-400'
+                    <td className={`px-3 py-2 text-right font-mono font-extrabold ${
+                      pDiff > 0 ? 'text-rose-600 bg-rose-50/15' : pDiff < 0 ? 'text-emerald-600 bg-emerald-50/15' : 'text-slate-400'
                     }`}>
                       {pDiff > 0 ? '+' : ''}{pDiff.toFixed(2)}
                     </td>
-                    <td className={`px-3 py-1.5 text-right font-mono text-[9px] ${pDiff > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
-                      {oldCost > 0 ? `${(pDiff / oldCost * 100).toFixed(0)}%` : isProcessAdded ? '新規追加' : '0%'}
+                    <td className={`px-3 py-2 text-center font-mono ${pDiff > 0 ? 'text-rose-500' : pDiff < 0 ? 'text-emerald-500' : 'text-slate-400'}`}>
+                      {oldCost > 0 ? `${(pDiff / oldCost * 100).toFixed(0)}%` : newProc.processName ? '追加' : '通常'}
                     </td>
-                    <td className="px-3 py-1.5 text-[9px] text-gray-450 leading-relaxed max-w-xs">
-                      {isProcessAdded && '新規工程の割り当て'}
-                      {isProcessRemoved && '工程合理化による削除'}
-                      {!isProcessAdded && !isProcessRemoved && (
-                        <span>
-                          賃率: ¥{oldProc.hourlyRate} → ¥{newProc.hourlyRate} 
-                          {oldProc.yieldPerHour !== newProc.yieldPerHour && ` | 出来高: ${oldProc.yieldPerHour}→${newProc.yieldPerHour}`}
-                        </span>
-                      )}
+                    <td className="px-3 py-2 text-[10px] text-slate-450 leading-normal max-w-xs unicode-bidi">
+                      {hourlyRateDiff !== 0 && `賃率差異: ¥${oldProc.hourlyRate}→¥${newProc.hourlyRate}`}
+                      {yieldDiff !== 0 && ` | 出来高変化: ${oldProc.yieldPerHour}→${newProc.yieldPerHour}/個`}
                     </td>
                   </tr>
                 );
               })}
 
-              <tr className="bg-gray-50/20 font-bold text-gray-800">
-                <td className="px-3 py-1.5">加工費小計</td>
-                <td className="px-3 py-1.5">全工程の合計加工費/個</td>
-                <td className="px-3 py-1.5 text-right font-mono text-gray-500">¥{oldCalc.totalProcessCost.toFixed(2)}</td>
-                <td className="px-3 py-1.5 text-right font-mono">¥{newCalc.totalProcessCost.toFixed(2)}</td>
-                <td className={`px-3 py-1.5 text-right font-mono ${processDiff > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                  {processDiff > 0 ? '+' : ''}{processDiff.toFixed(2)}
-                </td>
-                <td className={`px-3 py-1.5 text-right font-mono text-[10px] ${processDiff > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
-                  {oldCalc.totalProcessCost > 0 ? `${(processDiff / oldCalc.totalProcessCost * 100).toFixed(1)}%` : '0%'}
-                </td>
-                <td className="px-3 py-1.5 text-[9px] text-gray-400 font-normal">設備賃率およびサイクルタイム再査定の影響</td>
-              </tr>
+              {/* Total Processes Row */}
+              {(() => {
+                const totalProcessDiff = newCalc.totalProcessCost - oldCalc.totalProcessCost;
+                const totalProcessPct = oldCalc.totalProcessCost > 0 ? (totalProcessDiff / oldCalc.totalProcessCost * 100) : 0;
+                return (
+                  <tr className="hover:bg-slate-50/40 font-bold bg-slate-50/30">
+                    <td className="px-3 py-2 font-black text-slate-800">加工小計</td>
+                    <td className="px-3 py-2 text-slate-700">加工工賃合計 [SUM(Row12:Row21)]</td>
+                    <td className="px-3 py-2 text-right font-mono text-slate-500 bg-slate-50/10">¥{oldCalc.totalProcessCost.toFixed(2)}</td>
+                    <td className="px-3 py-2 text-right font-mono text-indigo-900 bg-indigo-50/10">¥{newCalc.totalProcessCost.toFixed(2)}</td>
+                    <td className={`px-3 py-2 text-right font-mono font-extrabold ${
+                      totalProcessDiff > 0 ? 'text-rose-600 bg-rose-50/20' : totalProcessDiff < 0 ? 'text-emerald-600 bg-emerald-50/20' : 'text-slate-400'
+                    }`}>
+                      {totalProcessDiff > 0 ? '+' : ''}{totalProcessDiff.toFixed(2)}
+                    </td>
+                    <td className={`px-3 py-2 text-center font-mono ${totalProcessDiff > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                      {oldCalc.totalProcessCost > 0 ? `${totalProcessPct.toFixed(1)}%` : '0%'}
+                    </td>
+                    <td className="px-3 py-2 text-[10px] text-slate-450 font-normal">稼動サイクル・設備単価再設定合計変位</td>
+                  </tr>
+                );
+              })()}
 
-              {/* 3. その他の費用 */}
-              <tr className="bg-gray-50/5 font-semibold text-gray-900 border-l-4 border-indigo-400">
-                <td className="px-3 py-2.5">その他の諸費</td>
+              {/* SGA and adjust fees */}
+              <tr className="hover:bg-slate-50/40">
+                <td className="px-3 py-2.5 font-black text-slate-800">3. 諸経費等</td>
                 <td className="px-3 py-2.5">
-                  <div className="font-bold">利管費・特別調整・配送料等合計</div>
-                  <div className="text-[9px] text-gray-400 font-normal">
-                    送料: 旧 ¥{oldCalc.shippingCostPerUnit.toFixed(1)}/個 → 新 ¥{newCalc.shippingCostPerUnit.toFixed(1)}/個 
+                  <div className="font-bold text-slate-700">管理利管費 ＆ 送料配賦 ＆ 調整累計 [Row26:Row29]</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">
+                    旧送料比: ¥{oldCalc.shippingCostPerUnit.toFixed(1)} (入数 {oldEstimate.logistics.qtyPerBox}) → 新送料比: ¥{newCalc.shippingCostPerUnit.toFixed(1)} (入数 {newEstimate.logistics.qtyPerBox})
                   </div>
                 </td>
-                <td className="px-3 py-2.5 text-right font-mono text-gray-600">
-                  ¥{oldCalc.totalOtherExpenses.toFixed(2)}
-                </td>
-                <td className="px-3 py-2.5 text-right font-mono">
-                  ¥{newCalc.totalOtherExpenses.toFixed(2)}
-                </td>
-                <td className={`px-3 py-2.5 text-right font-mono ${
-                  otherDiff > 0 ? 'text-rose-600' : otherDiff < 0 ? 'text-emerald-600' : 'text-gray-400'
-                }`}>
-                  {otherDiff > 0 ? '+' : ''}{otherDiff.toFixed(2)}
-                </td>
-                <td className={`px-3 py-2.5 text-right font-mono text-[10px] ${otherDiff > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
-                  {oldCalc.totalOtherExpenses > 0 ? `${(otherDiff / oldCalc.totalOtherExpenses * 100).toFixed(1)}%` : '0%'}
-                </td>
-                <td className="px-3 py-2.5 text-[10px] text-gray-500 font-normal">
-                  利管費・送料2024年問題に伴う配送料高騰
+                <td className="px-3 py-2.5 text-right font-mono text-slate-500 bg-slate-50/10">¥{oldCalc.totalOtherExpenses.toFixed(2)}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-indigo-900 bg-indigo-50/10">¥{newCalc.totalOtherExpenses.toFixed(2)}</td>
+                {(() => {
+                  const otherDiff = newCalc.totalOtherExpenses - oldCalc.totalOtherExpenses;
+                  const otherPct = oldCalc.totalOtherExpenses !== 0 ? (otherDiff / oldCalc.totalOtherExpenses) * 100 : 0;
+                  return (
+                    <>
+                      <td className={`px-3 py-2.5 text-right font-mono font-extrabold ${
+                        otherDiff > 0 ? 'text-rose-600 bg-rose-50/20' : otherDiff < 0 ? 'text-emerald-600 bg-emerald-50/20' : 'text-slate-400'
+                      }`}>
+                        {otherDiff > 0 ? '+' : ''}{otherDiff.toFixed(2)}
+                      </td>
+                      <td className={`px-3 py-2.5 text-center font-mono ${otherDiff > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                        {otherDiff !== 0 ? `${otherPct.toFixed(1)}%` : '0%'}
+                      </td>
+                    </>
+                  );
+                })()}
+                <td className="px-3 py-2.5 text-[10px] text-slate-500 leading-normal">
+                  利管率比: 旧 {oldEstimate.adjustments.sgaRatePercent || 0}% → 新 {newEstimate.adjustments.sgaRatePercent || 0}% + 型費・手動調整
                 </td>
               </tr>
 
-              {/* OVERALL御見積単価 (合計) */}
-              <tr className="bg-slate-900 text-white font-bold border-t-2 border-slate-950">
-                <td className="px-3 py-3">合計</td>
-                <td className="px-3 py-3 text-sm">
-                  算出御見積単価 (1.材料費 + 2.加工費 + 3.諸費用)
+              {/* GRAND SUM */}
+              <tr className="bg-slate-900 text-white font-extrabold text-[12px] border-t-2 border-slate-950">
+                <td className="px-3 py-3">合計見積単価</td>
+                <td className="px-3 py-3 text-sm font-black">
+                  御見積決定単価総計（正味材料費 ＋ 加工費合計 ＋ 管理諸費）
                 </td>
-                <td className="px-3 py-3 text-right font-mono text-slate-300">
-                  ¥{oldCalc.grandTotalUnitPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                <td className="px-3 py-3 text-right font-mono text-slate-350 bg-slate-950/20">
+                  ¥{oldPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </td>
-                <td className="px-3 py-3 text-right font-mono text-emerald-400 text-sm">
-                  ¥{newCalc.grandTotalUnitPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                <td className="px-3 py-3 text-right font-mono text-yellow-350 text-sm bg-slate-950/30">
+                  ¥{newPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </td>
-                <td className={`px-3 py-3 text-right font-mono text-sm ${isIncrease ? 'text-rose-400' : 'text-emerald-400'}`}>
-                  {isIncrease ? '+' : ''}{totalDiff.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                <td className={`px-3 py-3 text-right font-mono text-sm bg-slate-950/25 ${direction === 'up' ? 'text-rose-400' : direction === 'down' ? 'text-emerald-400' : 'text-slate-300'}`}>
+                  {direction === 'up' ? '+' : ''}{priceDelta.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </td>
-                <td className="px-3 py-3 text-right font-mono text-slate-300 text-xs text-center">
-                  {percentChange > 0 ? '+' : ''}{percentChange.toFixed(2)} %
+                <td className="px-3 py-3 text-center font-mono text-xs">
+                  {percentDelta > 0 ? '+' : ''}{percentDelta.toFixed(2)} %
                 </td>
-                <td className="px-3 py-3 text-[10px] text-slate-400 font-normal leading-tight">
-                  品番: {newEstimate.partNumber} 量産基準数: {newEstimate.baseLotSize}個/ロット時の単価
+                <td className="px-3 py-3 text-[10px] text-slate-350 font-normal whitespace-normal w-52 leading-tight">
+                  品番: {newEstimate.partNumber} / 基準ロット: {newEstimate.baseLotSize}個 時
                 </td>
               </tr>
 
             </tbody>
           </table>
         </div>
+
       </div>
 
-      {/* 3. ACTION TRIGGER PANEL FOR AI ANALYSIS COMPILER */}
-      {!comparison && (
-        <div className="bg-slate-50 border border-gray-200 rounded-xl p-8 shadow-3xs flex flex-col items-center justify-center text-center">
-          <div className="bg-indigo-50 border border-indigo-100 p-3 rounded-full mb-3 shadow-inner">
-            <Sparkles className="w-6 h-6 text-indigo-600 animate-pulse" />
-          </div>
-          <h4 className="text-sm font-bold text-gray-800">精密な「AI新旧比較査定報告書」の自動構築</h4>
-          <p className="text-xs text-gray-500 mt-1 max-w-lg leading-relaxed select-none">
-            エディタで設定した新旧の全見積データ、工程ごとの加工稼動パラメータを、Gemini AIに渡して価格高騰の「妥当性」「便乗値上げの疑い」「調達市場との相関」「代替品や工程集約による交渉アジェンダ」を瞬時に徹底分析・作成します。
-          </p>
-
-          <button
-            onClick={onRunComparison}
-            disabled={isLoading}
-            className="mt-5 flex items-center gap-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 py-2.5 px-6 rounded-xl hover:shadow-md transition-all duration-250 cursor-pointer disabled:cursor-not-allowed"
-            id="run-ai-audit-btn"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>AI価格監査 & 交渉戦略ロード中...</span>
-              </>
+      {/* 3. LIGHTWEIGHT COLLABORATIVE TOOLS: EXCEL DRAFT EMAIL & OPTIONAL AI ANALYSIS */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        
+        {/* Negotiation Email Planner */}
+        <div className="bg-white border border-slate-300 rounded-xl p-4 shadow-3xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center gap-1.5 font-bold text-slate-800 text-xs mb-2">
+              <Mail className="w-4 h-4 text-indigo-600" />
+              <span>サプライヤー宛て交渉アジェンダ・確認依頼メール</span>
+            </div>
+            <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
+              今回の新旧価格差分値（¥{priceDelta.toFixed(1)}円）に基づいた、理性的で下請法に準拠した打合せ調整メール下書きを一発で生成します。
+            </p>
+            
+            {createdMailDraft ? (
+              <textarea
+                value={createdMailDraft}
+                onChange={(e) => setCreatedMailDraft(e.target.value)}
+                rows={8}
+                className="w-full text-[10px] font-mono bg-slate-950 text-slate-200 border border-slate-800 p-2.5 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
+              />
             ) : (
-              <>
-                <Sparkles className="w-4 h-4" />
-                <span>AIで新旧価格差を多角的に分析（査定書作成）</span>
-              </>
+              <div className="text-[11px] text-slate-400 italic py-6 text-center select-none bg-slate-50 border border-dashed rounded-lg">
+                「交渉メール文を生成する」ボタンをクリックすると作成されます。
+              </div>
             )}
-          </button>
+          </div>
+
+          <div className="mt-3 flex justify-between items-center text-[10px]">
+            {createdMailDraft ? (
+              <button
+                onClick={() => copyToClipboard(createdMailDraft)}
+                className="flex items-center gap-1.5 font-bold text-white bg-indigo-600 hover:bg-indigo-700 py-1.5 px-3 rounded-md shadow-2xs transition-all cursor-pointer"
+              >
+                {copiedMail ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-300" />
+                    <span>コピー完了！</span>
+                  </>
+                ) : (
+                  <>
+                    <Clipboard className="w-3.5 h-3.5" />
+                    <span>メール文をコピー</span>
+                  </>
+                )}
+              </button>
+            ) : (
+              <button
+                onClick={handleGenerateDraftMail}
+                className="font-bold text-white bg-slate-800 hover:bg-slate-700 py-1.5 px-3 rounded-md cursor-pointer"
+              >
+                交渉メール文を生成する
+              </button>
+            )}
+            <span className="text-slate-400">※ Outlook等にそのままコピー可能</span>
+          </div>
         </div>
-      )}
 
-      {/* 4. Loaded AI Findings */}
-      {isLoading && (
-        <div className="bg-white rounded-xl border border-gray-200 p-8 shadow-3xs flex flex-col items-center justify-center min-h-[250px]">
-          <div className="relative flex items-center justify-center mb-3">
-            <div className="w-10 h-10 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
-            <Scale className="w-4 h-4 text-indigo-600 absolute animate-pulse" />
-          </div>
-          <p className="text-xs font-bold text-gray-800">調達購買監査モデルをビルド中...</p>
-          <p className="text-[10px] text-gray-400 mt-1 text-center">LME金属相場インデックス、エネルギー費転嫁、物流法改正の影響と照合しています。</p>
-        </div>
-      )}
-
-      {comparison && !isLoading && (
-        <div className="space-y-6">
-          
-          {/* AI SUMMARY COMMENT */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs">
-            <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-indigo-600" />
-              <span>AI新旧比較 総合査定評価（バイヤー報告用）</span>
-            </h4>
-            <div className="text-xs leading-relaxed text-gray-700 space-y-2 border-l-4 border-indigo-600 pl-4 py-1 italic bg-indigo-50/25 rounded-r-lg">
-              {comparison.summary}
+        {/* Optional AI Auditor */}
+        <div className="bg-slate-900 text-slate-100 rounded-xl p-4 shadow-3xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center gap-1.5 font-bold text-indigo-400 text-xs mb-2">
+              <Sparkles className="w-4 h-4 text-indigo-400" />
+              <span>AI価格監査・交渉アプローチ報告書（任意）</span>
             </div>
-          </div>
-
-          {/* DUAL KEY REASONS */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            
-            {/* Key Changes */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs flex flex-col">
-              <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-                <AlertCircle className="w-4 h-4 text-amber-500" />
-                <span>主要な価格変動トリガー分析</span>
-              </h4>
-              <div className="space-y-3.5 flex-1">
-                {comparison.keyChanges.map((change, idx) => (
-                  <div key={idx} className="border border-gray-100 p-3 rounded-lg bg-gray-50/25 hover:border-gray-200 transition-colors">
-                    <div className="flex items-start justify-between gap-1">
-                      <span className="font-bold text-gray-900 text-xs">{change.title}</span>
-                      {change.impact === 'negative' ? (
-                        <span className="text-[8px] font-extrabold text-rose-700 bg-rose-50 border border-rose-100 px-1.5 py-0.5 rounded-sm shrink-0">
-                          コスト高
-                        </span>
-                      ) : change.impact === 'positive' ? (
-                        <span className="text-[8px] font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded-sm shrink-0">
-                          コスト省
-                        </span>
-                      ) : (
-                        <span className="text-[8px] font-semibold text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded-sm shrink-0">
-                          影響微
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">{change.description}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Assessment */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs flex flex-col">
-              <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-                <Scale className="w-4 h-4 text-indigo-500" />
-                <span>見積適正価格の監査判定</span>
-              </h4>
-              <div className="bg-indigo-50/25 border border-indigo-100/50 p-4 rounded-xl flex-1 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center gap-2 mb-2 bg-white px-3 py-1.5 rounded-lg border border-indigo-100 shadow-3xs">
-                    <CheckCircle2 className="w-4 h-4 text-indigo-600" />
-                    <span className="font-bold text-indigo-950 text-xs">市場データ比較査定結果</span>
-                  </div>
-                  <p className="text-xs text-gray-600 leading-relaxed mt-2.5 font-sans">
-                    {comparison.reasonablenessAssessment}
-                  </p>
-                </div>
-                
-                <div className="mt-4 pt-3 border-t border-indigo-100/60 flex items-center justify-between text-[10px] text-gray-400">
-                  <span>監査エンジン: Gemini-3.5 Cost Audit</span>
-                  <span className="font-semibold text-indigo-700">調達VA・VE適正認定済</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* CATEGORY OUTLOOKS */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs">
-            <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3.5 flex items-center gap-1.5">
-              <TrendingUp className="w-4 h-4 text-indigo-500" />
-              <span>各費目カテゴリにおける詳細インサイト</span>
-            </h4>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {comparison.categoryAnalysisPoints.map((pt, idx) => (
-                <div key={idx} className="bg-gray-50/50 border border-gray-150 p-3.5 rounded-xl">
-                  <span className="text-[10px] font-extrabold text-indigo-800 uppercase tracking-wider block bg-white px-2 py-0.5 border border-gray-100 rounded-md w-max mb-2">
-                    {pt.category}
-                  </span>
-                  <p className="text-xs text-gray-600 leading-relaxed font-sans">{pt.analysis}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* NEGOTIATION PLAYBOOK COUNTER ACTIONS */}
-          <div className="bg-slate-900 text-slate-100 shadow-lg border border-slate-800 rounded-xl p-5">
-            <h4 className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-              <MessageSquareCode className="w-5 h-5 text-indigo-400" />
-              <span>サプライヤー交渉カウンター集（クリックしてメール文作成）</span>
-            </h4>
-            <p className="text-xs text-gray-400 mb-4 leading-relaxed">
-              今回の価格変位値・建値比率から逆算した、最も効果的で論理的な交渉アプローチプランです。各項目をクリックすると、サプライヤー宛の質問・調整メールをインスタントにドラフト作成します。
+            <p className="text-[11px] text-slate-400 mb-4 leading-relaxed">
+              エディタの入力値をGemini APIに引き渡し、下請法や製造インデックス（労務費・電力費・材料相場。LME連動等）から便乗値上げ、あるいは不自然な加工賃水準が生じていないかをプロのバイヤー目線でAI査定します。
             </p>
 
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-              
-              {/* Tip list */}
-              <div className="lg:col-span-3 space-y-2.5">
-                {comparison.negotiationTips.map((tip, idx) => (
-                  <div 
-                    key={idx} 
-                    onClick={() => handleGenerateMail(tip, idx)}
-                    className={`flex items-start gap-3 border p-3 rounded-xl transition-all cursor-pointer ${
-                      selectedTipIndex === idx 
-                        ? 'bg-indigo-950/70 border-indigo-500 text-indigo-100 shadow-md ring-1 ring-indigo-500/20' 
-                        : 'bg-slate-800/40 border-slate-700/50 hover:bg-slate-800 hover:border-slate-600 text-slate-200'
-                    }`}
-                  >
-                    <span className={`flex items-center justify-center w-5 h-5 text-[10px] font-black rounded-full shrink-0 border mt-0.5 ${
-                      selectedTipIndex === idx 
-                        ? 'bg-indigo-600 border-indigo-400 text-white' 
-                        : 'bg-slate-900 border-slate-700 text-indigo-300'
-                    }`}>
-                      {idx + 1}
-                    </span>
-                    <div className="flex-1 text-xs font-medium leading-relaxed font-sans">
-                      {tip}
-                    </div>
+            {isLoading ? (
+              <div className="text-[11px] text-slate-400 py-6 text-center animate-pulse">
+                ⏳ 調達市場・下請適正化基準に照らし合わせて自動査定中...
+              </div>
+            ) : comparison ? (
+              <div className="bg-slate-950 p-2.5 rounded-lg border border-indigo-900 max-h-[140px] overflow-y-auto text-[10px] leading-relaxed text-indigo-150 font-mono">
+                <strong className="text-amber-300 block mb-1">【AI査定報告要约】</strong>
+                {comparison.summary}
+                <strong className="text-amber-300 block mt-2 mb-1">【対サプライヤー逆アプローチ質問事項】</strong>
+                {comparison.negotiationTips.map((tip, i) => (
+                  <div key={i} className="mb-1 border-b border-indigo-950 pb-1">
+                    {i + 1}. {tip}
                   </div>
                 ))}
               </div>
-
-              {/* Instant Email Generator Pane */}
-              <div className="lg:col-span-2 bg-slate-855 border border-slate-750 p-3.5 rounded-xl flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-200 mb-2 pb-2 border-b border-slate-800">
-                    <Mail className="w-4 h-4 text-indigo-400" />
-                    <span>交渉メール下書き (自動連動)</span>
-                  </div>
-                  
-                  {showMailGenerator && generatedMail ? (
-                    <textarea
-                      value={generatedMail}
-                      onChange={(e) => setGeneratedMail(e.target.value)}
-                      rows={11}
-                      className="w-full text-[10px] font-mono bg-slate-950 text-slate-200 border border-slate-800 p-2 rounded-lg resize-none focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
-                    />
-                  ) : (
-                    <div className="text-[11px] text-slate-500 italic py-8 text-center select-none">
-                      左の交渉カウンタープラン(1~5)をクリックすると、製品情報・見積条件を盛り込んだ打合せ・質疑メールがここに生成されます。
-                    </div>
-                  )}
-                </div>
-
-                {showMailGenerator && generatedMail && (
-                  <div className="mt-3 flex justify-between items-center text-[10px]">
-                    <span className="text-slate-400">コピーしてOutlookやGmailに貼り付け</span>
-                    <button
-                      onClick={() => copyToClipboard(generatedMail, 99)}
-                      className="flex items-center gap-1 py-1.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-md shadow-2xs transition-colors"
-                      id="copy-draft-mail-btn"
-                    >
-                      {copiedIndex === 99 ? (
-                        <>
-                          <Check className="w-3.5 h-3.5 text-emerald-300" />
-                          <span>コピー済！</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" />
-                          <span>全社メール用にコピー</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                )}
+            ) : (
+              <div className="text-[11px] text-slate-500 italic py-6 text-center select-none bg-slate-950 border border-slate-800 rounded-lg">
+                右下の「AI価格監査分析を実行」をクリックして実行します。
               </div>
-
-            </div>
+            )}
           </div>
 
+          <div className="mt-3 flex justify-between items-center text-[10px] text-slate-400">
+            <span>分析エンジン: Gemini-3.5</span>
+            <button
+              onClick={onRunComparison}
+              disabled={isLoading}
+              className="font-bold text-white bg-indigo-600 hover:bg-indigo-500 py-1.5 px-4 rounded-md shadow-2xs transition-all cursor-pointer disabled:bg-slate-700 disabled:cursor-not-allowed"
+            >
+              AI価格監査分析を実行する
+            </button>
+          </div>
         </div>
-      )}
+
+      </div>
+
     </div>
   );
 };

@@ -1,6 +1,6 @@
 {
-  "name": "製品単価見積 比較・作成ツール",
-  "description": "新旧見積の詳細明細を並べて比較・差異分析する機能と、AIによる自動作成・パース機能を備えた製品単価見積ツールです。単価上昇の要因分析や交渉ポイントの洗い出しをサポートします。",
+  "name": "見積新旧比較システム (EstiCompare)",
+  "description": "アップロードされたエクセル(新旧比較.xlsm)の原価積算計算構造とレイアウトをWeb上で忠実再現し、正確な差分差異分析や対サプライヤー交渉材料策定を支援するシミュレーションシステム。",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

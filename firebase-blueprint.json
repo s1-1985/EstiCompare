@@ -1,0 +1,78 @@
+{
+  "entities": {
+    "DetailedEstimate": {
+      "title": "DetailedEstimate",
+      "description": "A detailed manufacturing cost estimate",
+      "type": "object",
+      "properties": {
+        "partNumber": { "type": "string" },
+        "baseLotSize": { "type": "number" },
+        "lotUnit": { "type": "string" },
+        "finishedWeightG": { "type": "number" },
+        "material": {
+          "type": "object",
+          "properties": {
+            "materialName": { "type": "string" },
+            "inputWeightG": { "type": "number" },
+            "basePricePerKg": { "type": "number" },
+            "scrapWeightG": { "type": "number" },
+            "scrapPricePerKg": { "type": "number" }
+          },
+          "required": ["materialName", "inputWeightG", "basePricePerKg"]
+        },
+        "processes": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "logistics": {
+          "type": "object",
+          "properties": {
+            "qtyPerBox": { "type": "number" },
+            "freightPerBox": { "type": "number" }
+          },
+          "required": ["qtyPerBox", "freightPerBox"]
+        },
+        "adjustments": {
+          "type": "object"
+        },
+        "date": { "type": "string" }
+      },
+      "required": ["partNumber", "baseLotSize", "material", "processes", "logistics", "adjustments"]
+    },
+    "ComparisonResult": {
+      "title": "ComparisonResult",
+      "description": "Audited cost difference breakdown and negotiation tips",
+      "type": "object",
+      "properties": {
+        "summary": { "type": "string" },
+        "keyChanges": { "type": "array" },
+        "reasonablenessAssessment": { "type": "string" },
+        "negotiationTips": { "type": "array", "items": { "type": "string" } },
+        "categoryAnalysisPoints": { "type": "array" }
+      },
+      "required": ["summary", "keyChanges", "reasonablenessAssessment", "negotiationTips", "categoryAnalysisPoints"]
+    },
+    "Scenario": {
+      "title": "Scenario",
+      "description": "An interactive comparison scenario of an old and a new estimate",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "newEstimate": { "$ref": "#/entities/DetailedEstimate" },
+        "oldEstimate": { "$ref": "#/entities/DetailedEstimate" },
+        "comparisonResult": { "$ref": "#/entities/ComparisonResult" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "name", "newEstimate", "oldEstimate"]
+    }
+  },
+  "firestore": {
+    "/scenarios/{scenarioId}": {
+      "schema": "#/entities/Scenario",
+      "description": "User comparative cost estimates and AI analysis"
+    }
+  }
+}
