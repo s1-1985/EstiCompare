@@ -1,0 +1,8 @@
+{
+  "name": "製品単価見積 比較・作成ツール",
+  "description": "新旧見積の詳細明細を並べて比較・差異分析する機能と、AIによる自動作成・パース機能を備えた製品単価見積ツールです。単価上昇の要因分析や交渉ポイントの洗い出しをサポートします。",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
