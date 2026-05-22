@@ -481,7 +481,7 @@ export const CompareResults: React.FC<CompareResultsProps> = ({
                   AI自動価格査定＆インデクス監査
                 </h5>
                 <p className="text-[10px] text-indigo-300 mt-0.5 leading-none">
-                  Gemini-3.5-flashを駆動して、不自然な係数や調整をロジカル監査
+                  Gemini 2.0 Flashを駆動して、不自然な係数や調整をロジカル監査
                 </p>
               </div>
             </div>
@@ -550,7 +550,7 @@ export const CompareResults: React.FC<CompareResultsProps> = ({
           </div>
 
           <div className="p-4.5 bg-slate-950/80 border-t border-slate-850/60 flex items-center justify-between text-[10.5px]">
-            <span className="text-slate-500 font-mono font-bold">Model Engine: Google Gemini 1.5 Flash</span>
+            <span className="text-slate-500 font-mono font-bold">Model Engine: Google Gemini 2.0 Flash</span>
             <button
               onClick={onRunComparison}
               disabled={isLoading}
