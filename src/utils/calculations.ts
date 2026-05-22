@@ -107,7 +107,7 @@ export function calculateEstimate(est: DetailedEstimate): CalculatedSection {
     const setupTimePerUnit = (baseLotSize > 0) ? ((actTotalHours || 0) / baseLotSize) : 0;
     const totalHoursPerUnit = processTimePerUnit + setupTimePerUnit;
 
-    return totalHoursPerUnit * actHourlyRate;
+    return totalHoursPerUnit * (actHourlyRate || 0);
   });
 
   const actualTotalProcessCost = actualProcessCosts.reduce((a, b) => a + b, 0);

@@ -42,23 +42,25 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       
       const { results } = await response.json();
       if (!results || !Array.isArray(results)) return;
-      
+
       const updateProcs = (est: DetailedEstimate) => {
         const newProcs = [...est.processes];
-        results.forEach((res: any) => {
-           const pIdx = newProcs.findIndex(p => p.index === res.index);
-           if (pIdx > -1) {
-               const suggestedRate = res.suggestedHourlyRate
-                 ? Math.round(res.suggestedHourlyRate / 100) * 100
-                 : newProcs[pIdx].hourlyRate;
-               newProcs[pIdx] = {
-                 ...newProcs[pIdx],
-                 totalHours: res.suggestedTotalHours || 0,
-                 yieldPerHour: res.suggestedYieldPerHour || 0,
-                 hourlyRate: suggestedRate,
-                 actualHourlyRate: suggestedRate,
-               };
-           }
+        const filtered = est.processes.filter(p => !p.isDirectInput && p.processName.trim());
+        results.forEach((res: any, i: number) => {
+          if (i >= filtered.length) return;
+          const pIdx = newProcs.findIndex(p => p.index === filtered[i].index);
+          if (pIdx > -1) {
+            const suggestedRate = res.suggestedHourlyRate
+              ? Math.round(res.suggestedHourlyRate / 100) * 100
+              : newProcs[pIdx].hourlyRate;
+            newProcs[pIdx] = {
+              ...newProcs[pIdx],
+              totalHours: res.suggestedTotalHours || 0,
+              yieldPerHour: res.suggestedYieldPerHour || 0,
+              hourlyRate: suggestedRate,
+              actualHourlyRate: suggestedRate,
+            };
+          }
         });
         return newProcs;
       };
@@ -262,7 +264,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     let draftProcesses = [...target.processes];
     let finalSgaPercent = target.adjustments.sgaRatePercent || 15;
 
-    const materialCost = calc.rawMaterialCost - calc.scrapValue;
+    const materialCost = calc.netMaterialCost;
 
     if (currentTotalProcessCostTemp > 0) {
       const targetPrimeCost = Y / (1 + finalSgaPercent / 100);
