@@ -279,8 +279,15 @@ export const CompareResults: React.FC<CompareResultsProps> = ({
                       {oldCost > 0 ? `${(pDiff / oldCost * 100).toFixed(1)}%` : newProc.processName ? '新規追加' : '通常'}
                     </td>
                     <td className="px-6 py-4 text-[10px] text-slate-500 leading-normal max-w-xs font-bold font-sans">
-                      {hourlyRateDiff !== 0 && `設定賃率: ¥${oldProc.hourlyRate?.toLocaleString()} → ¥${newProc.hourlyRate?.toLocaleString()}/h`}
-                      {yieldDiff !== 0 && ` (出来高: ${oldProc.yieldPerHour} → ${newProc.yieldPerHour}個/h)`}
+                      {newProc.isDirectInput
+                        ? (oldProc.directProcessingCost !== newProc.directProcessingCost
+                            ? `外注費: ¥${oldProc.directProcessingCost?.toLocaleString()} → ¥${newProc.directProcessingCost?.toLocaleString()}/個`
+                            : '')
+                        : <>
+                            {hourlyRateDiff !== 0 && `設定賃率: ¥${oldProc.hourlyRate?.toLocaleString()} → ¥${newProc.hourlyRate?.toLocaleString()}/h`}
+                            {yieldDiff !== 0 && ` (出来高: ${oldProc.yieldPerHour} → ${newProc.yieldPerHour}個/h)`}
+                          </>
+                      }
                     </td>
                   </tr>
                 );
