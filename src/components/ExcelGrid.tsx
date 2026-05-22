@@ -48,10 +48,15 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
         results.forEach((res: any) => {
            const pIdx = newProcs.findIndex(p => p.index === res.index);
            if (pIdx > -1) {
-               newProcs[pIdx] = { 
-                 ...newProcs[pIdx], 
+               const suggestedRate = res.suggestedHourlyRate
+                 ? Math.round(res.suggestedHourlyRate / 100) * 100
+                 : newProcs[pIdx].hourlyRate;
+               newProcs[pIdx] = {
+                 ...newProcs[pIdx],
                  totalHours: res.suggestedTotalHours || 0,
-                 yieldPerHour: res.suggestedYieldPerHour || 0
+                 yieldPerHour: res.suggestedYieldPerHour || 0,
+                 hourlyRate: suggestedRate,
+                 actualHourlyRate: suggestedRate,
                };
            }
         });
@@ -620,10 +625,10 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                className="bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-[10px] px-3 py-1.5 rounded-lg shadow-sm disabled:opacity-50 flex items-center gap-1.5 cursor-pointer transition-all shrink-0"
              >
                <Sparkles className={`w-3 h-3 ${isInferring ? 'animate-spin' : ''}`} />
-               {isInferring ? 'AI推定中...' : 'AI出来高・段取自動設定'}
+               {isInferring ? 'AI推定中...' : 'AI出来高・賃率・段取を自動設定'}
              </button>
              <span className="text-[9px] text-slate-500 font-bold bg-white border border-slate-200 p-2 rounded-xl max-w-xs">
-               「出来高や段取り自体を新旧対照で同時に出来高補正・見直す」
+               工程名から出来高・設備賃率・段取時間を一括AI推定（Gemini）
              </span>
           </div>
         </div>
