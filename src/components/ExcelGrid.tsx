@@ -266,10 +266,15 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
 
     const materialCost = calc.netMaterialCost;
 
+    const directInputTotal = target.processes.reduce((sum, proc) => {
+      if (!proc.processName.trim() || !proc.isDirectInput) return sum;
+      return sum + (proc.directProcessingCost || 0);
+    }, 0);
+
     if (currentTotalProcessCostTemp > 0) {
       const targetPrimeCost = Y / (1 + finalSgaPercent / 100);
-      const targetProcessCost = targetPrimeCost - materialCost;
-      const multiplier = Math.max(0.1, targetProcessCost / currentTotalProcessCostTemp);
+      const targetNonDirectProcessCost = Math.max(0, targetPrimeCost - materialCost - directInputTotal);
+      const multiplier = Math.max(0.1, targetNonDirectProcessCost / currentTotalProcessCostTemp);
 
       // 賃率を100円単位（下二桁 00）に丸め（端数処理）
       draftProcesses = target.processes.map((proc, i) => {
@@ -750,7 +755,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
         
         {/* ==================== LEFT COLUMN: OLD ADAPTATION (旧価格) ==================== */}
-        <div className="bg-white rounded-2xl border border-slate-205 border-slate-200 shadow-xl overflow-hidden transition-all">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden transition-all">
           
           {/* Section banner */}
           <div className="bg-slate-700 text-white p-4 border-b border-slate-800 flex justify-between items-center select-none">

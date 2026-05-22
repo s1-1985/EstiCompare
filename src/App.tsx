@@ -199,7 +199,7 @@ export default function App() {
                 <span className="text-[9px] bg-emerald-700 px-2 py-0.5 rounded-full text-white font-extrabold tracking-widest uppercase">
                   EstiCompare
                 </span>
-                <span className="text-[10px] bg-slate-805 bg-slate-800 px-2 py-0.5 rounded-full text-slate-350 font-mono font-bold">
+                <span className="text-[10px] bg-slate-800 px-2 py-0.5 rounded-full text-slate-400 font-mono font-bold">
                   互換Webエミュレート
                 </span>
               </div>
@@ -224,10 +224,10 @@ export default function App() {
                 <span className="text-[10px] font-bold text-slate-100 max-w-[100px] truncate">
                   {user.displayName}
                 </span>
-                <span className="inline-block w-2.5 h-2.5 bg-emerald-550 rounded-full bg-emerald-500 animate-pulse" title="クラウド自動同期有効" />
+                <span className="inline-block w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse" title="クラウド自動同期有効" />
                 <button 
                   onClick={logout}
-                  className="ml-1 text-[10px] text-slate-400 hover:text-rose-450 hover:text-red-400 border-l border-slate-700 pl-2 font-bold cursor-pointer transition-colors"
+                  className="ml-1 text-[10px] text-slate-400 hover:text-red-400 border-l border-slate-700 pl-2 font-bold cursor-pointer transition-colors"
                 >
                   切断
                 </button>

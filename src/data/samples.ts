@@ -80,7 +80,7 @@ export const SAMPLE_SCENARIOS: SampleScenario[] = [
         { index: 7, processName: 'カチオン電着塗装', workContent: '亜鉛めっき下地＋カチオン黒色塗装(外注)', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: true, directProcessingCost: 75 },
         { index: 8, processName: '製品機能・ネジ検査', workContent: '限界ゲージ・ねじ通り治具による100%全数手検品', hourlyRate: 1800, totalHours: 5.0, yieldPerHour: 60, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
         { index: 9, processName: '自動箱詰・防湿梱包', workContent: 'クッションシート併用による格子状多段梱包', hourlyRate: 1800, totalHours: 1.0, yieldPerHour: 300, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
-        { index: 10, processName: '-', workContent: '-', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 }
+        { index: 10, processName: '', workContent: '', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 }
       ],
       logistics: {
         qtyPerBox: 30,
@@ -120,7 +120,7 @@ export const SAMPLE_SCENARIOS: SampleScenario[] = [
         { index: 7, processName: 'カチオン電着塗装', workContent: '亜鉛めっき下地＋カチオン黒色塗装(外注改定)', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: true, directProcessingCost: 95 }, // Outsource price index increased from 75 to 95
         { index: 8, processName: '製品機能・ネジ検査', workContent: '限界ゲージ・ねじ通り治具による100%全数手検品', hourlyRate: 2100, totalHours: 5.0, yieldPerHour: 60, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
         { index: 9, processName: '自動箱詰・防湿梱包', workContent: 'クッションシート併用による格子状多段梱包', hourlyRate: 2100, totalHours: 1.0, yieldPerHour: 300, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
-        { index: 10, processName: '-', workContent: '-', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 }
+        { index: 10, processName: '', workContent: '', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 }
       ],
       logistics: {
         qtyPerBox: 30,
@@ -161,11 +161,11 @@ export const SAMPLE_SCENARIOS: SampleScenario[] = [
         { index: 3, processName: '超仕上げ・研磨', workContent: '芯ブレ0.01mm以下維持用センタレス研削', hourlyRate: 4800, totalHours: 8.5, yieldPerHour: 120, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
         { index: 4, processName: '超音波精密洗浄', workContent: '3槽式溶剤超音波洗浄（塩素フリー）', hourlyRate: 2500, totalHours: 2.0, yieldPerHour: 500, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
         { index: 5, processName: '三次元座標測定・全数寸検', workContent: '抜き取り自動測定＆キー寸法デジタルノギス手測定', hourlyRate: 2200, totalHours: 10.0, yieldPerHour: 100, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
-        { index: 6, processName: '-', workContent: '-', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
-        { index: 7, processName: '-', workContent: '-', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
-        { index: 8, processName: '-', workContent: '-', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
-        { index: 9, processName: '-', workContent: '-', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
-        { index: 10, processName: '-', workContent: '-', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 }
+        { index: 6, processName: '', workContent: '', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
+        { index: 7, processName: '', workContent: '', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
+        { index: 8, processName: '', workContent: '', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
+        { index: 9, processName: '', workContent: '', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
+        { index: 10, processName: '', workContent: '', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 }
       ],
       logistics: {
         qtyPerBox: 200,
@@ -201,11 +201,11 @@ export const SAMPLE_SCENARIOS: SampleScenario[] = [
         { index: 3, processName: '超仕上げ・研磨', workContent: '芯ブレ0.01mm以下維持用センタレス研削', hourlyRate: 5200, totalHours: 8.5, yieldPerHour: 120, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
         { index: 4, processName: '超音波精密洗浄', workContent: '3槽式溶剤超音波洗浄（塩素フリー）', hourlyRate: 2800, totalHours: 2.0, yieldPerHour: 500, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
         { index: 5, processName: '三次元座標測定・全数寸検', workContent: '抜き取り自動測定＆キー寸法デジタルノギス手測定', hourlyRate: 2400, totalHours: 10.0, yieldPerHour: 100, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
-        { index: 6, processName: '-', workContent: '-', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
-        { index: 7, processName: '-', workContent: '-', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
-        { index: 8, processName: '-', workContent: '-', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
-        { index: 9, processName: '-', workContent: '-', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
-        { index: 10, processName: '-', workContent: '-', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 }
+        { index: 6, processName: '', workContent: '', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
+        { index: 7, processName: '', workContent: '', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
+        { index: 8, processName: '', workContent: '', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
+        { index: 9, processName: '', workContent: '', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
+        { index: 10, processName: '', workContent: '', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 }
       ],
       logistics: {
         qtyPerBox: 200,
