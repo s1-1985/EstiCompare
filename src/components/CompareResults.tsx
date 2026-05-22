@@ -66,10 +66,10 @@ export const CompareResults: React.FC<CompareResultsProps> = ({
     <div className="space-y-8 pb-16 animate-fade-in">
       
       {/* 🚀 1. HIGH-CONTRAST METRIC CARDS */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
         
         {/* Old Contract Price Card */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
           <div className="absolute top-0 left-0 w-2 h-full bg-slate-300 group-hover:bg-slate-400 transition-colors" />
           <div className="pl-2">
             <div className="flex items-center gap-2 text-slate-400 text-[10px] font-bold tracking-widest uppercase mb-2">
@@ -88,7 +88,7 @@ export const CompareResults: React.FC<CompareResultsProps> = ({
         </div>
 
         {/* New Supplier Proposed Price Card */}
-        <div className="bg-white border border-emerald-200 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+        <div className="bg-white border border-emerald-200 rounded-2xl p-4 sm:p-6 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
           <div className="absolute top-0 left-0 w-2 h-full bg-emerald-500 group-hover:bg-emerald-600 transition-colors" />
           <div className="pl-2">
             <div className="flex items-center gap-2 text-emerald-600 text-[10px] font-bold tracking-widest uppercase mb-2">
@@ -107,7 +107,7 @@ export const CompareResults: React.FC<CompareResultsProps> = ({
         </div>
 
         {/* Variance Diff Card */}
-        <div className={`border rounded-2xl p-6 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group ${
+        <div className={`border rounded-2xl p-4 sm:p-6 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group ${
           direction === 'up' 
             ? 'bg-rose-50/40 border-rose-200 text-rose-950' 
             : direction === 'down' 
@@ -156,7 +156,7 @@ export const CompareResults: React.FC<CompareResultsProps> = ({
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
         
         {/* Table header menu bar */}
-        <div className="bg-slate-50/80 px-6 py-4 border-b border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="bg-slate-50/80 px-3 sm:px-6 py-3 sm:py-4 border-b border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-100">
               <FileSpreadsheet className="w-4 h-4" />
@@ -177,29 +177,29 @@ export const CompareResults: React.FC<CompareResultsProps> = ({
 
         {/* Responsive Table Grid */}
         <div className="overflow-x-auto">
-          <table className="w-full text-xs font-sans text-slate-700 min-w-[900px]">
+          <table className="w-full text-xs font-sans text-slate-700 min-w-[700px]">
             <thead>
               <tr className="bg-slate-50/40 border-b border-slate-200 font-extrabold text-[10px] text-slate-400 uppercase tracking-widest text-right select-none">
-                <th className="px-6 py-4 text-left w-36">大分類</th>
-                <th className="px-6 py-4 text-left w-72">要素・変動指標セル</th>
+                <th className="px-3 sm:px-6 py-3 sm:py-4 text-left w-36">大分類</th>
+                <th className="px-3 sm:px-6 py-3 sm:py-4 text-left w-72">要素・変動指標セル</th>
                 <th className="px-4 py-4 text-right bg-slate-50/20 font-bold">前回合意(旧価格)</th>
                 <th className="px-4 py-4 text-right bg-emerald-500/5 text-emerald-900 font-black">新規提示(新要求)</th>
                 <th className="px-4 py-4 text-right font-bold text-slate-500">変動絶対額(差額)</th>
                 <th className="px-4 py-4 text-center font-bold text-slate-500">騰落率 %</th>
-                <th className="px-6 py-4 text-left w-64">査定整合・要点注記</th>
+                <th className="px-3 sm:px-6 py-3 sm:py-4 text-left w-64">査定整合・要点注記</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
               
               {/* Material Fee Comparison Row */}
               <tr className="hover:bg-slate-50/30 transition-colors group">
-                <td className="px-6 py-4 font-bold text-slate-900 bg-slate-50/10">
+                <td className="px-3 sm:px-6 py-3 sm:py-4 font-bold text-slate-900 bg-slate-50/10">
                   <div className="flex items-center gap-1.5">
                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                     <span>材料費</span>
                   </div>
                 </td>
-                <td className="px-6 py-4">
+                <td className="px-3 sm:px-6 py-3 sm:py-4">
                   <div className="font-extrabold text-slate-800 text-xs">正味製品調達材料費 (製品単重当り)</div>
                   <div className="text-[10px] text-slate-400 mt-1 font-medium font-mono">
                     {oldEstimate.material.materialName} ({oldEstimate.material.inputWeightG}g) → {newEstimate.material.materialName} ({newEstimate.material.inputWeightG}g)
@@ -227,14 +227,14 @@ export const CompareResults: React.FC<CompareResultsProps> = ({
                     </>
                   );
                 })()}
-                <td className="px-6 py-4 text-[10px] text-slate-500 font-bold bg-slate-50/5">
+                <td className="px-3 sm:px-6 py-3 sm:py-4 text-[10px] text-slate-500 font-bold bg-slate-50/5">
                   建値差異: ¥{oldEstimate.material.basePricePerKg} → ¥{newEstimate.material.basePricePerKg}/kg
                 </td>
               </tr>
 
               {/* Processes comparison divider */}
               <tr className="bg-slate-100/50 select-none">
-                <td colSpan={7} className="px-6 py-2.5 font-bold text-[9.5px] text-slate-500 uppercase tracking-widest">
+                <td colSpan={7} className="px-3 sm:px-6 py-2.5 font-bold text-[9.5px] text-slate-500 uppercase tracking-widest">
                   ⛓️ 設備加工工賃工順対照 (旧合意 vs 新要求)
                 </td>
               </tr>
@@ -255,10 +255,10 @@ export const CompareResults: React.FC<CompareResultsProps> = ({
 
                 return (
                   <tr key={idx} className="hover:bg-slate-50/30 transition-colors">
-                    <td className="px-6 py-4 font-mono text-slate-400 font-bold text-center bg-slate-50/5">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 font-mono text-slate-400 font-bold text-center bg-slate-50/5">
                       #0{newProc.index}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4">
                       <div className="font-extrabold text-slate-800 text-xs">{newProc.processName || oldProc.processName}</div>
                       <div className="text-[10px] text-slate-400 mt-1 truncate max-w-[220px]">
                         仕様: {newProc.workContent || oldProc.workContent || '一般設備加工'}
@@ -278,7 +278,7 @@ export const CompareResults: React.FC<CompareResultsProps> = ({
                     <td className={`px-4 py-4 text-center font-mono font-bold ${pDiff > 0 ? 'text-rose-500' : pDiff < 0 ? 'text-emerald-500' : 'text-slate-400'}`}>
                       {oldCost > 0 ? `${(pDiff / oldCost * 100).toFixed(1)}%` : newProc.processName ? '新規追加' : '通常'}
                     </td>
-                    <td className="px-6 py-4 text-[10px] text-slate-500 leading-normal max-w-xs font-bold font-sans">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 text-[10px] text-slate-500 leading-normal max-w-xs font-bold font-sans">
                       {newProc.isDirectInput
                         ? (oldProc.directProcessingCost !== newProc.directProcessingCost
                             ? `外注費: ¥${oldProc.directProcessingCost?.toLocaleString()} → ¥${newProc.directProcessingCost?.toLocaleString()}/個`
@@ -299,8 +299,8 @@ export const CompareResults: React.FC<CompareResultsProps> = ({
                 const totalProcessPct = oldCalc.totalProcessCost > 0 ? (totalProcessDiff / oldCalc.totalProcessCost * 100) : 0;
                 return (
                   <tr className="bg-slate-500/5 font-extrabold border-t border-slate-200">
-                    <td className="px-6 py-3.5 font-bold text-slate-900 bg-slate-50/10">加工工賃小計</td>
-                    <td className="px-6 py-3.5 text-slate-800 text-xs">加工費合算 [SUM_ROW(Processes)]</td>
+                    <td className="px-3 sm:px-6 py-3 sm:py-3.5 font-bold text-slate-900 bg-slate-50/10">加工工賃小計</td>
+                    <td className="px-3 sm:px-6 py-3 sm:py-3.5 text-slate-800 text-xs">加工費合算 [SUM_ROW(Processes)]</td>
                     <td className="px-4 py-3.5 text-right font-mono text-slate-600 bg-slate-50/10">¥{oldCalc.totalProcessCost.toFixed(2)}</td>
                     <td className="px-4 py-3.5 text-right font-mono text-emerald-950 bg-emerald-500/5">¥{newCalc.totalProcessCost.toFixed(2)}</td>
                     <td className={`px-4 py-3.5 text-right font-mono font-black ${
@@ -311,15 +311,15 @@ export const CompareResults: React.FC<CompareResultsProps> = ({
                     <td className={`px-4 py-3.5 text-center font-mono ${totalProcessDiff > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
                       {oldCalc.totalProcessCost > 0 ? `${totalProcessPct.toFixed(2)}%` : '0%'}
                     </td>
-                    <td className="px-6 py-3.5 text-[10px] text-slate-500 font-normal">アワー賃率・出来高パラメータ補填連動値</td>
+                    <td className="px-3 sm:px-6 py-3 sm:py-3.5 text-[10px] text-slate-500 font-normal">アワー賃率・出来高パラメータ補填連動値</td>
                   </tr>
                 );
               })()}
 
               {/* SGA and logistic fees */}
               <tr className="hover:bg-slate-50/30 transition-colors">
-                <td className="px-6 py-4 font-bold text-slate-900 bg-slate-50/10">諸経費・他</td>
-                <td className="px-6 py-4">
+                <td className="px-3 sm:px-6 py-3 sm:py-4 font-bold text-slate-900 bg-slate-50/10">諸経費・他</td>
+                <td className="px-3 sm:px-6 py-3 sm:py-4">
                   <div className="font-extrabold text-slate-800 text-xs">一般管理費販売利益 & 梱包物流費</div>
                   <div className="text-[10px] text-slate-500 mt-1 font-mono">
                     配送料: 旧 ¥{oldCalc.shippingCostPerUnit.toFixed(2)} ({oldEstimate.logistics.qtyPerBox}箱入) → 新 ¥{newCalc.shippingCostPerUnit.toFixed(2)} ({newEstimate.logistics.qtyPerBox}箱入)
@@ -343,15 +343,15 @@ export const CompareResults: React.FC<CompareResultsProps> = ({
                     </>
                   );
                 })()}
-                <td className="px-6 py-4 text-[10px] text-slate-500 font-bold bg-slate-50/5 leading-normal">
+                <td className="px-3 sm:px-6 py-3 sm:py-4 text-[10px] text-slate-500 font-bold bg-slate-50/5 leading-normal">
                   一般管理費率 (SGA%): 旧 {oldEstimate.adjustments.sgaRatePercent || 0}% → 新 {newEstimate.adjustments.sgaRatePercent || 0}%
                 </td>
               </tr>
 
               {/* GRAND TOTAL HEADER */}
               <tr className="bg-slate-900 text-slate-200 font-black text-xs border-t-2 border-slate-950 select-none">
-                <td className="px-6 py-5">合計売価単価</td>
-                <td className="px-6 py-5 font-black text-white text-xs">
+                <td className="px-3 sm:px-3 sm:px-6 py-3 sm:py-3.5 sm:py-5">合計売価単価</td>
+                <td className="px-3 sm:px-3 sm:px-6 py-3 sm:py-3.5 sm:py-5 font-black text-white text-xs">
                   御見積決定単価総計 [正味材料費 ＋ 加工小計 ＋ 管理梱包費用]
                 </td>
                 <td className="px-4 py-5 text-right font-mono text-slate-300 bg-slate-950/20 text-xs">
@@ -368,7 +368,7 @@ export const CompareResults: React.FC<CompareResultsProps> = ({
                 <td className="px-4 py-5 text-center font-mono text-xs text-white">
                   {percentDelta > 0 ? '+' : ''}{percentDelta.toFixed(2)}%
                 </td>
-                <td className="px-6 py-5 text-[10px] text-slate-400 leading-normal font-bold">
+                <td className="px-3 sm:px-3 sm:px-6 py-3 sm:py-3.5 sm:py-5 text-[10px] text-slate-400 leading-normal font-bold">
                   品番: {newEstimate.partNumber} / 基準Lot: {newEstimate.baseLotSize}
                 </td>
               </tr>
@@ -401,7 +401,7 @@ export const CompareResults: React.FC<CompareResultsProps> = ({
             </div>
           </div>
 
-          <div className="p-6 flex-1 flex flex-col">
+          <div className="p-4 sm:p-6 flex-1 flex flex-col">
             {createdMailDraft ? (
               <div className="border border-slate-200/80 rounded-xl overflow-hidden shadow-inner flex flex-col flex-1 bg-slate-50">
                 
@@ -494,7 +494,7 @@ export const CompareResults: React.FC<CompareResultsProps> = ({
             </div>
           </div>
 
-          <div className="p-6 flex-1 flex flex-col">
+          <div className="p-4 sm:p-6 flex-1 flex flex-col">
             {isLoading ? (
               <div className="flex-1 flex flex-col items-center justify-center text-center py-16 px-6">
                 <div className="relative mb-4">

@@ -338,7 +338,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
           <h2 className="text-xs font-extrabold tracking-wide">① 基本情報</h2>
           <span className="text-[9px] text-slate-400 ml-auto">品番・品名・ロット・重量</span>
         </div>
-        <div className="p-5 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+        <div className="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
           <div className="lg:col-span-2">
             <label className="block text-[10px] font-extrabold text-slate-500 mb-1 uppercase tracking-wider">品番 <span className="text-rose-500">*</span></label>
             <input
@@ -423,8 +423,8 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
           <h2 className="text-xs font-extrabold tracking-wide">② 共通諸元</h2>
           <span className="ml-2 text-[9px] bg-emerald-700 px-2 py-0.5 rounded font-bold">🔁 新旧同期 — 変更すると両側に即反映</span>
         </div>
-        <div className="p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="col-span-2">
+        <div className="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+          <div className="col-span-full sm:col-span-2">
             <label className="block text-[10px] font-extrabold text-slate-500 mb-1 uppercase tracking-wider">材質・規格</label>
             <input
               type="text"
@@ -495,14 +495,15 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
           <button
             onClick={handleInferProcessParams}
             disabled={isInferring}
-            className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg disabled:opacity-50 flex items-center gap-1.5 shrink-0 transition-all cursor-pointer"
+            className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-[10px] font-bold px-2.5 sm:px-3 py-1.5 rounded-lg disabled:opacity-50 flex items-center gap-1.5 shrink-0 transition-all cursor-pointer min-h-[36px]"
           >
-            <Sparkles className={`w-3 h-3 ${isInferring ? 'animate-spin' : ''}`} />
-            {isInferring ? 'AI推定中...' : 'AI出来高・賃率を自動設定'}
+            <Sparkles className={`w-3 h-3 shrink-0 ${isInferring ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">{isInferring ? 'AI推定中...' : 'AI出来高・賃率を自動設定'}</span>
+            <span className="sm:hidden">{isInferring ? '推定中...' : 'AI自動設定'}</span>
           </button>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-xs min-w-[820px]">
+          <table className="w-full text-xs min-w-[640px]">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500 font-extrabold uppercase tracking-wider">
                 <th className="py-2.5 px-3 text-center w-10">No</th>
@@ -628,7 +629,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
             <div key={String(isNew)} className={`bg-white rounded-2xl border-2 ${borderCls} shadow-sm overflow-hidden`}>
 
               {/* Panel header with live total */}
-              <div className={`${headerBg} text-white px-5 py-3.5 flex items-center justify-between`}>
+              <div className={`${headerBg} text-white px-4 sm:px-5 py-3 sm:py-3.5 flex items-center justify-between`}>
                 <div>
                   <h3 className="text-sm font-extrabold">{label}</h3>
                   <p className="text-[10px] opacity-70">{labelSub}</p>
@@ -642,14 +643,14 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
               <div className="divide-y divide-slate-100">
 
                 {/* ─── 価格目標 ─── */}
-                <div className="p-5 space-y-3">
+                <div className="p-4 sm:p-5 space-y-3">
                   <h4 className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                     <Coins className="w-3.5 h-3.5" /> 価格目標
                   </h4>
 
                   {/* 製造ロット (side-specific) */}
                   <div className="flex items-center gap-3">
-                    <label className="text-[10px] font-bold text-slate-600 w-28 shrink-0">製造ロット</label>
+                    <label className="text-[10px] font-bold text-slate-600 w-24 sm:w-28 shrink-0">製造ロット</label>
                     <div className="relative flex-1">
                       <input
                         type="number"
@@ -666,7 +667,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
 
                   {/* 仕入れ実費 */}
                   <div className="flex items-center gap-3">
-                    <label className="text-[10px] font-bold text-indigo-700 w-28 shrink-0">
+                    <label className="text-[10px] font-bold text-indigo-700 w-24 sm:w-28 shrink-0">
                       {isNew ? '新' : ''}仕入れ実費
                       <span className="text-[8px] text-indigo-400 block font-normal">社内のみ</span>
                     </label>
@@ -684,7 +685,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
 
                   {/* 売値 */}
                   <div className="flex items-center gap-3">
-                    <label className="text-[10px] font-extrabold text-slate-800 w-28 shrink-0">
+                    <label className="text-[10px] font-extrabold text-slate-800 w-24 sm:w-28 shrink-0">
                       {isNew ? '目標' : '現行'}売値 <span className="text-rose-500">*</span>
                       <span className="text-[8px] text-slate-400 block font-normal">客提示価格</span>
                     </label>
@@ -702,7 +703,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
 
                   {/* 最低利益率 */}
                   <div className="flex items-center gap-3">
-                    <label className="text-[10px] font-bold text-slate-600 w-28 shrink-0">
+                    <label className="text-[10px] font-bold text-slate-600 w-24 sm:w-28 shrink-0">
                       最低利益率
                       <span className="text-[8px] text-slate-400 block font-normal">外掛け下限</span>
                     </label>
@@ -729,12 +730,12 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                 </div>
 
                 {/* ─── 材料単価 ─── */}
-                <div className="p-5 space-y-3">
+                <div className="p-4 sm:p-5 space-y-3">
                   <h4 className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                     <TrendingUp className="w-3.5 h-3.5" /> 材料単価
                   </h4>
                   <div className="flex items-center gap-3">
-                    <label className="text-[10px] font-extrabold text-slate-800 w-28 shrink-0">
+                    <label className="text-[10px] font-extrabold text-slate-800 w-24 sm:w-28 shrink-0">
                       建値 (客提示) <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative flex-1">
@@ -750,7 +751,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <label className="text-[10px] font-bold text-slate-500 w-28 shrink-0">実際建値</label>
+                    <label className="text-[10px] font-bold text-slate-500 w-24 sm:w-28 shrink-0">実際建値</label>
                     <div className="relative flex-1">
                       <span className="absolute left-2.5 top-1.5 text-[10px] text-slate-400">¥</span>
                       <input
@@ -764,7 +765,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <label className="text-[10px] font-bold text-slate-500 w-28 shrink-0">スクラップ単価</label>
+                    <label className="text-[10px] font-bold text-slate-500 w-24 sm:w-28 shrink-0">スクラップ単価</label>
                     <div className="relative flex-1">
                       <span className="absolute left-2.5 top-1.5 text-[10px] text-slate-400">¥</span>
                       <input
@@ -784,7 +785,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
 
                 {/* ─── 工程賃率 ─── */}
                 {est.processes.some(p => p.processName.trim()) && (
-                  <div className="p-5 space-y-3">
+                  <div className="p-4 sm:p-5 space-y-3">
                     <h4 className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                       <Settings2 className="w-3.5 h-3.5" /> 工程賃率
                       <span className="text-[9px] font-normal text-slate-400 normal-case ml-1">※ここだけ新旧独立</span>
@@ -795,7 +796,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                       const isEmpty = isEmptyNum(rateVal);
                       return (
                         <div key={proc.index} className="flex items-center gap-3">
-                          <label className="text-[10px] font-bold w-28 shrink-0 text-slate-700 truncate" title={proc.processName}>
+                          <label className="text-[10px] font-bold w-24 sm:w-28 shrink-0 text-slate-700 truncate" title={proc.processName}>
                             {proc.isDirectInput && <span className="text-amber-600 mr-0.5 text-[9px]">外</span>}
                             {proc.processName}
                           </label>
@@ -825,12 +826,12 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                 )}
 
                 {/* ─── 物流費 ─── */}
-                <div className="p-5 space-y-3">
+                <div className="p-4 sm:p-5 space-y-3">
                   <h4 className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                     <Database className="w-3.5 h-3.5" /> 物流費
                   </h4>
                   <div className="flex items-center gap-3">
-                    <label className="text-[10px] font-extrabold text-slate-800 w-28 shrink-0">
+                    <label className="text-[10px] font-extrabold text-slate-800 w-24 sm:w-28 shrink-0">
                       送料 (客提示) <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative flex-1">
@@ -846,7 +847,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <label className="text-[10px] font-bold text-slate-500 w-28 shrink-0">実際送料</label>
+                    <label className="text-[10px] font-bold text-slate-500 w-24 sm:w-28 shrink-0">実際送料</label>
                     <div className="relative flex-1">
                       <span className="absolute left-2.5 top-1.5 text-[10px] text-slate-400">¥</span>
                       <input
@@ -865,12 +866,12 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                 </div>
 
                 {/* ─── SGA & 自動整合 ─── */}
-                <div className="p-5 space-y-3">
+                <div className="p-4 sm:p-5 space-y-3">
                   <h4 className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                     <BarChart3 className="w-3.5 h-3.5" /> 利管費率 (SGA%)
                   </h4>
                   <div className="flex items-center gap-3">
-                    <label className="text-[10px] font-extrabold text-slate-800 w-28 shrink-0">
+                    <label className="text-[10px] font-extrabold text-slate-800 w-24 sm:w-28 shrink-0">
                       客提示 SGA%
                       <span className="text-[8px] text-slate-400 block font-normal">内掛け表示率</span>
                     </label>
@@ -892,7 +893,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                     )}
                   </div>
                   <div className="flex items-center gap-3">
-                    <label className="text-[10px] font-bold text-slate-500 w-28 shrink-0">型費・特記</label>
+                    <label className="text-[10px] font-bold text-slate-500 w-24 sm:w-28 shrink-0">型費・特記</label>
                     <div className="relative flex-1">
                       <span className="absolute left-2.5 top-1.5 text-[10px] text-slate-400">¥</span>
                       <input
@@ -914,7 +915,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                 </div>
 
                 {/* ─── 計算結果サマリー ─── */}
-                <div className={`p-5 ${Math.abs(calc.auditVariance) < 0.1 ? 'bg-emerald-50/60' : 'bg-amber-50/60'}`}>
+                <div className={`p-4 sm:p-5 ${Math.abs(calc.auditVariance) < 0.1 ? 'bg-emerald-50/60' : 'bg-amber-50/60'}`}>
                   <div className="flex items-center justify-between mb-3">
                     <h4 className="text-[10px] font-extrabold text-slate-600 uppercase tracking-wider">計算結果</h4>
                     {Math.abs(calc.auditVariance) < 0.1
