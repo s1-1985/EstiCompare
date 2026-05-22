@@ -50,6 +50,7 @@ export interface AdvancedAdjustment {
 
 export interface DetailedEstimate {
   partNumber: string;         // 品番 (e.g., 66-13401-09100-02)
+  partName?: string;          // 品名
   baseLotSize: number;        // 見積基準数 (300)
   lotUnit: string;            // 基準数単位 (個/Lot)
   finishedWeightG: number;    // 完成品重量 (g)
