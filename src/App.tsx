@@ -370,6 +370,12 @@ export default function App() {
               onChangeOld={setOldEstimate}
               newEstimate={newEstimate}
               onChangeNew={setNewEstimate}
+              historyScenarios={customScenarios.filter(
+                (s) => s.newEstimate.partNumber.trim() !== '' &&
+                       s.newEstimate.partNumber === newEstimate.partNumber &&
+                       s.id !== activeScenarioId
+              )}
+              onLoadHistory={handleScenarioChange}
             />
           )}
 

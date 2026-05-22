@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { DetailedEstimate, ProcessRow } from '../types';
+import { DetailedEstimate, ProcessRow, Scenario } from '../types';
 import { calculateEstimate } from '../utils/calculations';
 import {
   Settings2, Lock, Zap, CheckCircle2, AlertTriangle,
   HelpCircle, Sparkles, Database,
-  TrendingUp, BarChart3, Info, Coins, FileText, ArrowRight
+  TrendingUp, BarChart3, Info, Coins, FileText, ArrowRight, History
 } from 'lucide-react';
 
 interface ExcelGridProps {
@@ -13,6 +13,8 @@ interface ExcelGridProps {
   newEstimate: DetailedEstimate;
   onChangeNew: (updated: DetailedEstimate) => void;
   title: string;
+  historyScenarios?: Scenario[];
+  onLoadHistory?: (id: string) => void;
 }
 
 export const ExcelGrid: React.FC<ExcelGridProps> = ({
@@ -21,6 +23,8 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
   newEstimate,
   onChangeNew,
   title,
+  historyScenarios = [],
+  onLoadHistory,
 }) => {
   const oldCalc = calculateEstimate(oldEstimate);
   const newCalc = calculateEstimate(newEstimate);
@@ -374,6 +378,41 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
               品番・品名・完成品重量は新旧で同期されます
             </div>
           </div>
+
+          {/* 品番履歴パネル */}
+          {historyScenarios.length > 0 && (
+            <div className="col-span-full mt-1 p-3 bg-blue-50 border border-blue-200 rounded-xl">
+              <div className="flex items-center gap-2 mb-2">
+                <History className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                <span className="text-[10px] font-extrabold text-blue-800">
+                  この品番の保存済み見積が {historyScenarios.length} 件あります — 読み込むと現在の入力が上書きされます
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {historyScenarios.map((s) => (
+                  <div key={s.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-blue-100 gap-3">
+                    <div className="min-w-0">
+                      <span className="text-xs font-bold text-slate-800 truncate block">{s.name}</span>
+                      <span className="text-[10px] text-slate-400">
+                        旧: ¥{s.oldEstimate.adjustments.targetUnitPrice.toLocaleString()} → 新: ¥{s.newEstimate.adjustments.targetUnitPrice.toLocaleString()}
+                        {s.updatedAt?.seconds && (
+                          <span className="ml-2">
+                            {new Date(s.updatedAt.seconds * 1000).toLocaleDateString('ja-JP')}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => onLoadHistory?.(s.id)}
+                      className="shrink-0 text-[10px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-md px-2.5 py-1 transition-all cursor-pointer"
+                    >
+                      読み込む
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </section>
 
