@@ -122,6 +122,17 @@ app.post("/api/compare-estimates", async (req, res) => {
     }
 
     const client = getAIClient();
+
+    // 材料名を抽出してグラウンディングで市況を取得
+    const materialName: string = newEstimate?.material?.materialName || oldEstimate?.material?.materialName || '';
+    const groundingQuery = [
+      materialName ? `「${materialName}」の現在の市況価格 円/kg 日本 2024年 2025年。` : '',
+      '日本の製造業 加工賃率 人件費 電力費 上昇率 2024年 2025年。',
+      '国際物流費 輸送費 2024年問題 運賃上昇率。'
+    ].filter(Boolean).join(' ');
+
+    const marketContext = await fetchMarketData(client, groundingQuery);
+
     const prompt = `あなたは、自動車メーカー、日用品メーカー、または精密機械装置トップメーカーの「調達購買本部シニアマネージャー」かつ「原価監査オフィサー」です。
 サプライヤーから提出された「旧見積（現行価格）」と「新見積（最新値上げ改定案）」の精密設計ブレークダウンデータを元に、単価変動の主因を分析し、得意先（または社内役員メンバー）に向けた【新旧価格監査報告書】ならびに【調達バイヤー向けの交渉アジェンダ・カウンターアプローチ】を作成してください。
 
@@ -138,7 +149,9 @@ ${JSON.stringify(newEstimate, null, 2)}
 - 新旧で工順（設備加工、作業時間、あるいは出来高数）のパラメータ変更はあるか。賃率の上昇（およそ労務費・電力代）の上昇は日本の社会・インデックス（+5%〜+15%程度）から見て破綻していないか
 - 2024年問題などの運賃上昇の影響。1箱あたり運賃と入数の妥当な按分
 - サプライヤーが金型償却、初期型費完了している項目についての適切な減資を促すカウンターアジェンダ
-- バイヤーが実際の価格折衝において、サプライヤーに投げかけるべき「強力で論理的な具体的・逆質問」5選（アジェンダとしてバイヤーがコピー・利用可能）`;
+- バイヤーが実際の価格折衝において、サプライヤーに投げかけるべき「強力で論理的な具体的・逆質問」5選（アジェンダとしてバイヤーがコピー・利用可能）
+
+${marketContext ? `【Google検索で取得した最新市況データ（分析の根拠として活用すること）】:\n${marketContext}` : ''}`;
 
     const response = await client.models.generateContent({
       model: "gemini-2.0-flash",
@@ -286,27 +299,60 @@ app.post("/api/generate-estimate", async (req, res) => {
   }
 });
 
-// 4. AI Process Params Inferrence
+// Helper: Google Search grounding で市況データを取得（構造化出力と排他なので別コールで取得）
+async function fetchMarketData(client: GoogleGenAI, query: string): Promise<string> {
+  try {
+    const response = await client.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: query,
+      config: {
+        tools: [{ googleSearch: {} }],
+      }
+    });
+    return response.text || '';
+  } catch (err) {
+    console.warn('[grounding] 市況データ取得失敗、スキップして推定を続行:', err);
+    return '';
+  }
+}
+
+// 4. AI Process Params Inferrence (Google Search グラウンディング対応)
 app.post("/api/infer-process-params", async (req, res) => {
   try {
-    const { processes, partNumber } = req.body;
+    const { processes, partNumber, materialName } = req.body;
     if (!processes || !Array.isArray(processes)) {
       return res.status(400).json({ error: "Processes array is required." });
     }
 
     const client = getAIClient();
+
+    // Step 1: グラウンディングで最新の加工賃率・材料相場を取得
+    const processTypes = [...new Set(processes.map((p: any) => p.processName).filter(Boolean))].join('、');
+    const groundingQuery = [
+      `日本の製造業 加工賃率 最新相場 2024年 2025年。`,
+      `対象工程: ${processTypes}。`,
+      `設備賃率（円/時間）の業界水準。`,
+      materialName ? `また「${materialName}」の現在の市況価格（円/kg）。` : '',
+      `出典は業界団体・商社・統計データを優先。`
+    ].filter(Boolean).join(' ');
+
+    const marketContext = await fetchMarketData(client, groundingQuery);
+
+    // Step 2: 市況コンテキストを注入した上で構造化推定
     const prompt = `以下の製造工程リストに対して、日本国内の標準的な「段取時間（トータル・時間）」「生産出来高（1時間あたり個数）」「設備賃率（円/時間）」を推定してください。
 対象部品・製品名: ${partNumber || '不明'}
+${materialName ? `使用材料: ${materialName}` : ''}
 
 工程一覧:
-${processes.map((p, i) => `${i + 1}. 工程名: ${p.processName || '未記入'}, 作業内容: ${p.workContent || '未記入'}`).join('\n')}
-`;
+${processes.map((p: any, i: number) => `${i + 1}. 工程名: ${p.processName || '未記入'}, 作業内容: ${p.workContent || '未記入'}`).join('\n')}
+
+${marketContext ? `【Google検索で取得した最新市況データ（参考）】:\n${marketContext}\n\n上記の市況データを参考に、現実の相場に即した数値を推定してください。` : ''}`;
 
     const response = await client.models.generateContent({
       model: "gemini-2.0-flash",
       contents: prompt,
       config: {
-        systemInstruction: "あなたは製造業（金属プレス、切削、樹脂成形、表面処理、組立など）の生産技術エンジニア・IE担当です。与えられた工程名称と作業内容から、標準的なセットアップ（段取）時間（通常0.1〜3.0h程度）、実作業タクト時間から逆算した1時間あたりの生産出来高（例: 手作業なら数十〜数百、プレスなら数千）、および日本国内の標準的な設備賃率（例: プレス2000〜3500円/h、切削2500〜4000円/h、溶接2500〜3500円/h、めっき・表面処理2000〜3000円/h、組立・検査1800〜2800円/h）を論理的に推定し回答してください。賃率は100円単位で返してください。",
+        systemInstruction: "あなたは製造業（金属プレス、切削、樹脂成形、表面処理、組立など）の生産技術エンジニア・IE担当です。与えられた工程名称と作業内容、および提供された最新市況データをもとに、現実の相場に即した標準的なセットアップ（段取）時間（通常0.1〜3.0h程度）、1時間あたりの生産出来高、および設備賃率を論理的に推定してください。賃率は100円単位で返してください。",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,

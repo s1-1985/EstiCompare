@@ -35,7 +35,8 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           processes: newEstimate.processes.filter(p => !p.isDirectInput && p.processName),
-          partNumber: newEstimate.partNumber
+          partNumber: newEstimate.partNumber,
+          materialName: newEstimate.material.materialName,
         })
       });
       if (!response.ok) throw new Error('AI生成エラー');
