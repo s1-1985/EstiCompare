@@ -8,6 +8,50 @@ export interface SampleScenario {
   newEstimate: DetailedEstimate;
 }
 
+export const createEmptyEstimate = (): DetailedEstimate => ({
+  partNumber: '',
+  baseLotSize: 1,
+  lotUnit: '個',
+  finishedWeightG: 0,
+  date: new Date().toISOString().split('T')[0],
+  material: {
+    materialName: '',
+    inputWeightG: 0,
+    basePricePerKg: 0,
+    scrapWeightG: 0,
+    scrapPricePerKg: 0,
+    actualBasePricePerKg: 0
+  },
+  processes: Array.from({ length: 10 }).map((_, i) => ({
+    index: i + 1,
+    processName: '',
+    workContent: '',
+    hourlyRate: 0,
+    totalHours: 0,
+    yieldPerHour: 0,
+    kgPrice: 0,
+    isDirectInput: false,
+    directProcessingCost: 0,
+    actualHourlyRate: undefined
+  })),
+  logistics: {
+    qtyPerBox: 1,
+    freightPerBox: 0,
+    actualFreightPerBox: undefined
+  },
+  adjustments: {
+    targetProfitRate: 0,
+    minProfitRate: 0,
+    targetProfitMarginOff: 0,
+    targetUnitPrice: 0,
+    actualPurchasePrice: 0,
+    sgaRatePercent: 0,
+    sgaFixedAdjustment: 0,
+    otherAdjustment: 0,
+    toolingCost: 0
+  }
+});
+
 export const SAMPLE_SCENARIOS: SampleScenario[] = [
   {
     id: 'automotive-panel',

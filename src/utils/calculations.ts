@@ -1,7 +1,7 @@
 import { DetailedEstimate, ProcessRow } from '../types';
 
 export interface CalculatedSection {
-  // --- A. 客提示用（お化粧後のエクセル積算） ---
+  // --- A. 客提示用（調整後のエクセル積算） ---
   rawMaterialCost: number;       // 素材料金額 (円)
   scrapValue: number;            // スクラップ金額 (円)
   netMaterialCost: number;       // 材料費/個 (①-②)
@@ -23,13 +23,14 @@ export interface CalculatedSection {
   actualTotalProcessCost: number;   // 実際の加工費合計
   actualPrimeCost: number;          // 実際の実製造直原価小計
   actualShippingCost: number;       // 実際の配送費
-  actualTotalCost: number;          // 実際の社内実質仕入原価合計（お化粧なし。実取引仕入れ値＋配送など）
+  actualTotalCost: number;          // 実際の社内実質仕入原価合計（調整なし。実取引仕入れ値＋配送など）
 
   // --- C. つじつま合わせシミュレーション結果 ---
-  requiredSellingPrice: number;     // 社内規定マージン（外掛け）を満たす「必要売価」
+  requiredSellingPrice: number;     // 社内規定マージン（外掛け）を満たす「目標売価」
+  minRequiredSellingPrice: number;  // 下限利益率（外掛け）を満たす「下限売価」
   suggestedPurchasePriceForClient: number; // 客先用「架空仕入れ原価」(売価から内掛けで逆算したもの)
-  makeupGapAmount: number;          // 架空原価とお化粧前実原価の差（ゲタの総額。この分を各項目に盛る必要がある）
-  actualMarkupTotalAllocated: number; // ユーザーが実際に各項目に盛った上乗せ額の合計
+  makeupGapAmount: number;          // 架空原価と調整前実原価の差（ゲタの総額。この分を各項目に盛る必要がある）
+  actualMarkupTotalAllocated: number; // ユーザーが実際に各項目に盛った上乗せ額 of 加工賃＋材料
   auditVariance: number;            // 最終見積額（客提出額）と「決定売価(売値)」のズレ（＝これが0になれば辻褄が完璧に合った）
 
   // 旧互換用
@@ -43,12 +44,13 @@ export function calculateEstimate(est: DetailedEstimate): CalculatedSection {
   const { material, processes, logistics, adjustments, baseLotSize, finishedWeightG } = est;
 
   // ==========================================
-  // 1. 【客提示用原価（お化粧後）】の算出
+  // 1. 【客提示用原価（調整後）】の算出
   // ==========================================
   const rawMaterialCost = (material.inputWeightG / 1000) * material.basePricePerKg;
   const scrapValue = (material.scrapWeightG / 1000) * material.scrapPricePerKg;
   const netMaterialCost = Math.max(0, rawMaterialCost - scrapValue);
 
+  // 出来高 (個 / 時間) と 段取り時間 (時間 / ロット) と 賃率 (円 / 時間) で個当たり加工費を計算
   const processCosts = processes.map((proc) => {
     if (!proc.processName.trim()) return 0;
 
@@ -60,27 +62,26 @@ export function calculateEstimate(est: DetailedEstimate): CalculatedSection {
       return (finishedWeightG / 1000) * proc.kgPrice;
     }
 
-    const minuteRate = (proc.hourlyRate || 0) / 60;
-    const setupTimeMin = (proc.totalHours || 0) * 60;
-    const workTimeMin = proc.yieldPerHour > 0 ? (60 / proc.yieldPerHour) : 0;
+    const processTimePerUnit = proc.yieldPerHour > 0 ? (1 / proc.yieldPerHour) : 0; // 個当たりの実加工時間(h)
+    const setupTimePerUnit = (baseLotSize > 0) ? ((proc.totalHours || 0) / baseLotSize) : 0; // ロットごとの段取り分担時間(h)
+    const totalHoursPerUnit = processTimePerUnit + setupTimePerUnit; // 個当たり合計加工時間(h)
 
-    const setupShare = baseLotSize > 0 ? (setupTimeMin / baseLotSize) : 0;
-    return (setupShare + workTimeMin) * minuteRate;
+    return totalHoursPerUnit * (proc.hourlyRate || 0); // 時間合計(h) * 賃率(円/h)
   });
 
   const totalProcessCost = processCosts.reduce((a, b) => a + b, 0);
   const primeCost = netMaterialCost + totalProcessCost;
 
-  // 利管費 (お化粧後の直製造原価に対して、客提出用マージン率（内掛け）を乗せて積み上げる)
+  // 利管費 (調整後の直製造原価に対して、客提出用マージン率（内掛け）を乗せて積み上げる)
   // エクセル再現：(材料費 + 加工費) * sgaRatePercent
   const sgaCost = primeCost * ((adjustments.sgaRatePercent || 0) / 100) + (adjustments.sgaFixedAdjustment || 0);
   const shippingCostPerUnit = logistics.qtyPerBox > 0 ? (logistics.freightPerBox / logistics.qtyPerBox) : 0;
   
-  // 提示用総見積額 ＝ お化粧原価 ＋ その他 ＋ 型費 ＋ SGA利管費 ＋ 調整
+  // 提示用総見積額 ＝ 調整原価 ＋ その他 ＋ 型費 ＋ SGA利管費 ＋ 調整
   const grandTotalUnitPrice = primeCost + sgaCost + shippingCostPerUnit + (adjustments.toolingCost || 0) + (adjustments.otherAdjustment || 0);
 
   // ==========================================
-  // 2. 【社内実原価（実態コスト・お化粧前）】の算出
+  // 2. 【社内実原価（実態コスト・調整前）】の算出
   // ==========================================
   const actualRawMaterialPrice = material.actualBasePricePerKg ?? material.basePricePerKg;
   const actualRawMaterialCost = (material.inputWeightG / 1000) * actualRawMaterialPrice;
@@ -102,12 +103,11 @@ export function calculateEstimate(est: DetailedEstimate): CalculatedSection {
     const actTotalHours = proc.actualTotalHours ?? proc.totalHours;
     const actYield = proc.actualYieldPerHour ?? proc.yieldPerHour;
 
-    const minuteRate = (actHourlyRate || 0) / 60;
-    const setupTimeMin = (actTotalHours || 0) * 60;
-    const workTimeMin = actYield > 0 ? (60 / actYield) : 0;
+    const processTimePerUnit = actYield > 0 ? (1 / actYield) : 0;
+    const setupTimePerUnit = (baseLotSize > 0) ? ((actTotalHours || 0) / baseLotSize) : 0;
+    const totalHoursPerUnit = processTimePerUnit + setupTimePerUnit;
 
-    const setupShare = baseLotSize > 0 ? (setupTimeMin / baseLotSize) : 0;
-    return (setupShare + workTimeMin) * minuteRate;
+    return totalHoursPerUnit * actHourlyRate;
   });
 
   const actualTotalProcessCost = actualProcessCosts.reduce((a, b) => a + b, 0);
@@ -122,29 +122,34 @@ export function calculateEstimate(est: DetailedEstimate): CalculatedSection {
     ? adjustments.actualPurchasePrice
     : actualPrimeCost;
 
-  // 実原価総額（＝お化粧なしの本質原価、材料＋加工＋物流＋型費）
+  // 実原価総額（＝調整なしの本質原価、材料＋加工＋物流＋型費）
   const actualTotalCost = baseActualPrimeCost + actualShippingCost + (adjustments.toolingCost || 0);
 
   // ==========================================
   // 3. 【つじつま合わせ（マージン）】シミュレーション
   // ==========================================
-  const internalMarkupPercentDecimal = (adjustments.targetProfitRate || 0) / 100; // 例: 25% (外掛け)
+  const targetProfitDecimal = (adjustments.targetProfitRate || 0) / 100; // 例: 外掛け目標 25%
+  const minProfitDecimal = (adjustments.minProfitRate || 0) / 100;       // 例: 外掛け下限 15%
   const clientMarginPercentDecimal = (adjustments.targetProfitMarginOff || 0) / 100; // 例: 15% (内掛け)
   
-  // 社内マージン（外掛け Z%）を満たす必要売価 ＝ 実原価 * (1 + Z%)
-  const requiredSellingPrice = actualTotalCost * (1 + internalMarkupPercentDecimal);
+  // 社内マージン（外掛け 目標%/下限%）を満たす必要売価 ＝ 実原価 * (1 + X%)
+  const requiredSellingPrice = actualTotalCost * (1 + targetProfitDecimal);
+  const minRequiredSellingPrice = actualTotalCost * (1 + minProfitDecimal);
 
-  // 決定売価（目標単価/売値。通常はユーザーが決めた or 目標の targetUnitPrice）
-  const sellingPrice = adjustments.targetUnitPrice || grandTotalUnitPrice;
+  // 決定売価（目標単価/売値。通常はユーザーが決めた or 調整の targetUnitPrice）
+  const rawSellingPrice = adjustments.targetUnitPrice || grandTotalUnitPrice;
+
+  // 重要：下限利益率の売価を下回らないように決定単価を引き上げる保護ルール
+  const sellingPrice = (rawSellingPrice < minRequiredSellingPrice) ? minRequiredSellingPrice : rawSellingPrice;
 
   // 客提出見積において「内掛け X%」の利管費と見せるために逆算される「提出用架空仕入れ原価（仕入単価）」
   // 提出用客向架空原価 ＝ 決定売価 * (1 - X%)
   const suggestedPurchasePriceForClient = sellingPrice * (1 - clientMarginPercentDecimal);
 
-  // お化粧に必要な「ゲタ（上乗せ・調整）総額」 ＝ 架空原価 - 実情原価
+  // 調整に必要な「ゲタ（上乗せ・調整）総額」 ＝ 架空原価 - 実情原価
   const makeupGapAmount = Math.max(0, suggestedPurchasePriceForClient - actualTotalCost);
 
-  // 実際に各明細に盛った金額（お化粧後の提示用直原価 - 実際直原価 + 送料差異）
+  // 実際に各明細に盛った金額
   const actualMarkupTotalAllocated = (primeCost + shippingCostPerUnit) - (actualPrimeCost + actualShippingCost);
 
   // 辻褄監査差異 ＝ 見積書積み上げ合計 - 決定売価
@@ -177,6 +182,7 @@ export function calculateEstimate(est: DetailedEstimate): CalculatedSection {
     actualTotalCost,
 
     requiredSellingPrice,
+    minRequiredSellingPrice,
     suggestedPurchasePriceForClient,
     makeupGapAmount,
     actualMarkupTotalAllocated,

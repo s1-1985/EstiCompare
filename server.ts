@@ -286,6 +286,57 @@ app.post("/api/generate-estimate", async (req, res) => {
   }
 });
 
+// 4. AI Process Params Inferrence
+app.post("/api/infer-process-params", async (req, res) => {
+  try {
+    const { processes, partNumber } = req.body;
+    if (!processes || !Array.isArray(processes)) {
+      return res.status(400).json({ error: "Processes array is required." });
+    }
+
+    const client = getAIClient();
+    const prompt = `以下の製造工程リストに対して、日本国内の標準的な「段取時間（トータル・時間）」と「生産出来高（1時間あたり個数）」を推定してください。
+対象部品・製品名: ${partNumber || '不明'}
+
+工程一覧:
+${processes.map((p, i) => `${i + 1}. 工程名: ${p.processName || '未記入'}, 作業内容: ${p.workContent || '未記入'}`).join('\\n')}
+`;
+
+    const response = await client.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+      config: {
+        systemInstruction: "あなたは製造業（金属プレス、切削、樹脂成形、表面処理、組立など）の生産技術エンジニア・IE担当です。与えられた工程名称と作業内容から、標準的なセットアップ（段取）時間（通常0.1〜3.0h程度）と、実作業タクト時間から逆算した1時間あたりの生産出来高（例: 手作業なら数十〜数百、プレスなら数千）を論理的に推定し回答してください。",
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            results: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  index: { type: Type.NUMBER },
+                  suggestedTotalHours: { type: Type.NUMBER, description: "推定される段取工数(時間)" },
+                  suggestedYieldPerHour: { type: Type.NUMBER, description: "推定される設定出来高(個/h)" }
+                },
+                required: ["index", "suggestedTotalHours", "suggestedYieldPerHour"]
+              }
+            }
+          },
+          required: ["results"]
+        }
+      }
+    });
+
+    const parsedData = JSON.parse(response.text || "{}");
+    res.json(parsedData);
+  } catch (error: any) {
+    console.error("Error in infer-process-params:", error);
+    res.status(500).json({ error: error.message || "Failed to infer process parameters." });
+  }
+});
+
 // Setup Vite Dev Middleware or Serve Static Files in Production
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {

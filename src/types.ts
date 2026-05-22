@@ -9,7 +9,7 @@ export interface ProcessRow {
   isDirectInput: boolean;   // 直接入力フラグ
   directProcessingCost: number; // 直接入力・加工費
 
-  // 【実態値】（内々のコスト。客提出用お化粧のベースになる実数値）
+  // 【実態値】（内々のコスト。客提出用調整のベースになる実数値）
   actualHourlyRate?: number;    // 実際の賃率 (円/h)
   actualTotalHours?: number;    // 実際の総取扱時間・段取 (h)
   actualYieldPerHour?: number;  // 実際の出来高 (個/h)
@@ -36,7 +36,8 @@ export interface LogisticsComputation {
 }
 
 export interface AdvancedAdjustment {
-  targetProfitRate: number;      // 【社内ルール】社内利益率・外掛け (%) - 例: 25%
+  targetProfitRate: number;      // 【社内ルール】目標の利益率・外掛け (%) - 例: 25%
+  minProfitRate?: number;        // 【社内ルール】下限の利益率・外掛け (%) - 例: 15%
   targetProfitMarginOff: number; // 【客先ルール】客提示用利益率・内掛け (%) - 例: 15%
   targetUnitPrice: number;       // 目標単価・決定売価 (円)
   
