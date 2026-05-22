@@ -305,7 +305,7 @@ export default function App() {
               className="p-2 px-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer text-xs select-none transition-all"
               title="このシートの入力内容を、データベースの初期（Excel保存時）状態に戻します。"
             >
-              <RotateCcw className="w-4 h-4 text-slate-450" />
+              <RotateCcw className="w-4 h-4 text-slate-400" />
               <span>数値リセット</span>
             </button>
 
@@ -352,7 +352,7 @@ export default function App() {
             <div className="flex items-center gap-2 text-xs text-slate-500 bg-white p-2.5 rounded-xl border border-slate-200 shadow-3xs">
               <BookOpen className="w-4 h-4 text-[#107C41]" />
               <span className="font-bold">品目コード:</span>
-              <strong className="font-mono text-[#107C41] text-sm bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-250/20">{newEstimate.partNumber}</strong>
+              <strong className="font-mono text-[#107C41] text-sm bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/20">{newEstimate.partNumber}</strong>
             </div>
 
             <div className="text-[11px] text-slate-400 font-bold bg-slate-100 px-3 py-2 rounded-xl border border-slate-200 hidden lg:block select-none">
@@ -365,7 +365,7 @@ export default function App() {
         <section className="transition-all duration-200">
           {activeSheetTab === 'workspace' && (
             <ExcelGrid
-              title="【新旧見積対比・調整調整シミュレーター】"
+              title="【新旧見積対比・調整シミュレーター】"
               oldEstimate={oldEstimate}
               onChangeOld={setOldEstimate}
               newEstimate={newEstimate}

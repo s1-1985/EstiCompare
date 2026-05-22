@@ -21,7 +21,7 @@ export const createEmptyEstimate = (): DetailedEstimate => ({
     basePricePerKg: 0,
     scrapWeightG: 0,
     scrapPricePerKg: 0,
-    actualBasePricePerKg: 0
+    actualBasePricePerKg: undefined
   },
   processes: Array.from({ length: 10 }).map((_, i) => ({
     index: i + 1,
