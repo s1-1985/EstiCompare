@@ -10,6 +10,7 @@ export interface SampleScenario {
 
 export const createEmptyEstimate = (): DetailedEstimate => ({
   partNumber: '',
+  partName: '',
   baseLotSize: 1,
   lotUnit: '個',
   finishedWeightG: 0,
@@ -59,6 +60,7 @@ export const SAMPLE_SCENARIOS: SampleScenario[] = [
     description: 'コイル鋼板の地金インデックス高騰による材料費の上昇と、プレス油・熱処理外注費、物流運賃の改定が重なったケース。',
     oldEstimate: {
       partNumber: '66-13401-09100-02',
+      partName: '板金プレスブラケット',
       baseLotSize: 300,
       lotUnit: '個/Lot',
       finishedWeightG: 480,
@@ -99,6 +101,7 @@ export const SAMPLE_SCENARIOS: SampleScenario[] = [
     },
     newEstimate: {
       partNumber: '66-13401-09100-02',
+      partName: '板金プレスブラケット',
       baseLotSize: 300,
       lotUnit: '個/Lot',
       finishedWeightG: 480,
@@ -144,6 +147,7 @@ export const SAMPLE_SCENARIOS: SampleScenario[] = [
     description: '真鍮材(C3604)の相場激変に対応した高付加価値CNC切削品の旧・新詳細見積。',
     oldEstimate: {
       partNumber: '55-092-2290A',
+      partName: '切削精密ブッシュ',
       baseLotSize: 1000,
       lotUnit: '個/Lot',
       finishedWeightG: 85,
@@ -184,6 +188,7 @@ export const SAMPLE_SCENARIOS: SampleScenario[] = [
     },
     newEstimate: {
       partNumber: '55-092-2290A',
+      partName: '切削精密ブッシュ',
       baseLotSize: 1000,
       lotUnit: '個/Lot',
       finishedWeightG: 85,
