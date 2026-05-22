@@ -53,7 +53,7 @@ ${text}
 """`;
 
     const response = await client.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.0-flash",
       contents: prompt,
       config: {
         systemInstruction: `あなたは精密金属加工および射出成形・機械加工見積を精査するプロフェッショナルバイヤーです。
@@ -141,7 +141,7 @@ ${JSON.stringify(newEstimate, null, 2)}
 - バイヤーが実際の価格折衝において、サプライヤーに投げかけるべき「強力で論理的な具体的・逆質問」5選（アジェンダとしてバイヤーがコピー・利用可能）`;
 
     const response = await client.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.0-flash",
       contents: prompt,
       config: {
         systemInstruction: "あなたはサプライヤーとの購買協議で絶対的な勝利を収める購買コンサルタントです。日本の商習慣、下請法、相場のインデックスに精通し、言い値での回答を徹底的に論破し、合理的なVE（バリューエンジニアリング）や分配歩み寄りを模索する実践的かつ最高水準のアドバイスを行います。すべて流暢な日本語で出力してください。",
@@ -210,7 +210,7 @@ app.post("/api/generate-estimate", async (req, res) => {
 【原料・配送スペック】: "${spec || "特になし"}"`;
 
     const response = await client.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.0-flash",
       contents: userPrompt,
       config: {
         systemInstruction: `あなたは製造原価（プレス板金、切削、溶接、プラスチック射出成形、めっき等）を算出する原価企画エキスパートです。
@@ -295,18 +295,18 @@ app.post("/api/infer-process-params", async (req, res) => {
     }
 
     const client = getAIClient();
-    const prompt = `以下の製造工程リストに対して、日本国内の標準的な「段取時間（トータル・時間）」と「生産出来高（1時間あたり個数）」を推定してください。
+    const prompt = `以下の製造工程リストに対して、日本国内の標準的な「段取時間（トータル・時間）」「生産出来高（1時間あたり個数）」「設備賃率（円/時間）」を推定してください。
 対象部品・製品名: ${partNumber || '不明'}
 
 工程一覧:
-${processes.map((p, i) => `${i + 1}. 工程名: ${p.processName || '未記入'}, 作業内容: ${p.workContent || '未記入'}`).join('\\n')}
+${processes.map((p, i) => `${i + 1}. 工程名: ${p.processName || '未記入'}, 作業内容: ${p.workContent || '未記入'}`).join('\n')}
 `;
 
     const response = await client.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.0-flash",
       contents: prompt,
       config: {
-        systemInstruction: "あなたは製造業（金属プレス、切削、樹脂成形、表面処理、組立など）の生産技術エンジニア・IE担当です。与えられた工程名称と作業内容から、標準的なセットアップ（段取）時間（通常0.1〜3.0h程度）と、実作業タクト時間から逆算した1時間あたりの生産出来高（例: 手作業なら数十〜数百、プレスなら数千）を論理的に推定し回答してください。",
+        systemInstruction: "あなたは製造業（金属プレス、切削、樹脂成形、表面処理、組立など）の生産技術エンジニア・IE担当です。与えられた工程名称と作業内容から、標準的なセットアップ（段取）時間（通常0.1〜3.0h程度）、実作業タクト時間から逆算した1時間あたりの生産出来高（例: 手作業なら数十〜数百、プレスなら数千）、および日本国内の標準的な設備賃率（例: プレス2000〜3500円/h、切削2500〜4000円/h、溶接2500〜3500円/h、めっき・表面処理2000〜3000円/h、組立・検査1800〜2800円/h）を論理的に推定し回答してください。賃率は100円単位で返してください。",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -318,9 +318,10 @@ ${processes.map((p, i) => `${i + 1}. 工程名: ${p.processName || '未記入'},
                 properties: {
                   index: { type: Type.NUMBER },
                   suggestedTotalHours: { type: Type.NUMBER, description: "推定される段取工数(時間)" },
-                  suggestedYieldPerHour: { type: Type.NUMBER, description: "推定される設定出来高(個/h)" }
+                  suggestedYieldPerHour: { type: Type.NUMBER, description: "推定される設定出来高(個/h)" },
+                  suggestedHourlyRate: { type: Type.NUMBER, description: "推定される設備賃率(円/h、100円単位)" }
                 },
-                required: ["index", "suggestedTotalHours", "suggestedYieldPerHour"]
+                required: ["index", "suggestedTotalHours", "suggestedYieldPerHour", "suggestedHourlyRate"]
               }
             }
           },
