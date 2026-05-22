@@ -71,6 +71,7 @@ export default function App() {
   const handleScenarioChange = (id: string) => {
     setActiveScenarioId(id);
     setComparisonResult(null);
+    setActiveSheetTab('workspace');
     
     const customScen = customScenarios.find((s) => s.id === id);
     if (customScen) {
@@ -96,14 +97,16 @@ export default function App() {
       setOldEstimate(JSON.parse(JSON.stringify(emptyEst)));
       setNewEstimate(JSON.parse(JSON.stringify(emptyEst)));
       setComparisonResult(null);
+      setActiveSheetTab('workspace');
       return;
     }
-    const preset = SAMPLE_SCENARIOS.find((s) => s.id === activeScenarioId) 
-                   || customScenarios.find((s) => s.id === activeScenarioId) 
+    const preset = SAMPLE_SCENARIOS.find((s) => s.id === activeScenarioId)
+                   || customScenarios.find((s) => s.id === activeScenarioId)
                    || SAMPLE_SCENARIOS[0];
     setOldEstimate(JSON.parse(JSON.stringify(preset.oldEstimate)));
     setNewEstimate(JSON.parse(JSON.stringify(preset.newEstimate)));
     setComparisonResult(null);
+    setActiveSheetTab('workspace');
   };
 
   // Create a completely blank new sheet
@@ -114,6 +117,7 @@ export default function App() {
     setNewEstimate(JSON.parse(JSON.stringify(emptyEst)));
     setNewScenarioName('新規カスタム見積');
     setComparisonResult(null);
+    setActiveSheetTab('workspace');
   };
 
   // Save changes to cloud
