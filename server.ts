@@ -35,6 +35,14 @@ function getAIClient() {
   return ai;
 }
 
+// Enforce minimum 4s between Gemini calls (free tier: 15 req/min)
+let lastGeminiCallTime = 0;
+async function waitForRateLimit() {
+  const wait = 4000 - (Date.now() - lastGeminiCallTime);
+  if (wait > 0) await new Promise(resolve => setTimeout(resolve, wait));
+  lastGeminiCallTime = Date.now();
+}
+
 // 1. Text parser into Structured Engineering Estimate Sheets
 app.post("/api/parse-estimate", async (req, res) => {
   try {
@@ -44,6 +52,7 @@ app.post("/api/parse-estimate", async (req, res) => {
     }
 
     const client = getAIClient();
+    await waitForRateLimit();
     const prompt = `以下のテキストデータは、製造業向けの製品見積、または部材・加工費の構成明細仕様です。
 この情報をパースして、精密な原価積算シートのJsonデータを抽出し、指定のJSONスキーマに従ってクリーンに構造化してください。
 
@@ -122,6 +131,7 @@ app.post("/api/compare-estimates", async (req, res) => {
     }
 
     const client = getAIClient();
+    await waitForRateLimit();
     const prompt = `あなたは、自動車メーカー、日用品メーカー、または精密機械装置トップメーカーの「調達購買本部シニアマネージャー」かつ「原価監査オフィサー」です。
 サプライヤーから提出された「旧見積（現行価格）」と「新見積（最新値上げ改定案）」の精密設計ブレークダウンデータを元に、単価変動の主因を分析し、得意先（または社内役員メンバー）に向けた【新旧価格監査報告書】ならびに【調達バイヤー向けの交渉アジェンダ・カウンターアプローチ】を作成してください。
 
@@ -203,6 +213,7 @@ app.post("/api/generate-estimate", async (req, res) => {
     }
 
     const client = getAIClient();
+    await waitForRateLimit();
     const userPrompt = `以下の製品・加工要求、および条件に基づき、日本の下請加工賃率や金属価格相場に完全に等しい、妥当な詳細積算見積データを1件生成してください。
 
 【製品仕様】: "${prompt}"
@@ -295,6 +306,7 @@ app.post("/api/infer-process-params", async (req, res) => {
     }
 
     const client = getAIClient();
+    await waitForRateLimit();
     const prompt = `以下の製造工程リストに対して、日本国内の標準的な「段取時間（トータル・時間）」「生産出来高（1時間あたり個数）」「設備賃率（円/時間）」を推定してください。
 対象部品・製品名: ${partNumber || '不明'}
 
