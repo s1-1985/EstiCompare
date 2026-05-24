@@ -828,12 +828,25 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                         standard: 'hourlyRate', kg: 'kgPrice', lump: 'lumpSumPrice', direct: 'directProcessingCost'
                       };
                       const unit: Record<string, string> = { standard: '円/h', kg: '円/kg', lump: '円/lot', direct: '円/個' };
+                      const modeLabel: Record<string, string> = { standard: '加工費', kg: 'kg単価', lump: '一式', direct: '外注費' };
+                      const modeBtnStyle: Record<string, string> = {
+                        standard: 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200',
+                        kg:       'bg-blue-100 text-blue-700 border-blue-300 hover:bg-blue-200',
+                        lump:     'bg-purple-100 text-purple-700 border-purple-300 hover:bg-purple-200',
+                        direct:   'bg-amber-100 text-amber-700 border-amber-300 hover:bg-amber-200',
+                      };
                       const rateVal = mode === 'standard' ? proc.hourlyRate : mode === 'kg' ? proc.kgPrice : mode === 'lump' ? proc.lumpSumPrice : proc.directProcessingCost;
                       const isEmpty = isEmptyNum(rateVal);
                       return (
-                        <div key={proc.index} className="flex items-center gap-3">
-                          <label className="text-[10px] font-bold w-24 sm:w-28 shrink-0 text-slate-700 truncate" title={proc.processName}>
-                            {modeTag[mode] && <span className={`mr-0.5 text-[9px] ${mode === 'direct' ? 'text-amber-600' : mode === 'kg' ? 'text-blue-600' : 'text-purple-600'}`}>{modeTag[mode]}</span>}
+                        <div key={proc.index} className="flex items-center gap-2">
+                          <button
+                            onClick={() => cycleCalcMode(proc.index, mode)}
+                            title="タップで切替"
+                            className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold border transition-all cursor-pointer shrink-0 ${modeBtnStyle[mode]}`}
+                          >
+                            {modeLabel[mode]}
+                          </button>
+                          <label className="text-[10px] font-bold w-20 shrink-0 text-slate-700 truncate" title={proc.processName}>
                             {proc.processName}
                           </label>
                           <div className="relative flex-1">
