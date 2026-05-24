@@ -523,7 +523,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                 <th className="py-2.5 px-3 text-center w-10">No</th>
                 <th className="py-2.5 px-3 text-left w-40">工程名</th>
                 <th className="py-2.5 px-3 text-left">作業内容</th>
-                <th className="py-2.5 px-3 text-right w-32 text-emerald-700 bg-emerald-500/5">出来高 / 外注単価</th>
+                <th className="py-2.5 px-3 text-right w-32 text-emerald-700 bg-emerald-500/5">主入力値</th>
                 <th className="py-2.5 px-3 text-right w-28">段取 (h)</th>
                 <th className="py-2.5 px-3 text-right w-32 text-indigo-600">実態賃率 (/h)</th>
                 <th className="py-2.5 px-3 text-center w-20">種別</th>
@@ -838,33 +838,39 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                       const rateVal = mode === 'standard' ? proc.hourlyRate : mode === 'kg' ? proc.kgPrice : mode === 'lump' ? proc.lumpSumPrice : proc.directProcessingCost;
                       const isEmpty = isEmptyNum(rateVal);
                       return (
-                        <div key={proc.index} className="flex items-center gap-2">
-                          <button
-                            onClick={() => cycleCalcMode(proc.index, mode)}
-                            title="タップで切替"
-                            className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold border transition-all cursor-pointer shrink-0 ${modeBtnStyle[mode]}`}
-                          >
-                            {modeLabel[mode]}
-                          </button>
-                          <label className="text-[10px] font-bold w-20 shrink-0 text-slate-700 truncate" title={proc.processName}>
-                            {proc.processName}
-                          </label>
-                          <div className="relative flex-1">
-                            <span className="absolute left-2.5 top-1.5 text-[10px] text-slate-400">¥</span>
-                            <input
-                              type="number"
-                              value={rateVal || ''}
-                              onChange={(e) => updateProcessRates(isNew, proc.index, rateKey[mode], e.target.value)}
-                              placeholder={unit[mode]}
-                              className={`w-full pl-6 pr-16 py-1.5 text-xs font-mono font-bold rounded-lg border outline-none focus:ring-1 transition-all ${fld(isEmpty)}`}
-                            />
-                            <span className="absolute right-2.5 top-1.5 text-[9px] text-slate-400 pointer-events-none">
-                              {unit[mode]}
+                        <div key={proc.index} className="flex flex-col gap-1 pb-2 border-b border-slate-50 last:border-0 last:pb-0 sm:flex-row sm:items-center sm:gap-2 sm:border-0 sm:pb-0">
+                          {/* 行1: モードボタン + 工程名 */}
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => cycleCalcMode(proc.index, mode)}
+                              title="タップで切替"
+                              className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold border transition-all cursor-pointer shrink-0 ${modeBtnStyle[mode]}`}
+                            >
+                              {modeLabel[mode]}
+                            </button>
+                            <label className="text-[10px] font-bold text-slate-700 truncate sm:w-20 sm:shrink-0" title={proc.processName}>
+                              {proc.processName}
+                            </label>
+                          </div>
+                          {/* 行2: 入力欄 + 計算結果 */}
+                          <div className="flex items-center gap-2 sm:flex-1">
+                            <div className="relative flex-1">
+                              <span className="absolute left-2.5 top-1.5 text-[10px] text-slate-400">¥</span>
+                              <input
+                                type="number"
+                                value={rateVal || ''}
+                                onChange={(e) => updateProcessRates(isNew, proc.index, rateKey[mode], e.target.value)}
+                                placeholder={unit[mode]}
+                                className={`w-full pl-6 pr-12 py-1.5 text-xs font-mono font-bold rounded-lg border outline-none focus:ring-1 transition-all ${fld(isEmpty)}`}
+                              />
+                              <span className="absolute right-2 top-1.5 text-[9px] text-slate-400 pointer-events-none">
+                                {unit[mode]}
+                              </span>
+                            </div>
+                            <span className="text-[10px] font-mono text-slate-500 w-16 text-right shrink-0">
+                              ¥{calc.processCosts[i].toFixed(1)}
                             </span>
                           </div>
-                          <span className="text-[10px] font-mono text-slate-500 w-20 text-right shrink-0">
-                            ¥{calc.processCosts[i].toFixed(1)}
-                          </span>
                         </div>
                       );
                     })}
