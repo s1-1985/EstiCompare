@@ -463,13 +463,13 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
           <table className="w-full text-xs min-w-[640px]">
             <thead>
               <tr className="bg-[#F0EDE8] border-b border-[#D6D0C8] text-[10px] text-[#9C9490] font-black uppercase tracking-wider">
-                <th className="py-2.5 px-3 text-center w-10">No</th>
-                <th className="py-2.5 px-3 text-left w-40">工程名</th>
-                <th className="py-2.5 px-3 text-left">作業内容</th>
-                <th className="py-2.5 px-3 text-right w-32 text-[#B5451B] bg-[#FEF0EB]">主入力値</th>
-                <th className="py-2.5 px-3 text-right w-28">段取 (h)</th>
-                <th className="py-2.5 px-3 text-right w-32 text-[#1E3A5F]">実態賃率 (/h)</th>
-                <th className="py-2.5 px-3 text-center w-20">種別</th>
+                <th className="py-2.5 px-3 text-center w-10 whitespace-nowrap">No</th>
+                <th className="py-2.5 px-3 text-left w-40 whitespace-nowrap">工程名</th>
+                <th className="py-2.5 px-3 text-left whitespace-nowrap">作業内容</th>
+                <th className="py-2.5 px-3 text-right w-32 text-[#B5451B] bg-[#FEF0EB] whitespace-nowrap">主入力値</th>
+                <th className="py-2.5 px-3 text-right w-28 whitespace-nowrap">段取 (h)</th>
+                <th className="py-2.5 px-3 text-right w-32 text-[#1E3A5F] whitespace-nowrap">実態賃率 (/h)</th>
+                <th className="py-2.5 px-3 text-center w-20 whitespace-nowrap">種別</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#EEEBE6]">

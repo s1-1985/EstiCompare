@@ -240,7 +240,6 @@ export default function App() {
               <span className="text-[10px] font-black text-[#9C9490] uppercase tracking-widest shrink-0 hidden sm:inline">
                 台帳選択:
               </span>
-              <span className="text-[10px] font-black text-[#9C9490] uppercase shrink-0 sm:hidden">▼</span>
               <select
                 value={activeScenarioId}
                 onChange={(e) => handleScenarioChange(e.target.value)}
