@@ -3,15 +3,15 @@ import { DetailedEstimate, ComparisonResult, Scenario } from './types';
 import { SAMPLE_SCENARIOS, createEmptyEstimate } from './data/samples';
 import { ExcelGrid } from './components/ExcelGrid';
 import { CompareResults } from './components/CompareResults';
-import { 
-  FileSpreadsheet, 
-  RotateCcw, 
-  Save, 
-  Plus, 
-  Sparkles, 
-  Database, 
-  ChevronRight, 
-  BookOpen, 
+import {
+  FileSpreadsheet,
+  RotateCcw,
+  Save,
+  Plus,
+  Sparkles,
+  Database,
+  ChevronRight,
+  BookOpen,
   Info,
   LogOut,
   FilePlus
@@ -21,8 +21,7 @@ import { subscribeScenarios, saveUserScenario } from './utils/firestoreService';
 
 export default function App() {
   const defaultScenario = SAMPLE_SCENARIOS[0];
-  
-  // Auth & Sync status
+
   const [user, setUser] = useState<any>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [customScenarios, setCustomScenarios] = useState<Scenario[]>([]);
@@ -32,15 +31,12 @@ export default function App() {
   const [activeScenarioId, setActiveScenarioId] = useState(defaultScenario.id);
   const [newEstimate, setNewEstimate] = useState<DetailedEstimate>(JSON.parse(JSON.stringify(defaultScenario.newEstimate)));
   const [oldEstimate, setOldEstimate] = useState<DetailedEstimate>(JSON.parse(JSON.stringify(defaultScenario.oldEstimate)));
-  
-  // Current open Sheet Tab
+
   const [activeSheetTab, setActiveSheetTab] = useState<'workspace' | 'compare'>('workspace');
 
-  // AI evaluation report state
   const [comparisonResult, setComparisonResult] = useState<ComparisonResult | null>(null);
   const [isComparing, setIsComparing] = useState(false);
 
-  // Auth trigger
   useEffect(() => {
     const unsub = auth.onAuthStateChanged((u) => {
       setUser(u);
@@ -49,7 +45,6 @@ export default function App() {
     return unsub;
   }, []);
 
-  // Firestore sync trigger
   useEffect(() => {
     if (!user) {
       setCustomScenarios([]);
@@ -57,22 +52,17 @@ export default function App() {
     }
     const unsub = subscribeScenarios(
       user.uid,
-      (scens) => {
-        setCustomScenarios(scens);
-      },
-      (error) => {
-        console.error("Firestore loading error:", error);
-      }
+      (scens) => { setCustomScenarios(scens); },
+      (error) => { console.error("Firestore loading error:", error); }
     );
     return unsub;
   }, [user]);
 
-  // Scenario picker Switcher
   const handleScenarioChange = (id: string) => {
     setActiveScenarioId(id);
     setComparisonResult(null);
     setActiveSheetTab('workspace');
-    
+
     const customScen = customScenarios.find((s) => s.id === id);
     if (customScen) {
       setNewEstimate(JSON.parse(JSON.stringify(customScen.newEstimate)));
@@ -90,7 +80,6 @@ export default function App() {
     }
   };
 
-  // Reset current active sheet to original preset values
   const handleResetActiveSheet = () => {
     if (activeScenarioId === 'new-custom-sheet') {
       const emptyEst = createEmptyEstimate();
@@ -109,7 +98,6 @@ export default function App() {
     setActiveSheetTab('workspace');
   };
 
-  // Create a completely blank new sheet
   const handleCreateNewSheet = () => {
     const emptyEst = createEmptyEstimate();
     setActiveScenarioId('new-custom-sheet');
@@ -120,7 +108,6 @@ export default function App() {
     setActiveSheetTab('workspace');
   };
 
-  // Save changes to cloud
   const handleSaveScenario = async (isOverwriting: boolean = false) => {
     if (!user) {
       alert("クラウド保存を利用するには右上からサインインしてください。");
@@ -134,18 +121,12 @@ export default function App() {
       const promptName = prompt("登録する見積シナリオの名称を入力してください:", newScenarioName || "マイカスタム見積シナリオ");
       if (!promptName || !promptName.trim()) return;
       targetName = promptName.trim();
-      targetId = ""; // empty forces firestoreService to create a new record
+      targetId = "";
     }
 
     setIsSaving(true);
     try {
-      const savedId = await saveUserScenario(
-        targetId,
-        targetName,
-        newEstimate,
-        oldEstimate,
-        comparisonResult
-      );
+      const savedId = await saveUserScenario(targetId, targetName, newEstimate, oldEstimate, comparisonResult);
       if (savedId) {
         setActiveScenarioId(savedId);
         setNewScenarioName(targetName);
@@ -159,16 +140,13 @@ export default function App() {
     }
   };
 
-  // Run optional Gemini price comparison report
   const triggerComparisonAnalysis = async () => {
     setIsComparing(true);
     setComparisonResult(null);
     try {
       const response = await fetch('/api/compare-estimates', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ oldEstimate, newEstimate }),
       });
 
@@ -187,51 +165,49 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col text-slate-800 font-sans antialiased selection:bg-emerald-200">
-      
-      {/* 1. PROFESSIONAL SaaS INDUSTRIAL HEADER */}
-      <header className="bg-slate-900 text-white shadow-lg select-none border-b border-slate-950 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 sm:py-3.5 flex flex-row items-center justify-between gap-2 sm:gap-4">
+    <div className="min-h-screen bg-[#F7F6F2] flex flex-col text-[#18130F] font-sans antialiased selection:bg-[#FDE6DC]">
 
-          {/* Brand & Active file name */}
+      {/* HEADER */}
+      <header className="bg-[#18130F] text-white sticky top-0 z-50 border-b border-[#2A2018]">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 sm:py-3 flex flex-row items-center justify-between gap-2 sm:gap-4">
+
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <div className="bg-emerald-600 p-1.5 sm:p-2 rounded-xl text-white shadow-md flex items-center justify-center shrink-0">
-              <FileSpreadsheet className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-100" />
+            <div className="bg-[#B5451B] p-1.5 sm:p-2 rounded text-white flex items-center justify-center shrink-0">
+              <FileSpreadsheet className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[9px] bg-emerald-700 px-1.5 py-0.5 rounded-full text-white font-extrabold tracking-widest uppercase">
+                <span className="text-[9px] bg-[#B5451B] px-1.5 py-0.5 rounded text-white font-black tracking-widest uppercase">
                   EstiCompare
                 </span>
-                <span className="text-[9px] bg-slate-800 px-1.5 py-0.5 rounded-full text-slate-400 font-mono font-bold hidden sm:inline">
+                <span className="text-[9px] bg-[#2A2018] px-1.5 py-0.5 rounded text-[#9C9490] font-mono font-bold hidden sm:inline">
                   互換Webエミュレート
                 </span>
               </div>
-              <h1 className="text-xs sm:text-sm font-extrabold tracking-tight text-white mt-0.5 truncate max-w-[160px] sm:max-w-none">
+              <h1 className="text-xs sm:text-sm font-bold tracking-tight text-white mt-0.5 truncate max-w-[160px] sm:max-w-none">
                 <span>{newEstimate.partNumber || '66-13401-09100-02'}_新旧比率積算.xlsm</span>
               </h1>
             </div>
           </div>
 
-          {/* Sync status & Google Account */}
           <div className="flex items-center gap-2 shrink-0">
             {isAuthLoading ? (
-              <span className="text-[10px] text-slate-400 font-mono animate-pulse">Syncing...</span>
+              <span className="text-[10px] text-[#9C9490] font-mono">読込中...</span>
             ) : user ? (
-              <div className="flex items-center gap-1.5 sm:gap-2 bg-slate-800/80 px-2 sm:px-3 py-1.5 rounded-xl border border-slate-700 shadow-sm">
+              <div className="flex items-center gap-1.5 sm:gap-2 bg-[#2A2018] px-2 sm:px-3 py-1.5 rounded border border-[#3D3228]">
                 <img
                   src={user.photoURL || undefined}
                   alt={user.displayName || "User"}
                   referrerPolicy="no-referrer"
-                  className="w-5 h-5 rounded-full border border-emerald-500 shrink-0"
+                  className="w-5 h-5 rounded-full border border-[#B5451B] shrink-0"
                 />
-                <span className="text-[10px] font-bold text-slate-100 max-w-[70px] sm:max-w-[100px] truncate hidden xs:block">
+                <span className="text-[10px] font-bold text-white max-w-[70px] sm:max-w-[100px] truncate hidden xs:block">
                   {user.displayName}
                 </span>
-                <span className="inline-block w-2 h-2 bg-emerald-500 rounded-full animate-pulse shrink-0" title="クラウド自動同期有効" />
+                <span className="inline-block w-2 h-2 bg-[#B5451B] rounded-full shrink-0" title="クラウド自動同期有効" />
                 <button
                   onClick={logout}
-                  className="ml-0.5 sm:ml-1 text-[10px] text-slate-400 hover:text-red-400 border-l border-slate-700 pl-1.5 sm:pl-2 font-bold cursor-pointer transition-colors"
+                  className="ml-0.5 sm:ml-1 text-[10px] text-[#9C9490] hover:text-[#F8C9BB] border-l border-[#3D3228] pl-1.5 sm:pl-2 font-bold cursor-pointer transition-colors"
                 >
                   切断
                 </button>
@@ -239,11 +215,11 @@ export default function App() {
             ) : (
               <button
                 onClick={loginWithGoogle}
-                className="bg-emerald-700 hover:bg-emerald-600 active:bg-emerald-800 text-white px-2.5 sm:px-3 py-1.5 rounded-xl border border-emerald-600 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-md hover:shadow-lg"
+                className="bg-[#B5451B] hover:bg-[#8A3215] active:bg-[#6B260F] text-white px-2.5 sm:px-3 py-1.5 rounded border border-[#8A3215] text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all"
                 title="Googleアカウントでサインイン"
               >
-                <div className="bg-white p-0.5 rounded-lg flex items-center justify-center shrink-0">
-                  <span className="text-[10px] text-emerald-800 font-black px-0.5 leading-none">G</span>
+                <div className="bg-white p-0.5 rounded flex items-center justify-center shrink-0">
+                  <span className="text-[10px] text-[#8A3215] font-black px-0.5 leading-none">G</span>
                 </div>
                 <span className="hidden sm:inline">クラウド同期ログイン</span>
                 <span className="sm:hidden">ログイン</span>
@@ -254,39 +230,34 @@ export default function App() {
         </div>
       </header>
 
-      {/* 2. EXCEL CONTROLS RIBBON (Action Bar) */}
-      <div className="bg-white border-b border-slate-200 shadow-xs py-2.5 sm:py-3 select-none">
+      {/* TOOLBAR RIBBON */}
+      <div className="bg-[#F7F6F2] border-b border-[#D6D0C8] py-2 sm:py-2.5 select-none">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-4">
 
-          {/* File Operations */}
           <div className="flex flex-wrap items-center gap-2">
 
-            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 flex-1 min-w-0">
-              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest shrink-0 hidden sm:inline">
-                📂 台帳選択:
+            <div className="flex items-center gap-2 bg-white border border-[#D6D0C8] rounded px-3 py-1.5 flex-1 min-w-0">
+              <span className="text-[10px] font-black text-[#9C9490] uppercase tracking-widest shrink-0 hidden sm:inline">
+                台帳選択:
               </span>
-              <span className="text-[10px] font-extrabold text-slate-400 uppercase shrink-0 sm:hidden">📂</span>
+              <span className="text-[10px] font-black text-[#9C9490] uppercase shrink-0 sm:hidden">▼</span>
               <select
                 value={activeScenarioId}
                 onChange={(e) => handleScenarioChange(e.target.value)}
-                className="bg-transparent border-0 font-sans focus:outline-hidden font-extrabold text-slate-800 text-xs cursor-pointer w-full focus:ring-0 truncate min-w-0"
+                className="bg-transparent border-0 font-sans focus:outline-hidden font-bold text-[#18130F] text-xs cursor-pointer w-full focus:ring-0 truncate min-w-0"
               >
                 {activeScenarioId === 'new-custom-sheet' && (
-                  <option value="new-custom-sheet">✨ 新規カスタム見積 (未保存)</option>
+                  <option value="new-custom-sheet">新規カスタム見積 (未保存)</option>
                 )}
-                <optgroup label="📂 システム備え付け (Excel再現データ)">
+                <optgroup label="システム備え付け (Excel再現データ)">
                   {SAMPLE_SCENARIOS.map((scen) => (
-                    <option key={scen.id} value={scen.id}>
-                      {scen.name}
-                    </option>
+                    <option key={scen.id} value={scen.id}>{scen.name}</option>
                   ))}
                 </optgroup>
                 {customScenarios.length > 0 && (
-                  <optgroup label="☁️ クラウド同期保存見積 (Firestore)">
+                  <optgroup label="クラウド同期保存見積 (Firestore)">
                     {customScenarios.map((scen) => (
-                      <option key={scen.id} value={scen.id}>
-                        {scen.name}
-                      </option>
+                      <option key={scen.id} value={scen.id}>{scen.name}</option>
                     ))}
                   </optgroup>
                 )}
@@ -295,25 +266,24 @@ export default function App() {
 
             <button
               onClick={handleCreateNewSheet}
-              className="p-2 px-2.5 sm:px-3 bg-emerald-50 hover:bg-emerald-100/80 active:bg-emerald-200/50 text-emerald-800 border-2 border-transparent hover:border-emerald-200 rounded-xl font-bold flex items-center gap-1.5 cursor-pointer text-xs select-none transition-all min-h-[36px]"
+              className="p-2 px-2.5 sm:px-3 bg-white hover:bg-[#FEF0EB] active:bg-[#FDE6DC] text-[#B5451B] border border-[#D6D0C8] hover:border-[#F8C9BB] rounded font-bold flex items-center gap-1.5 cursor-pointer text-xs select-none transition-all min-h-[34px]"
               title="シートを完全にクリアして新しい見積データを作成します。"
             >
-              <FilePlus className="w-4 h-4 text-emerald-600 shrink-0" />
+              <FilePlus className="w-4 h-4 shrink-0" />
               <span className="hidden sm:inline">新規白紙シート作成</span>
             </button>
 
             <button
               onClick={handleResetActiveSheet}
-              className="p-2 px-2.5 sm:px-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer text-xs select-none transition-all min-h-[36px]"
-              title="このシートの入力内容を、データベースの初期（Excel保存時）状態に戻します。"
+              className="p-2 px-2.5 sm:px-3 bg-white hover:bg-[#F0EDE8] border border-[#D6D0C8] rounded font-bold text-[#6B6057] flex items-center gap-1.5 cursor-pointer text-xs select-none transition-all min-h-[34px]"
+              title="このシートの入力内容を、データベースの初期状態に戻します。"
             >
-              <RotateCcw className="w-4 h-4 text-slate-400 shrink-0" />
+              <RotateCcw className="w-4 h-4 text-[#9C9490] shrink-0" />
               <span className="hidden sm:inline">数値リセット</span>
             </button>
 
           </div>
 
-          {/* Save Operations */}
           <div className="flex items-center justify-end gap-2 shrink-0">
             {user ? (
               <div className="flex items-center gap-2">
@@ -321,7 +291,7 @@ export default function App() {
                   <button
                     onClick={() => handleSaveScenario(true)}
                     disabled={isSaving}
-                    className="p-2 px-3 sm:px-4 bg-white border border-slate-300 hover:bg-slate-50 text-indigo-700 rounded-xl font-bold hover:shadow-xs flex items-center gap-1.5 cursor-pointer text-xs transition-all min-h-[36px]"
+                    className="p-2 px-3 sm:px-4 bg-white border border-[#D6D0C8] hover:bg-[#F0EDE8] text-[#18130F] rounded font-bold flex items-center gap-1.5 cursor-pointer text-xs transition-all min-h-[34px]"
                   >
                     <Save className="w-4 h-4 shrink-0" />
                     <span className="hidden sm:inline">上書き保存</span>
@@ -330,7 +300,7 @@ export default function App() {
                 <button
                   onClick={() => handleSaveScenario(false)}
                   disabled={isSaving}
-                  className="p-2 px-3 sm:px-4 bg-emerald-700 hover:bg-emerald-600 text-white rounded-xl font-bold shadow-md hover:shadow-lg flex items-center gap-1.5 cursor-pointer text-xs transition-all min-h-[36px]"
+                  className="p-2 px-3 sm:px-4 bg-[#B5451B] hover:bg-[#8A3215] text-white rounded font-bold flex items-center gap-1.5 cursor-pointer text-xs transition-all min-h-[34px]"
                 >
                   <Plus className="w-4 h-4 shrink-0" />
                   <span className="hidden sm:inline">新規ブックとしてクラウド保存</span>
@@ -338,7 +308,7 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              <div className="text-[10px] text-slate-400 font-extrabold tracking-wider bg-slate-50 p-2 rounded-lg border border-slate-200 hidden md:block">
+              <div className="text-[10px] text-[#9C9490] font-bold tracking-wider bg-white p-2 rounded border border-[#D6D0C8] hidden md:block">
                 ※サインインすると変更した独自見積配列をクラウドへ無制限保存できます
               </div>
             )}
@@ -347,25 +317,24 @@ export default function App() {
         </div>
       </div>
 
-      {/* 3. WORKBOOK CENTRAL WORKSPACE */}
+      {/* MAIN WORKSPACE */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-6">
 
-        <div className="mb-4 sm:mb-6">
+        <div className="mb-4 sm:mb-5">
           <div className="flex items-center justify-between gap-4 mb-2 px-1 flex-wrap">
-            <div className="flex items-center gap-2 text-xs text-slate-500 bg-white p-2 sm:p-2.5 rounded-xl border border-slate-200 shadow-3xs min-w-0">
-              <BookOpen className="w-4 h-4 text-[#107C41] shrink-0" />
+            <div className="flex items-center gap-2 text-xs text-[#6B6057] bg-white p-2 sm:p-2.5 rounded border border-[#D6D0C8] min-w-0">
+              <BookOpen className="w-4 h-4 text-[#B5451B] shrink-0" />
               <span className="font-bold shrink-0">品目コード:</span>
-              <strong className="font-mono text-[#107C41] text-xs sm:text-sm bg-emerald-50 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-lg border border-emerald-200/20 truncate">{newEstimate.partNumber}</strong>
+              <strong className="font-mono text-[#B5451B] text-xs sm:text-sm bg-[#FEF0EB] px-2 sm:px-2.5 py-0.5 sm:py-1 rounded border border-[#F8C9BB] truncate">{newEstimate.partNumber}</strong>
             </div>
 
-            <div className="text-[11px] text-slate-400 font-bold bg-slate-100 px-3 py-2 rounded-xl border border-slate-200 hidden lg:block select-none">
-              ℹ️ エクセル内の全関数・材料物量。アワー調達賃・利管積上・運賃等は全自動で一元連動します。
+            <div className="text-[10px] text-[#9C9490] font-bold bg-white px-3 py-2 rounded border border-[#D6D0C8] hidden lg:block select-none">
+              エクセル内の全関数・材料物量・アワー調達賃・利管積上・運賃等は全自動で一元連動します。
             </div>
           </div>
         </div>
 
-        {/* WORKBOOK TAB CONDITIONAL RENDER */}
-        <section className="transition-all duration-200">
+        <section>
           {activeSheetTab === 'workspace' && (
             <ExcelGrid
               title="【新旧見積対比・調整シミュレーター】"
@@ -395,46 +364,42 @@ export default function App() {
 
       </main>
 
-      {/* 4. EXCEL WORKBOOK BOTTOM TAB BAR */}
-      <nav className="bg-white border-t border-slate-200 sticky bottom-0 z-40 select-none shadow-xl">
+      {/* BOTTOM TAB BAR */}
+      <nav className="bg-white border-t-2 border-[#D6D0C8] sticky bottom-0 z-40 select-none">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 flex flex-row items-center justify-between gap-2 text-xs">
 
-          {/* Active Navigation Sheets selector */}
-          <div className="flex items-stretch divide-x divide-slate-100 flex-1">
+          <div className="flex items-stretch divide-x divide-[#EEEBE6] flex-1">
 
-            {/* Sheet 1: Workspace */}
             <button
               onClick={() => setActiveSheetTab('workspace')}
-              className={`px-3 sm:px-5 py-3.5 sm:py-4 font-black flex items-center justify-center gap-1.5 sm:gap-2 cursor-pointer text-xs transition-all flex-1 border-t-[3px] ${
+              className={`px-3 sm:px-5 py-3.5 sm:py-4 font-black flex items-center justify-center gap-1.5 sm:gap-2 cursor-pointer text-xs transition-all flex-1 border-t-2 ${
                 activeSheetTab === 'workspace'
-                  ? 'border-t-[#107C41] bg-slate-50 text-[#107C41]'
-                  : 'border-t-transparent bg-white text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+                  ? 'border-t-[#B5451B] bg-[#FEF0EB] text-[#B5451B]'
+                  : 'border-t-transparent bg-white text-[#9C9490] hover:text-[#6B6057] hover:bg-[#F7F6F2]'
               }`}
             >
-              <span className="text-slate-400 font-mono text-[9px] sm:text-[10px] shrink-0">Sheet1!</span>
+              <span className="text-[#9C9490] font-mono text-[9px] sm:text-[10px] shrink-0">Sheet1!</span>
               <span className="hidden sm:inline">1. 新旧見開き調整ワークスペース (Workspace)</span>
               <span className="sm:hidden">入力・調整</span>
             </button>
 
-            {/* Sheet 2: Compare/Audit */}
             <button
               onClick={() => setActiveSheetTab('compare')}
-              className={`px-3 sm:px-5 py-3.5 sm:py-4 font-black flex items-center justify-center gap-1.5 sm:gap-2 cursor-pointer text-xs transition-all flex-1 border-t-[3px] ${
+              className={`px-3 sm:px-5 py-3.5 sm:py-4 font-black flex items-center justify-center gap-1.5 sm:gap-2 cursor-pointer text-xs transition-all flex-1 border-t-2 ${
                 activeSheetTab === 'compare'
-                  ? 'border-t-[#107C41] bg-emerald-500/5 text-[#107C41]'
-                  : 'border-t-transparent bg-white text-slate-400 hover:text-[#107C41] hover:bg-slate-50'
+                  ? 'border-t-[#B5451B] bg-[#FEF0EB] text-[#B5451B]'
+                  : 'border-t-transparent bg-white text-[#9C9490] hover:text-[#B5451B] hover:bg-[#F7F6F2]'
               }`}
             >
-              <span className="text-[#107C41] font-mono text-[9px] sm:text-[10px] font-black shrink-0">Sheet2!</span>
+              <span className={`font-mono text-[9px] sm:text-[10px] font-black shrink-0 ${activeSheetTab === 'compare' ? 'text-[#B5451B]' : 'text-[#9C9490]'}`}>Sheet2!</span>
               <span className="hidden sm:inline">2. 差額要因分析・説明調整監査報告 (Audit)</span>
               <span className="sm:hidden">差額分析</span>
             </button>
 
           </div>
 
-          {/* Quick Info text */}
-          <div className="text-[10px] text-slate-400 font-bold select-none py-3 hidden lg:flex items-center gap-2 shrink-0">
-            <Info className="w-4 h-4 text-slate-400" />
+          <div className="text-[10px] text-[#9C9490] font-bold select-none py-3 hidden lg:flex items-center gap-2 shrink-0">
+            <Info className="w-3.5 h-3.5 text-[#9C9490]" />
             <span>仕入値や目標単価を入力すると、すべてのExcelセル連動公式が即時反映されます。</span>
           </div>
 
