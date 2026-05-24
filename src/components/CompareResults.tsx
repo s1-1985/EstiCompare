@@ -538,12 +538,12 @@ export const CompareResults: React.FC<CompareResultsProps> = ({
             )}
           </div>
 
-          <div className="p-4 bg-[#0F0C09] border-t border-[#2A2018] flex items-center justify-between text-[10.5px]">
-            <span className="text-[#6B6057] font-mono font-bold">Model Engine: Google Gemini 2.0 Flash</span>
+          <div className="p-4 bg-[#0F0C09] border-t border-[#2A2018] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 text-[10.5px]">
+            <span className="text-[#6B6057] font-mono font-bold hidden sm:block">Model Engine: Google Gemini 2.0 Flash</span>
             <button
               onClick={onRunComparison}
               disabled={isLoading}
-              className="font-black text-white bg-[#B5451B] hover:bg-[#8A3215] active:bg-[#6B260F] py-2.5 px-5 rounded transition-colors disabled:bg-[#2A2018] disabled:text-[#6B6057] disabled:cursor-not-allowed cursor-pointer border border-[#8A3215] hover:border-[#6B260F]"
+              className="w-full sm:w-auto font-black text-white bg-[#B5451B] hover:bg-[#8A3215] active:bg-[#6B260F] py-2.5 px-5 rounded transition-colors disabled:bg-[#2A2018] disabled:text-[#6B6057] disabled:cursor-not-allowed cursor-pointer border border-[#8A3215] hover:border-[#6B260F]"
             >
               AI価格監査分析を実行
             </button>
