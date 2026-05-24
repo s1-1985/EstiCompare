@@ -1,4 +1,52 @@
-import { DetailedEstimate, ProcessRow } from '../types';
+import { DetailedEstimate, ProcessRow, ProcessCalcMode } from '../types';
+
+function resolveCalcMode(proc: ProcessRow): ProcessCalcMode {
+  if (proc.calcMode) return proc.calcMode;
+  if (proc.isDirectInput) return 'direct';
+  if (proc.kgPrice > 0) return 'kg';
+  return 'standard';
+}
+
+function calcClientCost(proc: ProcessRow, finishedWeightG: number, baseLotSize: number): number {
+  if (!proc.processName.trim()) return 0;
+  const mode = resolveCalcMode(proc);
+  switch (mode) {
+    case 'direct':
+      return proc.directProcessingCost || 0;
+    case 'kg':
+      return (finishedWeightG / 1000) * (proc.kgPrice || 0);
+    case 'lump':
+      return baseLotSize > 0 ? ((proc.lumpSumPrice || 0) / baseLotSize) : 0;
+    default: {
+      const perUnit = proc.yieldPerHour > 0 ? 1 / proc.yieldPerHour : 0;
+      const setup = baseLotSize > 0 ? (proc.totalHours || 0) / baseLotSize : 0;
+      return (perUnit + setup) * (proc.hourlyRate || 0);
+    }
+  }
+}
+
+function calcActualCost(proc: ProcessRow, finishedWeightG: number, baseLotSize: number): number {
+  if (!proc.processName.trim()) return 0;
+  const mode = resolveCalcMode(proc);
+  switch (mode) {
+    case 'direct':
+      return (proc.actualDirectProcessingCost ?? proc.directProcessingCost) || 0;
+    case 'kg':
+      return (finishedWeightG / 1000) * (proc.kgPrice || 0);
+    case 'lump': {
+      const actual = proc.actualLumpSumPrice ?? proc.lumpSumPrice;
+      return baseLotSize > 0 ? ((actual || 0) / baseLotSize) : 0;
+    }
+    default: {
+      const rate = proc.actualHourlyRate ?? proc.hourlyRate;
+      const hours = proc.actualTotalHours ?? proc.totalHours;
+      const yield_ = proc.actualYieldPerHour ?? proc.yieldPerHour;
+      const perUnit = yield_ > 0 ? 1 / yield_ : 0;
+      const setup = baseLotSize > 0 ? (hours || 0) / baseLotSize : 0;
+      return (perUnit + setup) * (rate || 0);
+    }
+  }
+}
 
 export interface CalculatedSection {
   // --- A. 客提示用（調整後のエクセル積算） ---
@@ -50,24 +98,7 @@ export function calculateEstimate(est: DetailedEstimate): CalculatedSection {
   const scrapValue = (material.scrapWeightG / 1000) * material.scrapPricePerKg;
   const netMaterialCost = Math.max(0, rawMaterialCost - scrapValue);
 
-  // 出来高 (個 / 時間) と 段取り時間 (時間 / ロット) と 賃率 (円 / 時間) で個当たり加工費を計算
-  const processCosts = processes.map((proc) => {
-    if (!proc.processName.trim()) return 0;
-
-    if (proc.isDirectInput) {
-      return proc.directProcessingCost || 0;
-    }
-
-    if (proc.kgPrice > 0) {
-      return (finishedWeightG / 1000) * proc.kgPrice;
-    }
-
-    const processTimePerUnit = proc.yieldPerHour > 0 ? (1 / proc.yieldPerHour) : 0; // 個当たりの実加工時間(h)
-    const setupTimePerUnit = (baseLotSize > 0) ? ((proc.totalHours || 0) / baseLotSize) : 0; // ロットごとの段取り分担時間(h)
-    const totalHoursPerUnit = processTimePerUnit + setupTimePerUnit; // 個当たり合計加工時間(h)
-
-    return totalHoursPerUnit * (proc.hourlyRate || 0); // 時間合計(h) * 賃率(円/h)
-  });
+  const processCosts = processes.map((proc) => calcClientCost(proc, finishedWeightG, baseLotSize));
 
   const totalProcessCost = processCosts.reduce((a, b) => a + b, 0);
   const primeCost = netMaterialCost + totalProcessCost;
@@ -87,28 +118,7 @@ export function calculateEstimate(est: DetailedEstimate): CalculatedSection {
   const actualRawMaterialCost = (material.inputWeightG / 1000) * actualRawMaterialPrice;
   const actualNetMaterialCost = Math.max(0, actualRawMaterialCost - scrapValue);
 
-  const actualProcessCosts = processes.map((proc) => {
-    if (!proc.processName.trim()) return 0;
-
-    const actualDirect = proc.actualDirectProcessingCost ?? proc.directProcessingCost;
-    if (proc.isDirectInput) {
-      return actualDirect || 0;
-    }
-
-    if (proc.kgPrice > 0) {
-      return (finishedWeightG / 1000) * proc.kgPrice;
-    }
-
-    const actHourlyRate = proc.actualHourlyRate ?? proc.hourlyRate;
-    const actTotalHours = proc.actualTotalHours ?? proc.totalHours;
-    const actYield = proc.actualYieldPerHour ?? proc.yieldPerHour;
-
-    const processTimePerUnit = actYield > 0 ? (1 / actYield) : 0;
-    const setupTimePerUnit = (baseLotSize > 0) ? ((actTotalHours || 0) / baseLotSize) : 0;
-    const totalHoursPerUnit = processTimePerUnit + setupTimePerUnit;
-
-    return totalHoursPerUnit * (actHourlyRate || 0);
-  });
+  const actualProcessCosts = processes.map((proc) => calcActualCost(proc, finishedWeightG, baseLotSize));
 
   const actualTotalProcessCost = actualProcessCosts.reduce((a, b) => a + b, 0);
   const actualPrimeCost = actualNetMaterialCost + actualTotalProcessCost;

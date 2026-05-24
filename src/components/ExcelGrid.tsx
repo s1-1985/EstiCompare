@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { DetailedEstimate, ProcessRow, Scenario } from '../types';
+import { DetailedEstimate, ProcessRow, ProcessCalcMode, Scenario } from '../types';
 import { calculateEstimate } from '../utils/calculations';
 import {
   Settings2, Lock, Zap, CheckCircle2, AlertTriangle,
@@ -103,15 +103,16 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
   };
 
   const updateCommonProcessMeta = (
-    index: number, 
-    key: 'processName' | 'workContent' | 'totalHours' | 'yieldPerHour' | 'actualHourlyRate' | 'directProcessingCost' | 'isDirectInput', 
+    index: number,
+    key: 'processName' | 'workContent' | 'totalHours' | 'yieldPerHour' | 'actualHourlyRate' | 'directProcessingCost' | 'isDirectInput' | 'calcMode' | 'lumpSumPrice' | 'kgPrice',
     value: any
   ) => {
+    const numericKeys = ['totalHours', 'yieldPerHour', 'actualHourlyRate', 'directProcessingCost', 'lumpSumPrice'];
     const updateProcesses = (est: DetailedEstimate) => {
       return est.processes.map((proc) => {
         if (proc.index === index) {
-          if (key === 'isDirectInput') return { ...proc, [key]: value };
-          if (typeof value === 'string' && (key === 'totalHours' || key === 'yieldPerHour' || key === 'actualHourlyRate' || key === 'directProcessingCost')) {
+          if (key === 'isDirectInput' || key === 'calcMode') return { ...proc, [key]: value };
+          if (typeof value === 'string' && numericKeys.includes(key)) {
             const parsed = parseFloat(value);
             return { ...proc, [key]: isNaN(parsed) ? (key === 'actualHourlyRate' ? undefined : 0) : parsed };
           }
@@ -123,6 +124,19 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
 
     onChangeOld({ ...oldEstimate, processes: updateProcesses(oldEstimate) });
     onChangeNew({ ...newEstimate, processes: updateProcesses(newEstimate) });
+  };
+
+  const cycleCalcMode = (index: number, current: ProcessCalcMode) => {
+    const modes: ProcessCalcMode[] = ['standard', 'kg', 'lump', 'direct'];
+    const next = modes[(modes.indexOf(current) + 1) % modes.length];
+    updateCommonProcessMeta(index, 'calcMode', next);
+  };
+
+  const getCalcMode = (proc: ProcessRow): ProcessCalcMode => {
+    if (proc.calcMode) return proc.calcMode;
+    if (proc.isDirectInput) return 'direct';
+    if (proc.kgPrice > 0) return 'kg';
+    return 'standard';
   };
 
   // -------------------------------------------------------------
@@ -142,7 +156,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     });
   };
 
-  const updateProcessRates = (isNew: boolean, index: number, key: 'hourlyRate' | 'actualHourlyRate' | 'directProcessingCost', value: any) => {
+  const updateProcessRates = (isNew: boolean, index: number, key: 'hourlyRate' | 'actualHourlyRate' | 'directProcessingCost' | 'kgPrice' | 'lumpSumPrice' | 'actualLumpSumPrice', value: any) => {
     const parsed = parseFloat(value);
     const target = isNew ? newEstimate : oldEstimate;
     const setter = isNew ? onChangeNew : onChangeOld;
@@ -516,99 +530,115 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {newEstimate.processes.map((proc) => (
-                <tr key={proc.index} className={`transition-colors ${proc.isDirectInput ? 'bg-amber-50/50 hover:bg-amber-50' : 'hover:bg-slate-50/60'}`}>
-                  <td className="py-2 px-3 text-center font-mono text-slate-400 text-[10px] select-none">#{proc.index}</td>
-                  <td className="py-1.5 px-2">
-                    <input
-                      type="text"
-                      value={proc.processName}
-                      onChange={(e) => updateCommonProcessMeta(proc.index, 'processName', e.target.value)}
-                      placeholder="工程名"
-                      className={`w-full px-2.5 py-1.5 text-xs font-bold rounded-md border outline-none transition-all focus:ring-1 ${proc.processName ? 'border-slate-200 bg-white focus:border-emerald-400' : 'border-slate-200 bg-white focus:border-emerald-400'}`}
-                    />
-                  </td>
-                  <td className="py-1.5 px-2">
-                    <input
-                      type="text"
-                      value={proc.workContent}
-                      onChange={(e) => updateCommonProcessMeta(proc.index, 'workContent', e.target.value)}
-                      placeholder="例: 300tプレス、金型No.P-12"
-                      className="w-full px-2.5 py-1.5 text-xs text-slate-600 rounded-md border border-slate-200 bg-white outline-none transition-all focus:ring-1 focus:border-emerald-400"
-                    />
-                  </td>
-                  <td className="py-1.5 px-2 bg-emerald-500/5">
-                    {proc.isDirectInput ? (
-                      <div className="relative">
+              {newEstimate.processes.map((proc) => {
+                  const mode = getCalcMode(proc);
+                  const modeStyle: Record<string, string> = {
+                    standard: 'hover:bg-slate-50/60',
+                    kg:       'bg-blue-50/40 hover:bg-blue-50/70',
+                    lump:     'bg-purple-50/40 hover:bg-purple-50/70',
+                    direct:   'bg-amber-50/50 hover:bg-amber-50',
+                  };
+                  const modeLabel: Record<string, string> = {
+                    standard: '加工費',
+                    kg:       'kg単価',
+                    lump:     '一式',
+                    direct:   '外注費',
+                  };
+                  const modeBtnStyle: Record<string, string> = {
+                    standard: 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200',
+                    kg:       'bg-blue-100 text-blue-800 border-blue-300 hover:bg-blue-200',
+                    lump:     'bg-purple-100 text-purple-800 border-purple-300 hover:bg-purple-200',
+                    direct:   'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200',
+                  };
+                  return (
+                    <tr key={proc.index} className={`transition-colors ${modeStyle[mode]}`}>
+                      <td className="py-2 px-3 text-center font-mono text-slate-400 text-[10px] select-none">#{proc.index}</td>
+                      <td className="py-1.5 px-2">
                         <input
-                          type="number"
-                          value={proc.directProcessingCost || ''}
-                          onChange={(e) => updateCommonProcessMeta(proc.index, 'directProcessingCost', e.target.value)}
-                          placeholder="0"
-                          className="w-full pl-2 pr-14 py-1.5 text-xs font-mono text-amber-800 font-bold rounded-md border border-amber-300 bg-white outline-none focus:ring-1 focus:border-amber-400"
+                          type="text"
+                          value={proc.processName}
+                          onChange={(e) => updateCommonProcessMeta(proc.index, 'processName', e.target.value)}
+                          placeholder="工程名"
+                          className="w-full px-2.5 py-1.5 text-xs font-bold rounded-md border border-slate-200 bg-white outline-none transition-all focus:ring-1 focus:border-emerald-400"
                         />
-                        <span className="absolute right-2 top-1.5 text-[9px] text-amber-600 pointer-events-none font-bold">円/個</span>
-                      </div>
-                    ) : (
-                      <div className="relative">
+                      </td>
+                      <td className="py-1.5 px-2">
                         <input
-                          type="number"
-                          value={proc.yieldPerHour || ''}
-                          onChange={(e) => updateCommonProcessMeta(proc.index, 'yieldPerHour', e.target.value)}
-                          placeholder="0"
-                          className={`w-full pl-2 pr-10 py-1.5 text-xs font-mono rounded-md border outline-none focus:ring-1 ${proc.processName && !proc.yieldPerHour ? 'border-amber-300 bg-amber-50 focus:border-amber-400' : 'border-emerald-300 bg-white focus:border-emerald-500'}`}
+                          type="text"
+                          value={proc.workContent}
+                          onChange={(e) => updateCommonProcessMeta(proc.index, 'workContent', e.target.value)}
+                          placeholder="例: 300tプレス、金型No.P-12"
+                          className="w-full px-2.5 py-1.5 text-xs text-slate-600 rounded-md border border-slate-200 bg-white outline-none transition-all focus:ring-1 focus:border-emerald-400"
                         />
-                        <span className="absolute right-2 top-1.5 text-[9px] text-emerald-600 pointer-events-none font-bold">個/h</span>
-                      </div>
-                    )}
-                  </td>
-                  <td className="py-1.5 px-2">
-                    {proc.isDirectInput ? (
-                      <div className="flex items-center justify-center h-8 text-[10px] text-slate-300 bg-slate-50 rounded-md border border-slate-100 select-none">非適用</div>
-                    ) : (
-                      <div className="relative">
-                        <input
-                          type="number"
-                          value={proc.totalHours || ''}
-                          onChange={(e) => updateCommonProcessMeta(proc.index, 'totalHours', e.target.value)}
-                          placeholder="0"
-                          className="w-full pl-2 pr-6 py-1.5 text-xs font-mono rounded-md border border-slate-200 bg-white outline-none focus:ring-1 focus:border-emerald-400"
-                          step="any"
-                        />
-                        <span className="absolute right-2 top-1.5 text-[9px] text-slate-400 pointer-events-none">h</span>
-                      </div>
-                    )}
-                  </td>
-                  <td className="py-1.5 px-2">
-                    {proc.isDirectInput ? (
-                      <div className="flex items-center justify-center h-8 text-[10px] text-slate-300 bg-slate-50 rounded-md border border-slate-100 select-none">非適用</div>
-                    ) : (
-                      <div className="relative">
-                        <input
-                          type="number"
-                          value={proc.actualHourlyRate || ''}
-                          onChange={(e) => updateCommonProcessMeta(proc.index, 'actualHourlyRate', e.target.value)}
-                          placeholder="実際賃率"
-                          className="w-full pl-2 pr-12 py-1.5 text-xs font-mono font-bold text-indigo-900 rounded-md border border-indigo-200 bg-white outline-none focus:ring-1 focus:border-indigo-400"
-                        />
-                        <span className="absolute right-2 top-1.5 text-[9px] text-indigo-500 pointer-events-none font-bold">円/h</span>
-                      </div>
-                    )}
-                  </td>
-                  <td className="py-1.5 px-2 text-center">
-                    <button
-                      onClick={() => updateCommonProcessMeta(proc.index, 'isDirectInput', !proc.isDirectInput)}
-                      className={`text-[9px] px-2 py-1 rounded-full font-bold border transition-all cursor-pointer w-full ${
-                        proc.isDirectInput
-                          ? 'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200'
-                          : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
-                      }`}
-                    >
-                      {proc.isDirectInput ? '外注費' : '加工費'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                      </td>
+                      {/* 出来高 or kg単価 or 一式金額 or 直接単価 */}
+                      <td className="py-1.5 px-2 bg-emerald-500/5">
+                        {mode === 'direct' && (
+                          <div className="relative">
+                            <input type="number" value={proc.directProcessingCost || ''} onChange={(e) => updateCommonProcessMeta(proc.index, 'directProcessingCost', e.target.value)} placeholder="0"
+                              className="w-full pl-2 pr-14 py-1.5 text-xs font-mono text-amber-800 font-bold rounded-md border border-amber-300 bg-white outline-none focus:ring-1 focus:border-amber-400" />
+                            <span className="absolute right-2 top-1.5 text-[9px] text-amber-600 pointer-events-none font-bold">円/個</span>
+                          </div>
+                        )}
+                        {mode === 'kg' && (
+                          <div className="relative">
+                            <input type="number" value={proc.kgPrice || ''} onChange={(e) => updateCommonProcessMeta(proc.index, 'kgPrice', e.target.value)} placeholder="0"
+                              className="w-full pl-2 pr-14 py-1.5 text-xs font-mono text-blue-800 font-bold rounded-md border border-blue-300 bg-white outline-none focus:ring-1 focus:border-blue-400" />
+                            <span className="absolute right-2 top-1.5 text-[9px] text-blue-600 pointer-events-none font-bold">円/kg</span>
+                          </div>
+                        )}
+                        {mode === 'lump' && (
+                          <div className="relative">
+                            <input type="number" value={proc.lumpSumPrice || ''} onChange={(e) => updateCommonProcessMeta(proc.index, 'lumpSumPrice', e.target.value)} placeholder="0"
+                              className="w-full pl-2 pr-16 py-1.5 text-xs font-mono text-purple-800 font-bold rounded-md border border-purple-300 bg-white outline-none focus:ring-1 focus:border-purple-400" />
+                            <span className="absolute right-1 top-1.5 text-[9px] text-purple-600 pointer-events-none font-bold">円/lot</span>
+                          </div>
+                        )}
+                        {mode === 'standard' && (
+                          <div className="relative">
+                            <input type="number" value={proc.yieldPerHour || ''} onChange={(e) => updateCommonProcessMeta(proc.index, 'yieldPerHour', e.target.value)} placeholder="0"
+                              className={`w-full pl-2 pr-10 py-1.5 text-xs font-mono rounded-md border outline-none focus:ring-1 ${proc.processName && !proc.yieldPerHour ? 'border-amber-300 bg-amber-50 focus:border-amber-400' : 'border-emerald-300 bg-white focus:border-emerald-500'}`} />
+                            <span className="absolute right-2 top-1.5 text-[9px] text-emerald-600 pointer-events-none font-bold">個/h</span>
+                          </div>
+                        )}
+                      </td>
+                      {/* 段取り時間（standard のみ） */}
+                      <td className="py-1.5 px-2">
+                        {mode === 'standard' ? (
+                          <div className="relative">
+                            <input type="number" value={proc.totalHours || ''} onChange={(e) => updateCommonProcessMeta(proc.index, 'totalHours', e.target.value)} placeholder="0" step="any"
+                              className="w-full pl-2 pr-6 py-1.5 text-xs font-mono rounded-md border border-slate-200 bg-white outline-none focus:ring-1 focus:border-emerald-400" />
+                            <span className="absolute right-2 top-1.5 text-[9px] text-slate-400 pointer-events-none">h</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center h-8 text-[10px] text-slate-300 bg-slate-50 rounded-md border border-slate-100 select-none">—</div>
+                        )}
+                      </td>
+                      {/* 実賃率（standard のみ） */}
+                      <td className="py-1.5 px-2">
+                        {mode === 'standard' ? (
+                          <div className="relative">
+                            <input type="number" value={proc.actualHourlyRate || ''} onChange={(e) => updateCommonProcessMeta(proc.index, 'actualHourlyRate', e.target.value)} placeholder="実際賃率"
+                              className="w-full pl-2 pr-12 py-1.5 text-xs font-mono font-bold text-indigo-900 rounded-md border border-indigo-200 bg-white outline-none focus:ring-1 focus:border-indigo-400" />
+                            <span className="absolute right-2 top-1.5 text-[9px] text-indigo-500 pointer-events-none font-bold">円/h</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center h-8 text-[10px] text-slate-300 bg-slate-50 rounded-md border border-slate-100 select-none">—</div>
+                        )}
+                      </td>
+                      {/* 種別ボタン（タップで切り替え） */}
+                      <td className="py-1.5 px-2 text-center">
+                        <button
+                          onClick={() => cycleCalcMode(proc.index, mode)}
+                          title="タップで切替: 加工費→kg単価→一式→外注費"
+                          className={`text-[9px] px-2 py-1 rounded-full font-bold border transition-all cursor-pointer w-full ${modeBtnStyle[mode]}`}
+                        >
+                          {modeLabel[mode]}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+              })}
             </tbody>
           </table>
         </div>
@@ -792,12 +822,18 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                     </h4>
                     {est.processes.map((proc, i) => {
                       if (!proc.processName.trim()) return null;
-                      const rateVal = proc.isDirectInput ? proc.directProcessingCost : proc.hourlyRate;
+                      const mode = getCalcMode(proc);
+                      const modeTag: Record<string, string> = { kg: 'kg', lump: '一式', direct: '外', standard: '' };
+                      const rateKey: Record<string, 'hourlyRate' | 'kgPrice' | 'lumpSumPrice' | 'directProcessingCost'> = {
+                        standard: 'hourlyRate', kg: 'kgPrice', lump: 'lumpSumPrice', direct: 'directProcessingCost'
+                      };
+                      const unit: Record<string, string> = { standard: '円/h', kg: '円/kg', lump: '円/lot', direct: '円/個' };
+                      const rateVal = mode === 'standard' ? proc.hourlyRate : mode === 'kg' ? proc.kgPrice : mode === 'lump' ? proc.lumpSumPrice : proc.directProcessingCost;
                       const isEmpty = isEmptyNum(rateVal);
                       return (
                         <div key={proc.index} className="flex items-center gap-3">
                           <label className="text-[10px] font-bold w-24 sm:w-28 shrink-0 text-slate-700 truncate" title={proc.processName}>
-                            {proc.isDirectInput && <span className="text-amber-600 mr-0.5 text-[9px]">外</span>}
+                            {modeTag[mode] && <span className={`mr-0.5 text-[9px] ${mode === 'direct' ? 'text-amber-600' : mode === 'kg' ? 'text-blue-600' : 'text-purple-600'}`}>{modeTag[mode]}</span>}
                             {proc.processName}
                           </label>
                           <div className="relative flex-1">
@@ -805,12 +841,12 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                             <input
                               type="number"
                               value={rateVal || ''}
-                              onChange={(e) => updateProcessRates(isNew, proc.index, proc.isDirectInput ? 'directProcessingCost' : 'hourlyRate', e.target.value)}
-                              placeholder={proc.isDirectInput ? '外注単価' : '客提示賃率'}
+                              onChange={(e) => updateProcessRates(isNew, proc.index, rateKey[mode], e.target.value)}
+                              placeholder={unit[mode]}
                               className={`w-full pl-6 pr-16 py-1.5 text-xs font-mono font-bold rounded-lg border outline-none focus:ring-1 transition-all ${fld(isEmpty)}`}
                             />
                             <span className="absolute right-2.5 top-1.5 text-[9px] text-slate-400 pointer-events-none">
-                              {proc.isDirectInput ? '円/個' : '円/h'}
+                              {unit[mode]}
                             </span>
                           </div>
                           <span className="text-[10px] font-mono text-slate-500 w-20 text-right shrink-0">

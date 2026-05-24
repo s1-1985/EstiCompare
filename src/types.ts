@@ -1,3 +1,5 @@
+export type ProcessCalcMode = 'standard' | 'kg' | 'lump' | 'direct';
+
 export interface ProcessRow {
   index: number;
   processName: string;      // 工程
@@ -5,15 +7,18 @@ export interface ProcessRow {
   hourlyRate: number;       // 【客提示用】賃率 (円/h) - (例: 実際2000円のところ3000円に盛る)
   totalHours: number;       // 【客提示用】総取扱時間・段取 (h)
   yieldPerHour: number;     // 【客提示用】出来高 (個/h)
-  kgPrice: number;          // Kg単価
-  isDirectInput: boolean;   // 直接入力フラグ
-  directProcessingCost: number; // 直接入力・加工費
+  kgPrice: number;          // kg単価 (円/kg) — calcMode='kg' で使用
+  isDirectInput: boolean;   // 後方互換フラグ (calcMode未設定時に参照)
+  directProcessingCost: number; // 直接入力・加工費 (円/個) — calcMode='direct' で使用
+  calcMode?: ProcessCalcMode;   // 計算モード
+  lumpSumPrice?: number;        // 一式金額 (円/lot) — calcMode='lump' で使用
 
   // 【実態値】（内々のコスト。客提出用調整のベースになる実数値）
   actualHourlyRate?: number;    // 実際の賃率 (円/h)
   actualTotalHours?: number;    // 実際の総取扱時間・段取 (h)
   actualYieldPerHour?: number;  // 実際の出来高 (個/h)
   actualDirectProcessingCost?: number; // 実際の直接加工費 (円)
+  actualLumpSumPrice?: number;  // 実際の一式金額 (円/lot)
 }
 
 export interface MaterialComputation {
