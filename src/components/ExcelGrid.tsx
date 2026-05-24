@@ -43,7 +43,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
         })
       });
       if (!response.ok) throw new Error('AI生成エラー');
-      
+
       const { results } = await response.json();
       if (!results || !Array.isArray(results)) return;
 
@@ -80,9 +80,6 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     }
   };
 
-  // -------------------------------------------------------------
-  // 同期ヘルパー (Common Meta Master synchronizers)
-  // -------------------------------------------------------------
   const updateCommonMeta = (key: 'partNumber' | 'partName' | 'baseLotSize' | 'finishedWeightG', value: any) => {
     onChangeOld({ ...oldEstimate, [key]: value });
     onChangeNew({ ...newEstimate, [key]: value });
@@ -91,15 +88,8 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
   const updateCommonMaterialMeta = (key: 'materialName' | 'inputWeightG' | 'scrapWeightG', value: any) => {
     const rawVal = typeof value === 'string' ? parseFloat(value) : value;
     const finalVal = isNaN(rawVal) && typeof value === 'string' ? value : rawVal;
-
-    onChangeOld({
-      ...oldEstimate,
-      material: { ...oldEstimate.material, [key]: finalVal }
-    });
-    onChangeNew({
-      ...newEstimate,
-      material: { ...newEstimate.material, [key]: finalVal }
-    });
+    onChangeOld({ ...oldEstimate, material: { ...oldEstimate.material, [key]: finalVal } });
+    onChangeNew({ ...newEstimate, material: { ...newEstimate.material, [key]: finalVal } });
   };
 
   const updateCommonProcessMeta = (
@@ -121,7 +111,6 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
         return proc;
       });
     };
-
     onChangeOld({ ...oldEstimate, processes: updateProcesses(oldEstimate) });
     onChangeNew({ ...newEstimate, processes: updateProcesses(newEstimate) });
   };
@@ -139,34 +128,21 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     return 'standard';
   };
 
-  // -------------------------------------------------------------
-  // 個別調整入力アップデート項目
-  // -------------------------------------------------------------
   const updateMaterialPrice = (isNew: boolean, key: 'basePricePerKg' | 'actualBasePricePerKg' | 'scrapPricePerKg', value: any) => {
     const parsed = parseFloat(value);
     const target = isNew ? newEstimate : oldEstimate;
     const setter = isNew ? onChangeNew : onChangeOld;
-
-    setter({
-      ...target,
-      material: {
-        ...target.material,
-        [key]: isNaN(parsed) ? 0 : parsed
-      }
-    });
+    setter({ ...target, material: { ...target.material, [key]: isNaN(parsed) ? 0 : parsed } });
   };
 
   const updateProcessRates = (isNew: boolean, index: number, key: 'hourlyRate' | 'actualHourlyRate' | 'directProcessingCost' | 'kgPrice' | 'lumpSumPrice' | 'actualLumpSumPrice', value: any) => {
     const parsed = parseFloat(value);
     const target = isNew ? newEstimate : oldEstimate;
     const setter = isNew ? onChangeNew : onChangeOld;
-
     setter({
       ...target,
       processes: target.processes.map((proc) => {
-        if (proc.index === index) {
-          return { ...proc, [key]: isNaN(parsed) ? 0 : parsed };
-        }
+        if (proc.index === index) return { ...proc, [key]: isNaN(parsed) ? 0 : parsed };
         return proc;
       })
     });
@@ -183,19 +159,12 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     const parsed = parseFloat(value);
     const target = isNew ? newEstimate : oldEstimate;
     const setter = isNew ? onChangeNew : onChangeOld;
-
-    setter({
-      ...target,
-      logistics: {
-        ...target.logistics,
-        [key]: isNaN(parsed) ? 0 : parsed
-      }
-    });
+    setter({ ...target, logistics: { ...target.logistics, [key]: isNaN(parsed) ? 0 : parsed } });
   };
 
   const updateAdjustments = (
-    isNew: boolean, 
-    key: 'targetProfitRate' | 'minProfitRate' | 'targetProfitMarginOff' | 'targetUnitPrice' | 'actualPurchasePrice' | 'sgaRatePercent' | 'toolingCost' | 'otherAdjustment', 
+    isNew: boolean,
+    key: 'targetProfitRate' | 'minProfitRate' | 'targetProfitMarginOff' | 'targetUnitPrice' | 'actualPurchasePrice' | 'sgaRatePercent' | 'toolingCost' | 'otherAdjustment',
     value: any
   ) => {
     const parsed = parseFloat(value);
@@ -204,28 +173,13 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     const val = value === '' ? '' : (isNaN(parsed) ? 0 : parsed);
 
     if (key === 'targetProfitRate' || key === 'minProfitRate') {
-      onChangeOld({
-        ...oldEstimate,
-        adjustments: { ...oldEstimate.adjustments, [key]: val as any }
-      });
-      onChangeNew({
-        ...newEstimate,
-        adjustments: { ...newEstimate.adjustments, [key]: val as any }
-      });
+      onChangeOld({ ...oldEstimate, adjustments: { ...oldEstimate.adjustments, [key]: val as any } });
+      onChangeNew({ ...newEstimate, adjustments: { ...newEstimate.adjustments, [key]: val as any } });
     } else {
-      setter({
-        ...target,
-        adjustments: {
-          ...target.adjustments,
-          [key]: val as any
-        }
-      });
+      setter({ ...target, adjustments: { ...target.adjustments, [key]: val as any } });
     }
   };
 
-  // -------------------------------------------------------------
-  // AI自動調整（つじつま合わせプロ調整）
-  // -------------------------------------------------------------
   const handleAutoReconcile = (isNew: boolean) => {
     const target = isNew ? newEstimate : oldEstimate;
     const setter = isNew ? onChangeNew : onChangeOld;
@@ -233,7 +187,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
 
     const minProfitPercent = target.adjustments.minProfitRate || 0;
     const targetProfitPercent = target.adjustments.targetProfitRate || 0;
-    
+
     const actualTotalCost = calc.actualTotalCost;
     const minRequiredSellingPrice = actualTotalCost * (1 + minProfitPercent / 100);
     const targetRequiredSellingPrice = actualTotalCost * (1 + targetProfitPercent / 100);
@@ -250,10 +204,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       }
     }
 
-    const updatedAdjustments = {
-      ...target.adjustments,
-      targetUnitPrice: reconciledUnitPrice
-    };
+    const updatedAdjustments = { ...target.adjustments, targetUnitPrice: reconciledUnitPrice };
 
     const shipping = calc.shippingCostPerUnit;
     const tooling = target.adjustments.toolingCost || 0;
@@ -290,7 +241,6 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     let finalSgaPercent = target.adjustments.sgaRatePercent || 15;
 
     const materialCost = calc.netMaterialCost;
-
     const directInputTotal = target.processes.reduce((sum, proc) => {
       if (!proc.processName.trim() || !proc.isDirectInput) return sum;
       return sum + (proc.directProcessingCost || 0);
@@ -301,17 +251,13 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       const targetNonDirectProcessCost = Math.max(0, targetPrimeCost - materialCost - directInputTotal);
       const multiplier = Math.max(0.1, targetNonDirectProcessCost / currentTotalProcessCostTemp);
 
-      // 賃率を100円単位（下二桁 00）に丸め（端数処理）
       draftProcesses = target.processes.map((proc, i) => {
         if (!proc.processName.trim() || proc.isDirectInput) return proc;
         const actRate = proc.actualHourlyRate ?? proc.hourlyRate ?? 3000;
         const rawRate = actRate * multiplier;
         let roundedRate = Math.round(rawRate / 100) * 100;
-        if (roundedRate < 1000) roundedRate = 1000; // 下限1,000円保証
-        return {
-          ...proc,
-          hourlyRate: roundedRate
-        };
+        if (roundedRate < 1000) roundedRate = 1000;
+        return { ...proc, hourlyRate: roundedRate };
       });
     }
 
@@ -327,98 +273,95 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     }
     updatedAdjustments.sgaRatePercent = finalSgaPercent;
 
-    setter({
-      ...target,
-      processes: draftProcesses,
-      adjustments: updatedAdjustments
-    });
+    setter({ ...target, processes: draftProcesses, adjustments: updatedAdjustments });
   };
 
-  // Empty-field highlight utility
   const isEmptyStr = (v: string | undefined) => !v || v.trim() === '';
   const isEmptyNum = (v: number | undefined | null) => !v || v === 0;
+
+  // Field style: empty fields use terracotta tint, normal fields use warm neutral
   const fld = (empty: boolean) =>
     empty
-      ? 'bg-yellow-50 border-yellow-300 focus:border-yellow-400 focus:ring-yellow-200'
-      : 'bg-white border-slate-200 focus:border-emerald-500 focus:ring-emerald-500/15';
+      ? 'bg-[#FEF0EB] border-[#F8C9BB] focus:border-[#B5451B] focus:ring-[#B5451B]/15'
+      : 'bg-white border-[#D6D0C8] focus:border-[#B5451B] focus:ring-[#B5451B]/15';
+
+  const inputBase = 'w-full px-3 py-2 text-xs font-mono font-bold rounded border outline-none focus:ring-1 transition-all';
+  const labelBase = 'block text-[10px] font-black text-[#9C9490] mb-1 uppercase tracking-wider';
 
   return (
-    <div className="space-y-5 pb-16">
+    <div className="space-y-4 pb-16">
 
       {/* ━━━━━━━━━━━━━━━━━━━━━━ ① 基本情報 ━━━━━━━━━━━━━━━━━━━━━━ */}
-      <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="bg-slate-900 text-white px-5 py-3 flex items-center gap-2">
-          <FileText className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-          <h2 className="text-xs font-extrabold tracking-wide">① 基本情報</h2>
-          <span className="text-[9px] text-slate-400 ml-auto">品番・品名・ロット・重量</span>
+      <section className="bg-white rounded border border-[#D6D0C8] overflow-hidden">
+        <div className="bg-[#18130F] text-white px-4 sm:px-5 py-2.5 flex items-center gap-2 border-b-2 border-[#B5451B]">
+          <FileText className="w-3.5 h-3.5 text-[#F8C9BB] shrink-0" />
+          <h2 className="text-xs font-black tracking-wide">① 基本情報</h2>
+          <span className="text-[9px] text-[#9C9490] ml-auto">品番・品名・ロット・重量</span>
         </div>
         <div className="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
           <div className="lg:col-span-2">
-            <label className="block text-[10px] font-extrabold text-slate-500 mb-1 uppercase tracking-wider">品番 <span className="text-rose-500">*</span></label>
+            <label className={labelBase}>品番 <span className="text-[#B5451B]">*</span></label>
             <input
               type="text"
               value={newEstimate.partNumber}
               onChange={(e) => updateCommonMeta('partNumber', e.target.value)}
               placeholder="例: 66-13401-09100-02"
-              className={`w-full px-3 py-2 text-xs font-mono font-bold rounded-lg border outline-none focus:ring-2 transition-all ${fld(isEmptyStr(newEstimate.partNumber))}`}
+              className={`${inputBase} ${fld(isEmptyStr(newEstimate.partNumber))}`}
             />
           </div>
           <div className="lg:col-span-2">
-            <label className="block text-[10px] font-extrabold text-slate-500 mb-1 uppercase tracking-wider">品名</label>
+            <label className={labelBase}>品名</label>
             <input
               type="text"
               value={newEstimate.partName ?? ''}
               onChange={(e) => updateCommonMeta('partName', e.target.value)}
               placeholder="例: 板金プレスブラケット"
-              className={`w-full px-3 py-2 text-xs font-bold rounded-lg border outline-none focus:ring-2 transition-all ${fld(isEmptyStr(newEstimate.partName))}`}
+              className={`w-full px-3 py-2 text-xs font-bold rounded border outline-none focus:ring-1 transition-all ${fld(isEmptyStr(newEstimate.partName))}`}
             />
           </div>
           <div>
-            <label className="block text-[10px] font-extrabold text-slate-500 mb-1 uppercase tracking-wider">完成品重量 <span className="text-rose-500">*</span></label>
+            <label className={labelBase}>完成品重量 <span className="text-[#B5451B]">*</span></label>
             <div className="relative">
               <input
                 type="number"
                 value={newEstimate.finishedWeightG || ''}
                 onChange={(e) => updateCommonMeta('finishedWeightG', parseFloat(e.target.value) || 0)}
                 placeholder="180"
-                className={`w-full pl-3 pr-8 py-2 text-xs font-mono font-bold rounded-lg border outline-none focus:ring-2 transition-all ${fld(isEmptyNum(newEstimate.finishedWeightG))}`}
+                className={`w-full pl-3 pr-8 py-2 text-xs font-mono font-bold rounded border outline-none focus:ring-1 transition-all ${fld(isEmptyNum(newEstimate.finishedWeightG))}`}
               />
-              <span className="absolute right-2.5 top-2 text-[9px] text-slate-400 pointer-events-none">g</span>
+              <span className="absolute right-2.5 top-2 text-[9px] text-[#9C9490] pointer-events-none">g</span>
             </div>
           </div>
           <div>
-            <label className="block text-[10px] font-extrabold text-emerald-600 mb-1 uppercase tracking-wider">🔗 新旧共通</label>
-            <div className="text-[10px] text-slate-400 py-2 px-3 border border-slate-100 rounded-lg bg-slate-50">
+            <label className="block text-[10px] font-black text-[#B5451B] mb-1 uppercase tracking-wider">新旧共通</label>
+            <div className="text-[10px] text-[#9C9490] py-2 px-3 border border-[#D6D0C8] rounded bg-[#F7F6F2]">
               品番・品名・完成品重量は新旧で同期されます
             </div>
           </div>
 
-          {/* 品番履歴パネル */}
           {historyScenarios.length > 0 && (
-            <div className="col-span-full mt-1 p-3 bg-blue-50 border border-blue-200 rounded-xl">
+            <div className="col-span-full mt-1 p-3 bg-[#FEF0EB] border border-[#F8C9BB] rounded">
               <div className="flex items-center gap-2 mb-2">
-                <History className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                <span className="text-[10px] font-extrabold text-blue-800">
+                <History className="w-3.5 h-3.5 text-[#B5451B] shrink-0" />
+                <span className="text-[10px] font-black text-[#B5451B]">
                   この品番の保存済み見積が {historyScenarios.length} 件あります — 読み込むと現在の入力が上書きされます
                 </span>
               </div>
               <div className="space-y-1.5">
                 {historyScenarios.map((s) => (
-                  <div key={s.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-blue-100 gap-3">
+                  <div key={s.id} className="flex items-center justify-between bg-white rounded px-3 py-2 border border-[#F8C9BB] gap-3">
                     <div className="min-w-0">
-                      <span className="text-xs font-bold text-slate-800 truncate block">{s.name}</span>
-                      <span className="text-[10px] text-slate-400">
+                      <span className="text-xs font-bold text-[#18130F] truncate block">{s.name}</span>
+                      <span className="text-[10px] text-[#9C9490]">
                         旧: ¥{s.oldEstimate.adjustments.targetUnitPrice.toLocaleString()} → 新: ¥{s.newEstimate.adjustments.targetUnitPrice.toLocaleString()}
                         {s.updatedAt?.seconds && (
-                          <span className="ml-2">
-                            {new Date(s.updatedAt.seconds * 1000).toLocaleDateString('ja-JP')}
-                          </span>
+                          <span className="ml-2">{new Date(s.updatedAt.seconds * 1000).toLocaleDateString('ja-JP')}</span>
                         )}
                       </span>
                     </div>
                     <button
                       onClick={() => onLoadHistory?.(s.id)}
-                      className="shrink-0 text-[10px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-md px-2.5 py-1 transition-all cursor-pointer"
+                      className="shrink-0 text-[10px] font-bold text-[#B5451B] hover:text-[#8A3215] bg-white hover:bg-[#FEF0EB] border border-[#D6D0C8] hover:border-[#F8C9BB] rounded px-2.5 py-1 transition-all cursor-pointer"
                     >
                       読み込む
                     </button>
@@ -431,65 +374,65 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       </section>
 
       {/* ━━━━━━━━━━━━━━━━━━━━━━ ② 共通諸元 ━━━━━━━━━━━━━━━━━━━━━━ */}
-      <section className="bg-white rounded-2xl border border-emerald-200 shadow-sm overflow-hidden">
-        <div className="bg-emerald-900 text-white px-5 py-3 flex items-center gap-2">
-          <Lock className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
-          <h2 className="text-xs font-extrabold tracking-wide">② 共通諸元</h2>
-          <span className="ml-2 text-[9px] bg-emerald-700 px-2 py-0.5 rounded font-bold">🔁 新旧同期 — 変更すると両側に即反映</span>
+      <section className="bg-white rounded border border-[#D6D0C8] overflow-hidden">
+        <div className="bg-[#18130F] text-white px-4 sm:px-5 py-2.5 flex items-center gap-2 border-b-2 border-[#B5451B]">
+          <Lock className="w-3.5 h-3.5 text-[#F8C9BB] shrink-0" />
+          <h2 className="text-xs font-black tracking-wide">② 共通諸元</h2>
+          <span className="ml-2 text-[9px] bg-[#B5451B] px-2 py-0.5 rounded font-black">新旧同期 — 変更すると両側に即反映</span>
         </div>
         <div className="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
           <div className="col-span-full sm:col-span-2">
-            <label className="block text-[10px] font-extrabold text-slate-500 mb-1 uppercase tracking-wider">材質・規格</label>
+            <label className={labelBase}>材質・規格</label>
             <input
               type="text"
               value={newEstimate.material.materialName}
               onChange={(e) => updateCommonMaterialMeta('materialName', e.target.value)}
               placeholder="例: SPCC コイル鋼板 t2.0"
-              className={`w-full px-3 py-2 text-xs font-bold rounded-lg border outline-none focus:ring-2 transition-all ${fld(isEmptyStr(newEstimate.material.materialName))}`}
+              className={`w-full px-3 py-2 text-xs font-bold rounded border outline-none focus:ring-1 transition-all ${fld(isEmptyStr(newEstimate.material.materialName))}`}
             />
           </div>
           <div>
-            <label className="block text-[10px] font-extrabold text-slate-500 mb-1 uppercase tracking-wider">材料投入量 <span className="text-rose-500">*</span></label>
+            <label className={labelBase}>材料投入量 <span className="text-[#B5451B]">*</span></label>
             <div className="relative">
               <input
                 type="number"
                 value={newEstimate.material.inputWeightG || ''}
                 onChange={(e) => updateCommonMaterialMeta('inputWeightG', e.target.value)}
                 placeholder="220"
-                className={`w-full pl-3 pr-8 py-2 text-xs font-mono rounded-lg border outline-none focus:ring-2 transition-all ${fld(isEmptyNum(newEstimate.material.inputWeightG))}`}
+                className={`w-full pl-3 pr-8 py-2 text-xs font-mono rounded border outline-none focus:ring-1 transition-all ${fld(isEmptyNum(newEstimate.material.inputWeightG))}`}
               />
-              <span className="absolute right-2.5 top-2 text-[9px] text-slate-400 pointer-events-none">g</span>
+              <span className="absolute right-2.5 top-2 text-[9px] text-[#9C9490] pointer-events-none">g</span>
             </div>
           </div>
           <div>
-            <label className="block text-[10px] font-extrabold text-slate-500 mb-1 uppercase tracking-wider">スクラップ重量</label>
+            <label className={labelBase}>スクラップ重量</label>
             <div className="relative">
               <input
                 type="number"
                 value={newEstimate.material.scrapWeightG || ''}
                 onChange={(e) => updateCommonMaterialMeta('scrapWeightG', e.target.value)}
                 placeholder="40"
-                className="w-full pl-3 pr-8 py-2 text-xs font-mono rounded-lg border border-slate-200 bg-white outline-none focus:ring-2 focus:border-emerald-500 focus:ring-emerald-500/15 transition-all"
+                className="w-full pl-3 pr-8 py-2 text-xs font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#B5451B] focus:ring-[#B5451B]/15 transition-all"
               />
-              <span className="absolute right-2.5 top-2 text-[9px] text-slate-400 pointer-events-none">g</span>
+              <span className="absolute right-2.5 top-2 text-[9px] text-[#9C9490] pointer-events-none">g</span>
             </div>
           </div>
           <div>
-            <label className="block text-[10px] font-extrabold text-slate-500 mb-1 uppercase tracking-wider">箱入り数 <span className="text-rose-500">*</span></label>
+            <label className={labelBase}>箱入り数 <span className="text-[#B5451B]">*</span></label>
             <div className="relative">
               <input
                 type="number"
                 value={newEstimate.logistics.qtyPerBox || ''}
                 onChange={(e) => updateCommonLogistics(e.target.value)}
                 placeholder="10"
-                className={`w-full pl-3 pr-8 py-2 text-xs font-mono rounded-lg border outline-none focus:ring-2 transition-all ${fld(isEmptyNum(newEstimate.logistics.qtyPerBox))}`}
+                className={`w-full pl-3 pr-16 py-2 text-xs font-mono rounded border outline-none focus:ring-1 transition-all ${fld(isEmptyNum(newEstimate.logistics.qtyPerBox))}`}
               />
-              <span className="absolute right-2.5 top-2 text-[9px] text-slate-400 pointer-events-none">個/箱</span>
+              <span className="absolute right-2.5 top-2 text-[9px] text-[#9C9490] pointer-events-none">個/箱</span>
             </div>
           </div>
           <div>
-            <label className="block text-[10px] font-extrabold text-slate-500 mb-1 uppercase tracking-wider">製造ロット</label>
-            <p className="text-[10px] text-slate-400 py-2 px-3 border border-slate-100 rounded-lg bg-slate-50">
+            <label className={labelBase}>製造ロット</label>
+            <p className="text-[10px] text-[#9C9490] py-2 px-3 border border-[#D6D0C8] rounded bg-[#F7F6F2]">
               ロットは旧・新それぞれ④で設定
             </p>
           </div>
@@ -497,19 +440,19 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       </section>
 
       {/* ━━━━━━━━━━━━━━━━━━━━━━ ③ 工程マスタ ━━━━━━━━━━━━━━━━━━━━━━ */}
-      <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="bg-indigo-950 text-white px-5 py-3 flex items-center justify-between gap-3">
+      <section className="bg-white rounded border border-[#D6D0C8] overflow-hidden">
+        <div className="bg-[#18130F] text-white px-4 sm:px-5 py-2.5 flex items-center justify-between gap-3 border-b-2 border-[#B5451B]">
           <div className="flex items-center gap-2">
-            <BarChart3 className="w-3.5 h-3.5 text-indigo-300 shrink-0" />
+            <BarChart3 className="w-3.5 h-3.5 text-[#F8C9BB] shrink-0" />
             <div>
-              <h2 className="text-xs font-extrabold tracking-wide">③ 工程マスタ</h2>
-              <p className="text-[9px] text-indigo-400">出来高・段取・実賃率は新旧同期 / 賃率は④で各側ごとに設定</p>
+              <h2 className="text-xs font-black tracking-wide">③ 工程マスタ</h2>
+              <p className="text-[9px] text-[#9C9490]">出来高・段取・実賃率は新旧同期 / 賃率は④で各側ごとに設定</p>
             </div>
           </div>
           <button
             onClick={handleInferProcessParams}
             disabled={isInferring}
-            className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-[10px] font-bold px-2.5 sm:px-3 py-1.5 rounded-lg disabled:opacity-50 flex items-center gap-1.5 shrink-0 transition-all cursor-pointer min-h-[36px]"
+            className="bg-[#1E3A5F] hover:bg-[#2A4F7C] active:bg-[#162D4A] text-white text-[10px] font-bold px-2.5 sm:px-3 py-1.5 rounded disabled:opacity-50 flex items-center gap-1.5 shrink-0 transition-all cursor-pointer min-h-[32px] border border-[#2A4F7C]"
           >
             <Sparkles className={`w-3 h-3 shrink-0 ${isInferring ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">{isInferring ? 'AI推定中...' : 'AI出来高・賃率を自動設定'}</span>
@@ -519,125 +462,118 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-xs min-w-[640px]">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500 font-extrabold uppercase tracking-wider">
+              <tr className="bg-[#F0EDE8] border-b border-[#D6D0C8] text-[10px] text-[#9C9490] font-black uppercase tracking-wider">
                 <th className="py-2.5 px-3 text-center w-10">No</th>
                 <th className="py-2.5 px-3 text-left w-40">工程名</th>
                 <th className="py-2.5 px-3 text-left">作業内容</th>
-                <th className="py-2.5 px-3 text-right w-32 text-emerald-700 bg-emerald-500/5">主入力値</th>
+                <th className="py-2.5 px-3 text-right w-32 text-[#B5451B] bg-[#FEF0EB]">主入力値</th>
                 <th className="py-2.5 px-3 text-right w-28">段取 (h)</th>
-                <th className="py-2.5 px-3 text-right w-32 text-indigo-600">実態賃率 (/h)</th>
+                <th className="py-2.5 px-3 text-right w-32 text-[#1E3A5F]">実態賃率 (/h)</th>
                 <th className="py-2.5 px-3 text-center w-20">種別</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-[#EEEBE6]">
               {newEstimate.processes.map((proc) => {
-                  const mode = getCalcMode(proc);
-                  const modeStyle: Record<string, string> = {
-                    standard: 'hover:bg-slate-50/60',
-                    kg:       'bg-blue-50/40 hover:bg-blue-50/70',
-                    lump:     'bg-purple-50/40 hover:bg-purple-50/70',
-                    direct:   'bg-amber-50/50 hover:bg-amber-50',
-                  };
-                  const modeLabel: Record<string, string> = {
-                    standard: '加工費',
-                    kg:       'kg単価',
-                    lump:     '一式',
-                    direct:   '外注費',
-                  };
-                  const modeBtnStyle: Record<string, string> = {
-                    standard: 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200',
-                    kg:       'bg-blue-100 text-blue-800 border-blue-300 hover:bg-blue-200',
-                    lump:     'bg-purple-100 text-purple-800 border-purple-300 hover:bg-purple-200',
-                    direct:   'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200',
-                  };
-                  return (
-                    <tr key={proc.index} className={`transition-colors ${modeStyle[mode]}`}>
-                      <td className="py-2 px-3 text-center font-mono text-slate-400 text-[10px] select-none">#{proc.index}</td>
-                      <td className="py-1.5 px-2">
-                        <input
-                          type="text"
-                          value={proc.processName}
-                          onChange={(e) => updateCommonProcessMeta(proc.index, 'processName', e.target.value)}
-                          placeholder="工程名"
-                          className="w-full px-2.5 py-1.5 text-xs font-bold rounded-md border border-slate-200 bg-white outline-none transition-all focus:ring-1 focus:border-emerald-400"
-                        />
-                      </td>
-                      <td className="py-1.5 px-2">
-                        <input
-                          type="text"
-                          value={proc.workContent}
-                          onChange={(e) => updateCommonProcessMeta(proc.index, 'workContent', e.target.value)}
-                          placeholder="例: 300tプレス、金型No.P-12"
-                          className="w-full px-2.5 py-1.5 text-xs text-slate-600 rounded-md border border-slate-200 bg-white outline-none transition-all focus:ring-1 focus:border-emerald-400"
-                        />
-                      </td>
-                      {/* 出来高 or kg単価 or 一式金額 or 直接単価 */}
-                      <td className="py-1.5 px-2 bg-emerald-500/5">
-                        {mode === 'direct' && (
-                          <div className="relative">
-                            <input type="number" value={proc.directProcessingCost || ''} onChange={(e) => updateCommonProcessMeta(proc.index, 'directProcessingCost', e.target.value)} placeholder="0"
-                              className="w-full pl-2 pr-14 py-1.5 text-xs font-mono text-amber-800 font-bold rounded-md border border-amber-300 bg-white outline-none focus:ring-1 focus:border-amber-400" />
-                            <span className="absolute right-2 top-1.5 text-[9px] text-amber-600 pointer-events-none font-bold">円/個</span>
-                          </div>
-                        )}
-                        {mode === 'kg' && (
-                          <div className="relative">
-                            <input type="number" value={proc.kgPrice || ''} onChange={(e) => updateCommonProcessMeta(proc.index, 'kgPrice', e.target.value)} placeholder="0"
-                              className="w-full pl-2 pr-14 py-1.5 text-xs font-mono text-blue-800 font-bold rounded-md border border-blue-300 bg-white outline-none focus:ring-1 focus:border-blue-400" />
-                            <span className="absolute right-2 top-1.5 text-[9px] text-blue-600 pointer-events-none font-bold">円/kg</span>
-                          </div>
-                        )}
-                        {mode === 'lump' && (
-                          <div className="relative">
-                            <input type="number" value={proc.lumpSumPrice || ''} onChange={(e) => updateCommonProcessMeta(proc.index, 'lumpSumPrice', e.target.value)} placeholder="0"
-                              className="w-full pl-2 pr-16 py-1.5 text-xs font-mono text-purple-800 font-bold rounded-md border border-purple-300 bg-white outline-none focus:ring-1 focus:border-purple-400" />
-                            <span className="absolute right-1 top-1.5 text-[9px] text-purple-600 pointer-events-none font-bold">円/lot</span>
-                          </div>
-                        )}
-                        {mode === 'standard' && (
-                          <div className="relative">
-                            <input type="number" value={proc.yieldPerHour || ''} onChange={(e) => updateCommonProcessMeta(proc.index, 'yieldPerHour', e.target.value)} placeholder="0"
-                              className={`w-full pl-2 pr-10 py-1.5 text-xs font-mono rounded-md border outline-none focus:ring-1 ${proc.processName && !proc.yieldPerHour ? 'border-amber-300 bg-amber-50 focus:border-amber-400' : 'border-emerald-300 bg-white focus:border-emerald-500'}`} />
-                            <span className="absolute right-2 top-1.5 text-[9px] text-emerald-600 pointer-events-none font-bold">個/h</span>
-                          </div>
-                        )}
-                      </td>
-                      {/* 段取り時間（standard のみ） */}
-                      <td className="py-1.5 px-2">
-                        {mode === 'standard' ? (
-                          <div className="relative">
-                            <input type="number" value={proc.totalHours || ''} onChange={(e) => updateCommonProcessMeta(proc.index, 'totalHours', e.target.value)} placeholder="0" step="any"
-                              className="w-full pl-2 pr-6 py-1.5 text-xs font-mono rounded-md border border-slate-200 bg-white outline-none focus:ring-1 focus:border-emerald-400" />
-                            <span className="absolute right-2 top-1.5 text-[9px] text-slate-400 pointer-events-none">h</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-center h-8 text-[10px] text-slate-300 bg-slate-50 rounded-md border border-slate-100 select-none">—</div>
-                        )}
-                      </td>
-                      {/* 実賃率（standard のみ） */}
-                      <td className="py-1.5 px-2">
-                        {mode === 'standard' ? (
-                          <div className="relative">
-                            <input type="number" value={proc.actualHourlyRate || ''} onChange={(e) => updateCommonProcessMeta(proc.index, 'actualHourlyRate', e.target.value)} placeholder="実際賃率"
-                              className="w-full pl-2 pr-12 py-1.5 text-xs font-mono font-bold text-indigo-900 rounded-md border border-indigo-200 bg-white outline-none focus:ring-1 focus:border-indigo-400" />
-                            <span className="absolute right-2 top-1.5 text-[9px] text-indigo-500 pointer-events-none font-bold">円/h</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-center h-8 text-[10px] text-slate-300 bg-slate-50 rounded-md border border-slate-100 select-none">—</div>
-                        )}
-                      </td>
-                      {/* 種別ボタン（タップで切り替え） */}
-                      <td className="py-1.5 px-2 text-center">
-                        <button
-                          onClick={() => cycleCalcMode(proc.index, mode)}
-                          title="タップで切替: 加工費→kg単価→一式→外注費"
-                          className={`text-[9px] px-2 py-1 rounded-full font-bold border transition-all cursor-pointer w-full ${modeBtnStyle[mode]}`}
-                        >
-                          {modeLabel[mode]}
-                        </button>
-                      </td>
-                    </tr>
-                  );
+                const mode = getCalcMode(proc);
+                const modeRowStyle: Record<string, string> = {
+                  standard: 'hover:bg-[#F7F6F2]/60',
+                  kg:       'bg-[#EFF4FD]/40 hover:bg-[#EFF4FD]/70',
+                  lump:     'bg-purple-50/40 hover:bg-purple-50/70',
+                  direct:   'bg-[#FEF0EB]/50 hover:bg-[#FEF0EB]',
+                };
+                const modeLabel: Record<string, string> = {
+                  standard: '加工費', kg: 'kg単価', lump: '一式', direct: '外注費',
+                };
+                const modeBtnStyle: Record<string, string> = {
+                  standard: 'bg-[#F0EDE8] text-[#6B6057] border-[#D6D0C8] hover:bg-[#E8E3DC]',
+                  kg:       'bg-[#EFF4FD] text-[#1E3A5F] border-[#93B4D9] hover:bg-[#D9E9F8]',
+                  lump:     'bg-purple-100 text-purple-800 border-purple-300 hover:bg-purple-200',
+                  direct:   'bg-[#FEF0EB] text-[#B5451B] border-[#F8C9BB] hover:bg-[#FDE6DC]',
+                };
+                return (
+                  <tr key={proc.index} className={`transition-colors ${modeRowStyle[mode]}`}>
+                    <td className="py-2 px-3 text-center font-mono text-[#9C9490] text-[10px] select-none">#{proc.index}</td>
+                    <td className="py-1.5 px-2">
+                      <input
+                        type="text"
+                        value={proc.processName}
+                        onChange={(e) => updateCommonProcessMeta(proc.index, 'processName', e.target.value)}
+                        placeholder="工程名"
+                        className="w-full px-2.5 py-1.5 text-xs font-bold rounded border border-[#D6D0C8] bg-white outline-none transition-all focus:ring-1 focus:border-[#B5451B]"
+                      />
+                    </td>
+                    <td className="py-1.5 px-2">
+                      <input
+                        type="text"
+                        value={proc.workContent}
+                        onChange={(e) => updateCommonProcessMeta(proc.index, 'workContent', e.target.value)}
+                        placeholder="例: 300tプレス、金型No.P-12"
+                        className="w-full px-2.5 py-1.5 text-xs text-[#6B6057] rounded border border-[#D6D0C8] bg-white outline-none transition-all focus:ring-1 focus:border-[#B5451B]"
+                      />
+                    </td>
+                    <td className="py-1.5 px-2 bg-[#FEF0EB]/30">
+                      {mode === 'direct' && (
+                        <div className="relative">
+                          <input type="number" value={proc.directProcessingCost || ''} onChange={(e) => updateCommonProcessMeta(proc.index, 'directProcessingCost', e.target.value)} placeholder="0"
+                            className="w-full pl-2 pr-14 py-1.5 text-xs font-mono text-[#B5451B] font-bold rounded border border-[#F8C9BB] bg-white outline-none focus:ring-1 focus:border-[#B5451B]" />
+                          <span className="absolute right-2 top-1.5 text-[9px] text-[#B5451B] pointer-events-none font-bold">円/個</span>
+                        </div>
+                      )}
+                      {mode === 'kg' && (
+                        <div className="relative">
+                          <input type="number" value={proc.kgPrice || ''} onChange={(e) => updateCommonProcessMeta(proc.index, 'kgPrice', e.target.value)} placeholder="0"
+                            className="w-full pl-2 pr-14 py-1.5 text-xs font-mono text-[#1E3A5F] font-bold rounded border border-[#93B4D9] bg-white outline-none focus:ring-1 focus:border-[#1E3A5F]" />
+                          <span className="absolute right-2 top-1.5 text-[9px] text-[#1E3A5F] pointer-events-none font-bold">円/kg</span>
+                        </div>
+                      )}
+                      {mode === 'lump' && (
+                        <div className="relative">
+                          <input type="number" value={proc.lumpSumPrice || ''} onChange={(e) => updateCommonProcessMeta(proc.index, 'lumpSumPrice', e.target.value)} placeholder="0"
+                            className="w-full pl-2 pr-16 py-1.5 text-xs font-mono text-purple-800 font-bold rounded border border-purple-300 bg-white outline-none focus:ring-1 focus:border-purple-400" />
+                          <span className="absolute right-1 top-1.5 text-[9px] text-purple-600 pointer-events-none font-bold">円/lot</span>
+                        </div>
+                      )}
+                      {mode === 'standard' && (
+                        <div className="relative">
+                          <input type="number" value={proc.yieldPerHour || ''} onChange={(e) => updateCommonProcessMeta(proc.index, 'yieldPerHour', e.target.value)} placeholder="0"
+                            className={`w-full pl-2 pr-10 py-1.5 text-xs font-mono rounded border outline-none focus:ring-1 ${proc.processName && !proc.yieldPerHour ? 'border-[#F8C9BB] bg-[#FEF0EB] focus:border-[#B5451B]' : 'border-[#D6D0C8] bg-white focus:border-[#B5451B]'}`} />
+                          <span className="absolute right-2 top-1.5 text-[9px] text-[#9C9490] pointer-events-none font-bold">個/h</span>
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-1.5 px-2">
+                      {mode === 'standard' ? (
+                        <div className="relative">
+                          <input type="number" value={proc.totalHours || ''} onChange={(e) => updateCommonProcessMeta(proc.index, 'totalHours', e.target.value)} placeholder="0" step="any"
+                            className="w-full pl-2 pr-6 py-1.5 text-xs font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#B5451B]" />
+                          <span className="absolute right-2 top-1.5 text-[9px] text-[#9C9490] pointer-events-none">h</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center h-8 text-[10px] text-[#D6D0C8] bg-[#F7F6F2] rounded border border-[#EEEBE6] select-none">—</div>
+                      )}
+                    </td>
+                    <td className="py-1.5 px-2">
+                      {mode === 'standard' ? (
+                        <div className="relative">
+                          <input type="number" value={proc.actualHourlyRate || ''} onChange={(e) => updateCommonProcessMeta(proc.index, 'actualHourlyRate', e.target.value)} placeholder="実際賃率"
+                            className="w-full pl-2 pr-12 py-1.5 text-xs font-mono font-bold text-[#1E3A5F] rounded border border-[#C5D8EE] bg-white outline-none focus:ring-1 focus:border-[#1E3A5F]" />
+                          <span className="absolute right-2 top-1.5 text-[9px] text-[#1E3A5F] pointer-events-none font-bold">円/h</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center h-8 text-[10px] text-[#D6D0C8] bg-[#F7F6F2] rounded border border-[#EEEBE6] select-none">—</div>
+                      )}
+                    </td>
+                    <td className="py-1.5 px-2 text-center">
+                      <button
+                        onClick={() => cycleCalcMode(proc.index, mode)}
+                        title="タップで切替: 加工費→kg単価→一式→外注費"
+                        className={`text-[9px] px-2 py-1 rounded font-bold border transition-all cursor-pointer w-full ${modeBtnStyle[mode]}`}
+                      >
+                        {modeLabel[mode]}
+                      </button>
+                    </td>
+                  </tr>
+                );
               })}
             </tbody>
           </table>
@@ -645,42 +581,41 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       </section>
 
       {/* ━━━━━━━━━━━━━━━━━━━━━━ ④ 新旧対比 ━━━━━━━━━━━━━━━━━━━━━━ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
         {([false, true] as const).map((isNew) => {
           const est = isNew ? newEstimate : oldEstimate;
           const calc = isNew ? newCalc : oldCalc;
-          const headerBg = isNew ? 'bg-[#107C41]' : 'bg-slate-700';
-          const borderCls = isNew ? 'border-emerald-300' : 'border-slate-300';
+          const headerBg = isNew ? 'bg-[#1E3A5F]' : 'bg-[#18130F]';
+          const borderCls = isNew ? 'border-[#93B4D9]' : 'border-[#B8B0A6]';
+          const borderTopAccent = isNew ? 'border-b-2 border-b-[#93B4D9]' : 'border-b-2 border-b-[#B5451B]';
           const label = isNew ? '🆕 新単価' : '📋 旧単価';
           const labelSub = isNew ? '新仕入れ単価をもとに新売値を設定' : '現行仕入れ・現行売値の確認';
-          const totalColor = isNew ? 'text-[#107C41]' : 'text-slate-800';
+          const totalColor = isNew ? 'text-[#1E3A5F]' : 'text-[#18130F]';
 
           return (
-            <div key={String(isNew)} className={`bg-white rounded-2xl border-2 ${borderCls} shadow-sm overflow-hidden`}>
+            <div key={String(isNew)} className={`bg-white rounded border-2 ${borderCls} overflow-hidden`}>
 
-              {/* Panel header with live total */}
-              <div className={`${headerBg} text-white px-4 sm:px-5 py-3 sm:py-3.5 flex items-center justify-between`}>
+              <div className={`${headerBg} text-white px-4 sm:px-5 py-3 sm:py-3.5 flex items-center justify-between ${borderTopAccent}`}>
                 <div>
-                  <h3 className="text-sm font-extrabold">{label}</h3>
-                  <p className="text-[10px] opacity-70">{labelSub}</p>
+                  <h3 className="text-sm font-black">{label}</h3>
+                  <p className="text-[10px] opacity-60">{labelSub}</p>
                 </div>
                 <div className="text-right">
-                  <div className="text-[10px] opacity-60">現在の見積単価</div>
+                  <div className="text-[10px] opacity-50">現在の見積単価</div>
                   <div className="text-xl font-black font-mono">¥{calc.grandTotalUnitPrice.toFixed(0)}</div>
                 </div>
               </div>
 
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y divide-[#EEEBE6]">
 
-                {/* ─── 価格目標 ─── */}
+                {/* 価格目標 */}
                 <div className="p-4 sm:p-5 space-y-3">
-                  <h4 className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <h4 className="text-[10px] font-black text-[#9C9490] uppercase tracking-wider flex items-center gap-1.5">
                     <Coins className="w-3.5 h-3.5" /> 価格目標
                   </h4>
 
-                  {/* 製造ロット (side-specific) */}
                   <div className="flex items-center gap-3">
-                    <label className="text-[10px] font-bold text-slate-600 w-24 sm:w-28 shrink-0">製造ロット</label>
+                    <label className="text-[10px] font-bold text-[#6B6057] w-24 sm:w-28 shrink-0">製造ロット</label>
                     <div className="relative flex-1">
                       <input
                         type="number"
@@ -689,53 +624,50 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                           const v = Math.max(1, parseInt(e.target.value) || 1);
                           isNew ? onChangeNew({ ...est, baseLotSize: v }) : onChangeOld({ ...est, baseLotSize: v });
                         }}
-                        className="w-full pl-3 pr-14 py-1.5 text-xs font-mono rounded-lg border border-slate-200 bg-white outline-none focus:ring-1 focus:border-emerald-400 transition-all"
+                        className="w-full pl-3 pr-14 py-1.5 text-xs font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#B5451B] transition-all"
                       />
-                      <span className="absolute right-2.5 top-1.5 text-[9px] text-slate-400 pointer-events-none">個/Lot</span>
+                      <span className="absolute right-2.5 top-1.5 text-[9px] text-[#9C9490] pointer-events-none">個/Lot</span>
                     </div>
                   </div>
 
-                  {/* 仕入れ実費 */}
                   <div className="flex items-center gap-3">
-                    <label className="text-[10px] font-bold text-indigo-700 w-24 sm:w-28 shrink-0">
+                    <label className="text-[10px] font-bold text-[#1E3A5F] w-24 sm:w-28 shrink-0">
                       {isNew ? '新' : ''}仕入れ実費
-                      <span className="text-[8px] text-indigo-400 block font-normal">社内のみ</span>
+                      <span className="text-[8px] text-[#93B4D9] block font-normal">社内のみ</span>
                     </label>
                     <div className="relative flex-1">
-                      <span className="absolute left-2.5 top-1.5 text-[10px] text-slate-400">¥</span>
+                      <span className="absolute left-2.5 top-1.5 text-[10px] text-[#9C9490]">¥</span>
                       <input
                         type="number"
                         value={est.adjustments.actualPurchasePrice || ''}
                         onChange={(e) => updateAdjustments(isNew, 'actualPurchasePrice', e.target.value)}
                         placeholder="実際の仕入れ単価"
-                        className="w-full pl-6 pr-3 py-1.5 text-xs font-mono text-indigo-900 rounded-lg border border-indigo-200 bg-indigo-50/30 outline-none focus:ring-1 focus:border-indigo-400 transition-all"
+                        className="w-full pl-6 pr-3 py-1.5 text-xs font-mono text-[#1E3A5F] rounded border border-[#C5D8EE] bg-[#EFF4FD]/30 outline-none focus:ring-1 focus:border-[#1E3A5F] transition-all"
                       />
                     </div>
                   </div>
 
-                  {/* 売値 */}
                   <div className="flex items-center gap-3">
-                    <label className="text-[10px] font-extrabold text-slate-800 w-24 sm:w-28 shrink-0">
-                      {isNew ? '目標' : '現行'}売値 <span className="text-rose-500">*</span>
-                      <span className="text-[8px] text-slate-400 block font-normal">客提示価格</span>
+                    <label className="text-[10px] font-black text-[#18130F] w-24 sm:w-28 shrink-0">
+                      {isNew ? '目標' : '現行'}売値 <span className="text-[#B5451B]">*</span>
+                      <span className="text-[8px] text-[#9C9490] block font-normal">客提示価格</span>
                     </label>
                     <div className="relative flex-1">
-                      <span className="absolute left-2.5 top-1.5 text-[10px] text-slate-400">¥</span>
+                      <span className="absolute left-2.5 top-1.5 text-[10px] text-[#9C9490]">¥</span>
                       <input
                         type="number"
                         value={est.adjustments.targetUnitPrice || ''}
                         onChange={(e) => updateAdjustments(isNew, 'targetUnitPrice', e.target.value)}
                         placeholder={isNew ? "新しい売値を入力" : "現行売値"}
-                        className={`w-full pl-6 pr-3 py-2 text-sm font-mono font-extrabold rounded-lg border outline-none focus:ring-2 transition-all ${fld(isEmptyNum(est.adjustments.targetUnitPrice))}`}
+                        className={`w-full pl-6 pr-3 py-2 text-sm font-mono font-black rounded border outline-none focus:ring-2 transition-all ${fld(isEmptyNum(est.adjustments.targetUnitPrice))}`}
                       />
                     </div>
                   </div>
 
-                  {/* 最低利益率 */}
                   <div className="flex items-center gap-3">
-                    <label className="text-[10px] font-bold text-slate-600 w-24 sm:w-28 shrink-0">
+                    <label className="text-[10px] font-bold text-[#6B6057] w-24 sm:w-28 shrink-0">
                       最低利益率
-                      <span className="text-[8px] text-slate-400 block font-normal">外掛け下限</span>
+                      <span className="text-[8px] text-[#9C9490] block font-normal">外掛け下限</span>
                     </label>
                     <div className="relative flex-1">
                       <input
@@ -743,15 +675,14 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                         value={est.adjustments.minProfitRate ?? ''}
                         onChange={(e) => updateAdjustments(isNew, 'minProfitRate', e.target.value)}
                         placeholder="例: 25"
-                        className="w-full pl-3 pr-8 py-1.5 text-xs font-mono rounded-lg border border-slate-200 bg-white outline-none focus:ring-1 focus:border-rose-400 transition-all"
+                        className="w-full pl-3 pr-8 py-1.5 text-xs font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-rose-400 transition-all"
                       />
-                      <span className="absolute right-2.5 top-1.5 text-[9px] text-slate-400 pointer-events-none">%</span>
+                      <span className="absolute right-2.5 top-1.5 text-[9px] text-[#9C9490] pointer-events-none">%</span>
                     </div>
-                    {/* 実効外掛け率 */}
                     {est.adjustments.actualPurchasePrice > 0 && calc.grandTotalUnitPrice > 0 && (
-                      <span className={`text-[10px] font-extrabold shrink-0 ${
+                      <span className={`text-[10px] font-black shrink-0 ${
                         ((calc.grandTotalUnitPrice / est.adjustments.actualPurchasePrice - 1) * 100) >= (est.adjustments.minProfitRate || 25)
-                          ? 'text-emerald-600' : 'text-rose-600'
+                          ? 'text-[#1D5C3A]' : 'text-rose-600'
                       }`}>
                         実: {((calc.grandTotalUnitPrice / est.adjustments.actualPurchasePrice - 1) * 100).toFixed(1)}%
                       </span>
@@ -759,176 +690,171 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                   </div>
                 </div>
 
-                {/* ─── 材料単価 ─── */}
+                {/* 材料単価 */}
                 <div className="p-4 sm:p-5 space-y-3">
-                  <h4 className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <h4 className="text-[10px] font-black text-[#9C9490] uppercase tracking-wider flex items-center gap-1.5">
                     <TrendingUp className="w-3.5 h-3.5" /> 材料単価
                   </h4>
                   <div className="flex items-center gap-3">
-                    <label className="text-[10px] font-extrabold text-slate-800 w-24 sm:w-28 shrink-0">
-                      建値 (客提示) <span className="text-rose-500">*</span>
+                    <label className="text-[10px] font-black text-[#18130F] w-24 sm:w-28 shrink-0">
+                      建値 (客提示) <span className="text-[#B5451B]">*</span>
                     </label>
                     <div className="relative flex-1">
-                      <span className="absolute left-2.5 top-1.5 text-[10px] text-slate-400">¥</span>
+                      <span className="absolute left-2.5 top-1.5 text-[10px] text-[#9C9490]">¥</span>
                       <input
                         type="number"
                         value={est.material.basePricePerKg || ''}
                         onChange={(e) => updateMaterialPrice(isNew, 'basePricePerKg', e.target.value)}
                         placeholder="建値/kg"
-                        className={`w-full pl-6 pr-14 py-1.5 text-xs font-mono font-bold rounded-lg border outline-none focus:ring-1 transition-all ${fld(isEmptyNum(est.material.basePricePerKg))}`}
+                        className={`w-full pl-6 pr-14 py-1.5 text-xs font-mono font-bold rounded border outline-none focus:ring-1 transition-all ${fld(isEmptyNum(est.material.basePricePerKg))}`}
                       />
-                      <span className="absolute right-2.5 top-1.5 text-[9px] text-slate-400 pointer-events-none">円/kg</span>
+                      <span className="absolute right-2.5 top-1.5 text-[9px] text-[#9C9490] pointer-events-none">円/kg</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <label className="text-[10px] font-bold text-slate-500 w-24 sm:w-28 shrink-0">実際建値</label>
+                    <label className="text-[10px] font-bold text-[#9C9490] w-24 sm:w-28 shrink-0">実際建値</label>
                     <div className="relative flex-1">
-                      <span className="absolute left-2.5 top-1.5 text-[10px] text-slate-400">¥</span>
+                      <span className="absolute left-2.5 top-1.5 text-[10px] text-[#9C9490]">¥</span>
                       <input
                         type="number"
                         value={est.material.actualBasePricePerKg ?? ''}
                         onChange={(e) => updateMaterialPrice(isNew, 'actualBasePricePerKg', e.target.value)}
                         placeholder="仕入れ建値/kg"
-                        className="w-full pl-6 pr-14 py-1.5 text-xs font-mono text-indigo-800 rounded-lg border border-indigo-200 bg-indigo-50/30 outline-none focus:ring-1 focus:border-indigo-400 transition-all"
+                        className="w-full pl-6 pr-14 py-1.5 text-xs font-mono text-[#1E3A5F] rounded border border-[#C5D8EE] bg-[#EFF4FD]/30 outline-none focus:ring-1 focus:border-[#1E3A5F] transition-all"
                       />
-                      <span className="absolute right-2.5 top-1.5 text-[9px] text-slate-400 pointer-events-none">円/kg</span>
+                      <span className="absolute right-2.5 top-1.5 text-[9px] text-[#9C9490] pointer-events-none">円/kg</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <label className="text-[10px] font-bold text-slate-500 w-24 sm:w-28 shrink-0">スクラップ単価</label>
+                    <label className="text-[10px] font-bold text-[#9C9490] w-24 sm:w-28 shrink-0">スクラップ単価</label>
                     <div className="relative flex-1">
-                      <span className="absolute left-2.5 top-1.5 text-[10px] text-slate-400">¥</span>
+                      <span className="absolute left-2.5 top-1.5 text-[10px] text-[#9C9490]">¥</span>
                       <input
                         type="number"
                         value={est.material.scrapPricePerKg || ''}
                         onChange={(e) => updateMaterialPrice(isNew, 'scrapPricePerKg', e.target.value)}
                         placeholder="0"
-                        className="w-full pl-6 pr-14 py-1.5 text-xs font-mono rounded-lg border border-slate-200 bg-white outline-none focus:ring-1 focus:border-emerald-400 transition-all"
+                        className="w-full pl-6 pr-14 py-1.5 text-xs font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#B5451B] transition-all"
                       />
-                      <span className="absolute right-2.5 top-1.5 text-[9px] text-slate-400 pointer-events-none">円/kg</span>
+                      <span className="absolute right-2.5 top-1.5 text-[9px] text-[#9C9490] pointer-events-none">円/kg</span>
                     </div>
                   </div>
-                  <div className="text-[10px] text-slate-400 text-right">
-                    ▶ 材料費計: <strong className="font-mono text-slate-700">¥{calc.netMaterialCost.toFixed(2)}</strong>
+                  <div className="text-[10px] text-[#9C9490] text-right">
+                    ▶ 材料費計: <strong className="font-mono text-[#18130F]">¥{calc.netMaterialCost.toFixed(2)}</strong>
                   </div>
                 </div>
 
-                {/* ─── 工程賃率 ─── */}
+                {/* 工程賃率 */}
                 {est.processes.some(p => p.processName.trim()) && (
                   <div className="p-4 sm:p-5 space-y-3">
-                    <h4 className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <h4 className="text-[10px] font-black text-[#9C9490] uppercase tracking-wider flex items-center gap-1.5">
                       <Settings2 className="w-3.5 h-3.5" /> 工程賃率
-                      <span className="text-[9px] font-normal text-slate-400 normal-case ml-1">※ここだけ新旧独立</span>
+                      <span className="text-[9px] font-normal text-[#9C9490] normal-case ml-1">※ここだけ新旧独立</span>
                     </h4>
                     {est.processes.map((proc, i) => {
                       if (!proc.processName.trim()) return null;
                       const mode = getCalcMode(proc);
-                      const modeTag: Record<string, string> = { kg: 'kg', lump: '一式', direct: '外', standard: '' };
                       const rateKey: Record<string, 'hourlyRate' | 'kgPrice' | 'lumpSumPrice' | 'directProcessingCost'> = {
                         standard: 'hourlyRate', kg: 'kgPrice', lump: 'lumpSumPrice', direct: 'directProcessingCost'
                       };
                       const unit: Record<string, string> = { standard: '円/h', kg: '円/kg', lump: '円/lot', direct: '円/個' };
                       const modeLabel: Record<string, string> = { standard: '加工費', kg: 'kg単価', lump: '一式', direct: '外注費' };
                       const modeBtnStyle: Record<string, string> = {
-                        standard: 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200',
-                        kg:       'bg-blue-100 text-blue-700 border-blue-300 hover:bg-blue-200',
+                        standard: 'bg-[#F0EDE8] text-[#6B6057] border-[#D6D0C8] hover:bg-[#E8E3DC]',
+                        kg:       'bg-[#EFF4FD] text-[#1E3A5F] border-[#93B4D9] hover:bg-[#D9E9F8]',
                         lump:     'bg-purple-100 text-purple-700 border-purple-300 hover:bg-purple-200',
-                        direct:   'bg-amber-100 text-amber-700 border-amber-300 hover:bg-amber-200',
+                        direct:   'bg-[#FEF0EB] text-[#B5451B] border-[#F8C9BB] hover:bg-[#FDE6DC]',
                       };
                       const rateVal = mode === 'standard' ? proc.hourlyRate : mode === 'kg' ? proc.kgPrice : mode === 'lump' ? proc.lumpSumPrice : proc.directProcessingCost;
                       const isEmpty = isEmptyNum(rateVal);
                       return (
-                        <div key={proc.index} className="flex flex-col gap-1 pb-2 border-b border-slate-50 last:border-0 last:pb-0 sm:flex-row sm:items-center sm:gap-2 sm:border-0 sm:pb-0">
-                          {/* 行1: モードボタン + 工程名 */}
+                        <div key={proc.index} className="flex flex-col gap-1 pb-2 border-b border-[#EEEBE6] last:border-0 last:pb-0 sm:flex-row sm:items-center sm:gap-2 sm:border-0 sm:pb-0">
                           <div className="flex items-center gap-1.5">
                             <button
                               onClick={() => cycleCalcMode(proc.index, mode)}
                               title="タップで切替"
-                              className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold border transition-all cursor-pointer shrink-0 ${modeBtnStyle[mode]}`}
+                              className={`text-[8px] px-1.5 py-0.5 rounded font-bold border transition-all cursor-pointer shrink-0 ${modeBtnStyle[mode]}`}
                             >
                               {modeLabel[mode]}
                             </button>
-                            <label className="text-[10px] font-bold text-slate-700 truncate sm:w-20 sm:shrink-0" title={proc.processName}>
+                            <label className="text-[10px] font-bold text-[#18130F] truncate sm:w-20 sm:shrink-0" title={proc.processName}>
                               {proc.processName}
                             </label>
                           </div>
-                          {/* 行2: 入力欄 + 計算結果 */}
                           <div className="flex items-center gap-2 sm:flex-1">
                             <div className="relative flex-1">
-                              <span className="absolute left-2.5 top-1.5 text-[10px] text-slate-400">¥</span>
+                              <span className="absolute left-2.5 top-1.5 text-[10px] text-[#9C9490]">¥</span>
                               <input
                                 type="number"
                                 value={rateVal || ''}
                                 onChange={(e) => updateProcessRates(isNew, proc.index, rateKey[mode], e.target.value)}
                                 placeholder={unit[mode]}
-                                className={`w-full pl-6 pr-12 py-1.5 text-xs font-mono font-bold rounded-lg border outline-none focus:ring-1 transition-all ${fld(isEmpty)}`}
+                                className={`w-full pl-6 pr-12 py-1.5 text-xs font-mono font-bold rounded border outline-none focus:ring-1 transition-all ${fld(isEmpty)}`}
                               />
-                              <span className="absolute right-2 top-1.5 text-[9px] text-slate-400 pointer-events-none">
-                                {unit[mode]}
-                              </span>
+                              <span className="absolute right-2 top-1.5 text-[9px] text-[#9C9490] pointer-events-none">{unit[mode]}</span>
                             </div>
-                            <span className="text-[10px] font-mono text-slate-500 w-16 text-right shrink-0">
+                            <span className="text-[10px] font-mono text-[#6B6057] w-16 text-right shrink-0">
                               ¥{calc.processCosts[i].toFixed(1)}
                             </span>
                           </div>
                         </div>
                       );
                     })}
-                    <div className="text-[10px] text-slate-400 text-right pt-1 border-t border-slate-100">
-                      ▶ 加工費計: <strong className="font-mono text-slate-700">¥{calc.totalProcessCost.toFixed(2)}</strong>
+                    <div className="text-[10px] text-[#9C9490] text-right pt-1 border-t border-[#EEEBE6]">
+                      ▶ 加工費計: <strong className="font-mono text-[#18130F]">¥{calc.totalProcessCost.toFixed(2)}</strong>
                     </div>
                   </div>
                 )}
 
-                {/* ─── 物流費 ─── */}
+                {/* 物流費 */}
                 <div className="p-4 sm:p-5 space-y-3">
-                  <h4 className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <h4 className="text-[10px] font-black text-[#9C9490] uppercase tracking-wider flex items-center gap-1.5">
                     <Database className="w-3.5 h-3.5" /> 物流費
                   </h4>
                   <div className="flex items-center gap-3">
-                    <label className="text-[10px] font-extrabold text-slate-800 w-24 sm:w-28 shrink-0">
-                      送料 (客提示) <span className="text-rose-500">*</span>
+                    <label className="text-[10px] font-black text-[#18130F] w-24 sm:w-28 shrink-0">
+                      送料 (客提示) <span className="text-[#B5451B]">*</span>
                     </label>
                     <div className="relative flex-1">
-                      <span className="absolute left-2.5 top-1.5 text-[10px] text-slate-400">¥</span>
+                      <span className="absolute left-2.5 top-1.5 text-[10px] text-[#9C9490]">¥</span>
                       <input
                         type="number"
                         value={est.logistics.freightPerBox || ''}
                         onChange={(e) => updateLogisticsRates(isNew, 'freightPerBox', e.target.value)}
                         placeholder="送料/箱"
-                        className={`w-full pl-6 pr-8 py-1.5 text-xs font-mono font-bold rounded-lg border outline-none focus:ring-1 transition-all ${fld(isEmptyNum(est.logistics.freightPerBox))}`}
+                        className={`w-full pl-6 pr-8 py-1.5 text-xs font-mono font-bold rounded border outline-none focus:ring-1 transition-all ${fld(isEmptyNum(est.logistics.freightPerBox))}`}
                       />
-                      <span className="absolute right-2.5 top-1.5 text-[9px] text-slate-400 pointer-events-none">/箱</span>
+                      <span className="absolute right-2.5 top-1.5 text-[9px] text-[#9C9490] pointer-events-none">/箱</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <label className="text-[10px] font-bold text-slate-500 w-24 sm:w-28 shrink-0">実際送料</label>
+                    <label className="text-[10px] font-bold text-[#9C9490] w-24 sm:w-28 shrink-0">実際送料</label>
                     <div className="relative flex-1">
-                      <span className="absolute left-2.5 top-1.5 text-[10px] text-slate-400">¥</span>
+                      <span className="absolute left-2.5 top-1.5 text-[10px] text-[#9C9490]">¥</span>
                       <input
                         type="number"
                         value={est.logistics.actualFreightPerBox ?? ''}
                         onChange={(e) => updateLogisticsRates(isNew, 'actualFreightPerBox', e.target.value)}
                         placeholder="実際送料/箱"
-                        className="w-full pl-6 pr-8 py-1.5 text-xs font-mono text-indigo-800 rounded-lg border border-indigo-200 bg-indigo-50/30 outline-none focus:ring-1 focus:border-indigo-400 transition-all"
+                        className="w-full pl-6 pr-8 py-1.5 text-xs font-mono text-[#1E3A5F] rounded border border-[#C5D8EE] bg-[#EFF4FD]/30 outline-none focus:ring-1 focus:border-[#1E3A5F] transition-all"
                       />
-                      <span className="absolute right-2.5 top-1.5 text-[9px] text-slate-400 pointer-events-none">/箱</span>
+                      <span className="absolute right-2.5 top-1.5 text-[9px] text-[#9C9490] pointer-events-none">/箱</span>
                     </div>
                   </div>
-                  <div className="text-[10px] text-slate-400 text-right">
-                    ▶ 送料/個: <strong className="font-mono text-slate-700">¥{calc.shippingCostPerUnit.toFixed(2)}</strong>
+                  <div className="text-[10px] text-[#9C9490] text-right">
+                    ▶ 送料/個: <strong className="font-mono text-[#18130F]">¥{calc.shippingCostPerUnit.toFixed(2)}</strong>
                   </div>
                 </div>
 
-                {/* ─── SGA & 自動整合 ─── */}
+                {/* SGA & 自動整合 */}
                 <div className="p-4 sm:p-5 space-y-3">
-                  <h4 className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <h4 className="text-[10px] font-black text-[#9C9490] uppercase tracking-wider flex items-center gap-1.5">
                     <BarChart3 className="w-3.5 h-3.5" /> 利管費率 (SGA%)
                   </h4>
                   <div className="flex items-center gap-3">
-                    <label className="text-[10px] font-extrabold text-slate-800 w-24 sm:w-28 shrink-0">
+                    <label className="text-[10px] font-black text-[#18130F] w-24 sm:w-28 shrink-0">
                       客提示 SGA%
-                      <span className="text-[8px] text-slate-400 block font-normal">内掛け表示率</span>
+                      <span className="text-[8px] text-[#9C9490] block font-normal">内掛け表示率</span>
                     </label>
                     <div className="relative flex-1">
                       <input
@@ -937,9 +863,9 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                         onChange={(e) => updateAdjustments(isNew, 'sgaRatePercent', e.target.value)}
                         placeholder="15"
                         step="0.01"
-                        className="w-full pl-3 pr-8 py-1.5 text-xs font-mono font-bold rounded-lg border border-slate-200 bg-white outline-none focus:ring-1 focus:border-teal-400 transition-all"
+                        className="w-full pl-3 pr-8 py-1.5 text-xs font-mono font-bold rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#B5451B] transition-all"
                       />
-                      <span className="absolute right-2.5 top-1.5 text-[9px] text-slate-400 pointer-events-none">%</span>
+                      <span className="absolute right-2.5 top-1.5 text-[9px] text-[#9C9490] pointer-events-none">%</span>
                     </div>
                     {est.adjustments.sgaRatePercent !== undefined && (est.adjustments.sgaRatePercent < 5 || est.adjustments.sgaRatePercent > 30) && calc.grandTotalUnitPrice > 0 && (
                       <span className="text-rose-500 text-[9px] font-bold shrink-0 flex items-center gap-0.5">
@@ -948,34 +874,34 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                     )}
                   </div>
                   <div className="flex items-center gap-3">
-                    <label className="text-[10px] font-bold text-slate-500 w-24 sm:w-28 shrink-0">型費・特記</label>
+                    <label className="text-[10px] font-bold text-[#9C9490] w-24 sm:w-28 shrink-0">型費・特記</label>
                     <div className="relative flex-1">
-                      <span className="absolute left-2.5 top-1.5 text-[10px] text-slate-400">¥</span>
+                      <span className="absolute left-2.5 top-1.5 text-[10px] text-[#9C9490]">¥</span>
                       <input
                         type="number"
                         value={est.adjustments.toolingCost || ''}
                         onChange={(e) => updateAdjustments(isNew, 'toolingCost', e.target.value)}
                         placeholder="0"
-                        className="w-full pl-6 pr-3 py-1.5 text-xs font-mono rounded-lg border border-slate-200 bg-white outline-none focus:ring-1 focus:border-slate-400 transition-all"
+                        className="w-full pl-6 pr-3 py-1.5 text-xs font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#B5451B] transition-all"
                       />
                     </div>
                   </div>
                   <button
                     onClick={() => handleAutoReconcile(isNew)}
-                    className="w-full bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-extrabold text-[11px] py-2.5 rounded-xl border border-emerald-500 flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer mt-1"
+                    className="w-full bg-[#18130F] hover:bg-[#B5451B] active:bg-[#8A3215] text-white font-black text-[11px] py-2.5 rounded border border-[#2A2018] hover:border-[#8A3215] flex items-center justify-center gap-2 transition-all cursor-pointer mt-1"
                   >
-                    <Zap className="w-3.5 h-3.5 text-yellow-300" />
+                    <Zap className="w-3.5 h-3.5 text-[#F8C9BB]" />
                     一発自動整合 — 賃率→SGA%を目標売値に合わせて逆算
                   </button>
                 </div>
 
-                {/* ─── 計算結果サマリー ─── */}
-                <div className={`p-4 sm:p-5 ${Math.abs(calc.auditVariance) < 0.1 ? 'bg-emerald-50/60' : 'bg-amber-50/60'}`}>
+                {/* 計算結果サマリー */}
+                <div className={`p-4 sm:p-5 ${Math.abs(calc.auditVariance) < 0.1 ? 'bg-[#E8F4EE]/60' : 'bg-[#FEF0EB]/60'}`}>
                   <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-[10px] font-extrabold text-slate-600 uppercase tracking-wider">計算結果</h4>
+                    <h4 className="text-[10px] font-black text-[#6B6057] uppercase tracking-wider">計算結果</h4>
                     {Math.abs(calc.auditVariance) < 0.1
-                      ? <span className="text-[10px] font-black text-emerald-600 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> 整合済み</span>
-                      : <span className="text-[10px] font-black text-amber-600 flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> 乖離: {calc.auditVariance > 0 ? '+' : ''}{calc.auditVariance.toFixed(2)}円</span>
+                      ? <span className="text-[10px] font-black text-[#1D5C3A] flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> 整合済み</span>
+                      : <span className="text-[10px] font-black text-[#B5451B] flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> 乖離: {calc.auditVariance > 0 ? '+' : ''}{calc.auditVariance.toFixed(2)}円</span>
                     }
                   </div>
                   <div className="space-y-1.5">
@@ -987,16 +913,16 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                       { label: `利益 (SGA ${est.adjustments.sgaRatePercent?.toFixed(1) ?? 0}%)`, val: calc.sgaCost },
                     ].map(({ label, val }) => (
                       <div key={label} className="flex justify-between text-xs">
-                        <span className="text-slate-500">{label}</span>
-                        <span className="font-mono font-bold text-slate-700">¥{val.toFixed(2)}</span>
+                        <span className="text-[#9C9490]">{label}</span>
+                        <span className="font-mono font-bold text-[#6B6057]">¥{val.toFixed(2)}</span>
                       </div>
                     ))}
-                    <div className="border-t border-slate-300 pt-2 mt-2 flex justify-between items-baseline">
-                      <span className="font-extrabold text-slate-900 text-xs">見積単価</span>
+                    <div className="border-t border-[#D6D0C8] pt-2 mt-2 flex justify-between items-baseline">
+                      <span className="font-black text-[#18130F] text-xs">見積単価</span>
                       <span className={`text-xl font-black font-mono ${totalColor}`}>¥{calc.grandTotalUnitPrice.toFixed(2)}</span>
                     </div>
                     {est.adjustments.targetUnitPrice > 0 && (
-                      <div className="flex justify-between text-xs text-slate-500">
+                      <div className="flex justify-between text-xs text-[#9C9490]">
                         <span>目標売値</span>
                         <span className="font-mono">¥{est.adjustments.targetUnitPrice.toFixed(2)}</span>
                       </div>
@@ -1014,12 +940,12 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       {(oldCalc.grandTotalUnitPrice > 0 || newCalc.grandTotalUnitPrice > 0) &&
         ((oldEstimate.adjustments.sgaRatePercent !== undefined && (oldEstimate.adjustments.sgaRatePercent < 5 || oldEstimate.adjustments.sgaRatePercent > 30)) ||
          (newEstimate.adjustments.sgaRatePercent !== undefined && (newEstimate.adjustments.sgaRatePercent < 5 || newEstimate.adjustments.sgaRatePercent > 30))) && (
-        <div className="p-4 bg-rose-950/80 border border-rose-800 text-rose-200 rounded-2xl text-[10.5px] leading-relaxed shadow-inner">
+        <div className="p-4 bg-rose-950/80 border border-rose-800 text-rose-200 rounded text-[10.5px] leading-relaxed">
           <div className="flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5 animate-bounce" />
+            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
             <div>
-              <strong className="text-rose-300 block font-bold text-xs mb-1">
-                ⚠️【審議警告】SGA%が不自然な範囲 (5%未満 / 30%超) です
+              <strong className="text-rose-300 block font-black text-xs mb-1">
+                【審議警告】SGA%が不自然な範囲 (5%未満 / 30%超) です
               </strong>
               賃率調整だけで辻褄を合わせようとしている場合、
               <strong className="text-white">③工程マスタの「出来高」と「段取時間」の前提見直し</strong>を合わせて行うと自然な数値に収まります。
