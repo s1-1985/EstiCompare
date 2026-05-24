@@ -42,28 +42,34 @@ async function requireAuth(req: any, res: any, next: any) {
 const app = express();
 const PORT = parseInt(process.env.PORT || "3000", 10);
 
+const isProd = process.env.NODE_ENV === "production";
+
 // ── Security Headers ───────────────────────────────────────────────────────────
+// In dev mode: disable CSP (Vite needs inline scripts + ws:// for HMR)
+// In production: strict CSP enforced
 app.use(
   helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
-        connectSrc: [
-          "'self'",
-          "https://*.googleapis.com",
-          "https://*.firebaseio.com",
-          "https://*.firebasestorage.app",
-          "https://firestore.googleapis.com",
-          "https://identitytoolkit.googleapis.com",
-          "https://securetoken.googleapis.com",
-        ],
-        imgSrc: ["'self'", "https://lh3.googleusercontent.com", "data:"],
-        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-        fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        frameSrc: ["'none'"],
-      },
-    },
+    contentSecurityPolicy: isProd
+      ? {
+          directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'"],
+            connectSrc: [
+              "'self'",
+              "https://*.googleapis.com",
+              "https://*.firebaseio.com",
+              "https://*.firebasestorage.app",
+              "https://firestore.googleapis.com",
+              "https://identitytoolkit.googleapis.com",
+              "https://securetoken.googleapis.com",
+            ],
+            imgSrc: ["'self'", "https://lh3.googleusercontent.com", "data:"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+            fontSrc: ["'self'", "https://fonts.gstatic.com"],
+            frameSrc: ["'none'"],
+          },
+        }
+      : false,
     crossOriginEmbedderPolicy: false, // required for Firebase Auth popup
   })
 );
