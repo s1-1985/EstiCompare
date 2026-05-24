@@ -1,19 +1,23 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // 1. Global Safety Net
+
+    // 1. Global Safety Net — deny everything unless explicitly allowed below
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // 2. Global Safety Helpers
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
+    // 2. Helper Functions
     function isSignedIn() {
       return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
     function incoming() {
@@ -24,21 +28,18 @@ service cloud.firestore {
       return resource.data;
     }
 
-    function isEmailVerified() {
-      return isSignedIn() && request.auth.token.email_verified == true;
-    }
-
-    // 3. Entity Specific Validations
+    // 3. Scenario Validation — enforce field types and bounded sizes
     function isValidScenario(data) {
       return data.id is string && data.id.size() <= 128
         && data.userId == request.auth.uid
         && data.name is string && data.name.size() <= 256
-        && data.newEstimate is map
-        && data.oldEstimate is map;
+        && data.newEstimate is map && data.newEstimate.size() <= 50
+        && data.oldEstimate is map && data.oldEstimate.size() <= 50;
     }
 
-    // 4. Scenarios Collection Rules
+    // 4. Scenarios Collection
     match /scenarios/{scenarioId} {
+
       allow create: if isSignedIn()
         && isEmailVerified()
         && isValidId(scenarioId)
@@ -60,7 +61,9 @@ service cloud.firestore {
       allow get: if isSignedIn()
         && existing().userId == request.auth.uid;
 
+      // list requires email verification — consistent with all other operations
       allow list: if isSignedIn()
+        && isEmailVerified()
         && resource.data.userId == request.auth.uid;
     }
   }

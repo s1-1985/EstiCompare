@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { DetailedEstimate, ProcessRow, ProcessCalcMode, Scenario } from '../types';
 import { calculateEstimate } from '../utils/calculations';
+import { apiPost } from '../utils/apiClient';
 import {
   Settings2, Lock, Zap, CheckCircle2, AlertTriangle,
   HelpCircle, Sparkles, Database,
@@ -34,16 +35,10 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
   const handleInferProcessParams = async () => {
     try {
       setIsInferring(true);
-      const response = await fetch('/api/infer-process-params', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          processes: newEstimate.processes.filter(p => !p.isDirectInput && p.processName),
-          partNumber: newEstimate.partNumber
-        })
+      const response = await apiPost('/api/infer-process-params', {
+        processes: newEstimate.processes.filter(p => !p.isDirectInput && p.processName),
+        partNumber: newEstimate.partNumber,
       });
-      if (!response.ok) throw new Error('AI生成エラー');
-
       const { results } = await response.json();
       if (!results || !Array.isArray(results)) return;
 
@@ -74,7 +69,8 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
 
     } catch (err) {
       console.error(err);
-      alert('通信エラーまたはAPIキー未設定のため出来高の自動セットに失敗しました。');
+      const msg = err instanceof Error ? err.message : '通信エラー';
+      alert(`AI自動設定に失敗しました: ${msg}\n※ログインが必要な機能です。`);
     } finally {
       setIsInferring(false);
     }

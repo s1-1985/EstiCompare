@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { auth, loginWithGoogle, logout } from './firebase';
 import { subscribeScenarios, saveUserScenario } from './utils/firestoreService';
+import { apiPost } from './utils/apiClient';
 
 export default function App() {
   const defaultScenario = SAMPLE_SCENARIOS[0];
@@ -134,7 +135,7 @@ export default function App() {
       }
     } catch (error: any) {
       console.error(error);
-      alert(`保存失敗: ${error.message || error}`);
+      alert('保存に失敗しました。再度お試しください。');
     } finally {
       setIsSaving(false);
     }
@@ -144,21 +145,12 @@ export default function App() {
     setIsComparing(true);
     setComparisonResult(null);
     try {
-      const response = await fetch('/api/compare-estimates', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ oldEstimate, newEstimate }),
-      });
-
-      if (!response.ok) {
-        throw new Error('見積自動査定サービスのエラー。APIキーが登録されているか確認してください。');
-      }
-
+      const response = await apiPost('/api/compare-estimates', { oldEstimate, newEstimate });
       const report = await response.json();
       setComparisonResult(report);
     } catch (err: any) {
       console.error(err);
-      alert(err.message || 'AI価格監査に失敗しました。詳細仕様の入力欄が正しいフォーマットか確認してください。');
+      alert(err.message || 'AI価格監査に失敗しました。ログインしているか、入力内容を確認してください。');
     } finally {
       setIsComparing(false);
     }
