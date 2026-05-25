@@ -62,5 +62,5 @@ jobs:
             --max-instances 3 \
             --quiet
 
-      - name: Deploy to Firebase Hosting
-        run: npx firebase-tools deploy --only hosting --project esticompare --non-interactive
+      - name: Deploy to Firebase Hosting + Firestore Rules
+        run: npx firebase-tools deploy --only hosting,firestore:rules --project esticompare --non-interactive
