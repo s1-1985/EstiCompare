@@ -28,7 +28,7 @@ const CostCompositionBar: React.FC<{
           const pct = v / total * 100;
           return (
             <div key={label} style={{ width: `${pct.toFixed(1)}%`, background: fill }}
-              title={`${label}: ¥${v.toFixed(0)} (${pct.toFixed(1)}%)`}
+              title={`${label}: ¥${v.toFixed(2)} (${pct.toFixed(2)}%)`}
               className="flex items-center justify-center overflow-hidden transition-all duration-700">
               {pct > 10 && <span className="text-[8px] font-black text-white/90 select-none tracking-tight">{pct.toFixed(0)}%</span>}
             </div>
@@ -64,7 +64,7 @@ const ProfitGauge: React.FC<{
       <div className="flex items-center justify-between mb-2">
         <span className="text-[9px] font-black text-[#9C9490] uppercase tracking-wider">実利益率ゲージ</span>
         <div className="flex items-center gap-1.5">
-          <span className="text-base font-black font-mono leading-none" style={{ color }}>{actualRate.toFixed(1)}%</span>
+          <span className="text-base font-black font-mono leading-none" style={{ color }}>{actualRate.toFixed(2)}%</span>
           <span className="text-[8px] px-1.5 py-0.5 rounded font-bold border leading-none"
             style={{ color, borderColor: color + '50', background: color + '12' }}>
             {labels[status]}
@@ -84,7 +84,7 @@ const ProfitGauge: React.FC<{
       <div className="flex gap-3 mt-1.5 text-[8px]">
         {minRate > 0 && <span className="text-rose-600">下限 {minRate}%</span>}
         {targetRate > 0 && <span className="text-emerald-700">目標 {targetRate}%</span>}
-        <span className="text-[#9C9490] ml-auto">実態 <strong style={{ color }}>{actualRate.toFixed(1)}%</strong></span>
+        <span className="text-[#9C9490] ml-auto">実態 <strong style={{ color }}>{actualRate.toFixed(2)}%</strong></span>
       </div>
     </div>
   );
@@ -296,7 +296,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       reconciledUnitPrice = Math.round(targetRequiredSellingPrice);
     } else if (targetUnitPrice < minRequiredSellingPrice) {
       reconciledUnitPrice = Math.ceil(minRequiredSellingPrice);
-      alert(`【下限利益率アラート】\n決定単価が下限利益率(${minProfitPercent}%)を維持できる最低単価 (¥${minRequiredSellingPrice.toFixed(0)}) を下回っているため、¥${reconciledUnitPrice} に自動引き上げします。`);
+      alert(`【下限利益率アラート】\n決定単価が下限利益率(${minProfitPercent}%)を維持できる最低単価 (¥${minRequiredSellingPrice.toFixed(2)}) を下回っているため、¥${reconciledUnitPrice.toFixed(2)} に自動引き上げします。`);
     }
     const updatedAdjustments = { ...target.adjustments, targetUnitPrice: reconciledUnitPrice };
     const shipping = calc.shippingCostPerUnit;
@@ -464,9 +464,9 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
 
           {profitMarkup !== null && (
             <div className={`text-[10px] font-mono px-3 py-1.5 rounded border ${Math.min(profitMarkup, profitMargin || 0) >= 0 ? 'bg-[#E8F5EC] border-[#A8D5B5] text-[#1D5C3A]' : 'bg-rose-50 border-rose-200 text-rose-700'}`}>
-              外掛け <strong>{profitMarkup.toFixed(1)}%</strong>
+              外掛け <strong>{profitMarkup.toFixed(2)}%</strong>
               <span className="mx-1.5 opacity-40">/</span>
-              内掛け <strong>{profitMargin!.toFixed(1)}%</strong>
+              内掛け <strong>{profitMargin!.toFixed(2)}%</strong>
             </div>
           )}
         </div>
@@ -666,7 +666,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                         )}
                       </td>
                       <td className="py-1 px-1">
-                        <div className="text-right font-mono font-bold text-[11px] text-[#18130F]">¥{costPerUnit.toFixed(1)}</div>
+                        <div className="text-right font-mono font-bold text-[11px] text-[#18130F]">¥{costPerUnit.toFixed(2)}</div>
                         {calc.totalProcessCost > 0 && costPerUnit > 0.01 && (
                           <div className="mt-0.5 h-1 rounded-full overflow-hidden bg-[#F0EDE8]">
                             <div className="h-full rounded-full transition-all duration-500"
@@ -856,7 +856,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
               { label: '材料費', val: calc.netMaterialCost },
               { label: '加工費計', val: calc.totalProcessCost },
               { label: '直製造原価', val: calc.primeCost },
-              { label: `利管費 (${est.adjustments.sgaRatePercent?.toFixed(1) ?? 0}%)`, val: calc.sgaCost },
+              { label: `利管費 (${est.adjustments.sgaRatePercent?.toFixed(2) ?? 0}%)`, val: calc.sgaCost },
               { label: '送料/個', val: calc.shippingCostPerUnit },
             ].map(({ label, val }) => (
               <div key={label} className="flex justify-between text-xs">
@@ -932,7 +932,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
         : 'text-[#6B6057] bg-[#1A1510] border-[#3D3228]';
       return (
         <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${cls} whitespace-nowrap`}>
-          {d > 0 ? '+' : ''}{d.toFixed(2)}{p !== null ? ` (${p > 0 ? '+' : ''}${p.toFixed(1)}%)` : ''}
+          {d > 0 ? '+' : ''}{d.toFixed(2)}{p !== null ? ` (${p > 0 ? '+' : ''}${p.toFixed(2)}%)` : ''}
         </span>
       );
     };
@@ -963,7 +963,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
             <div className={`text-lg font-black font-mono ${dUnit > 0.01 ? 'text-rose-400' : dUnit < -0.01 ? 'text-emerald-400' : 'text-[#6B6057]'}`}>
               {dUnit > 0 ? '+' : ''}{dUnit.toFixed(2)}
               {pctUnit !== null && (
-                <span className="text-[11px] ml-1">({pctUnit > 0 ? '+' : ''}{pctUnit.toFixed(1)}%)</span>
+                <span className="text-[11px] ml-1">({pctUnit > 0 ? '+' : ''}{pctUnit.toFixed(2)}%)</span>
               )}
             </div>
           </div>
@@ -1005,7 +1005,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                       <span className="text-[7px] ml-1 opacity-70">({((delta / o) * 100).toFixed(0)}%)</span>
                     )}
                   </div>
-                  <div className="text-[8px] text-[#4D4540] font-mono">¥{o.toFixed(0)} → ¥{n.toFixed(0)}</div>
+                  <div className="text-[8px] text-[#4D4540] font-mono">¥{o.toFixed(2)} → ¥{n.toFixed(2)}</div>
                 </div>
               </div>
             );
@@ -1029,11 +1029,11 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
             <span className="text-[9px] font-black text-[#6B6057] uppercase tracking-wider">実利益率 (内掛け)</span>
             <div className="flex items-center gap-2">
               <span className="text-xs font-mono text-[#9C9490]">
-                旧 <strong className={oldCalc.actualProfitRate >= 0 ? 'text-[#6B9C8A]' : 'text-rose-500'}>{oldCalc.actualProfitRate.toFixed(1)}%</strong>
+                旧 <strong className={oldCalc.actualProfitRate >= 0 ? 'text-[#6B9C8A]' : 'text-rose-500'}>{oldCalc.actualProfitRate.toFixed(2)}%</strong>
               </span>
               <span className="text-[#3D3228]">→</span>
               <span className="text-xs font-mono">
-                新 <strong className={newCalc.actualProfitRate >= 0 ? 'text-emerald-400' : 'text-rose-400'}>{newCalc.actualProfitRate.toFixed(1)}%</strong>
+                新 <strong className={newCalc.actualProfitRate >= 0 ? 'text-emerald-400' : 'text-rose-400'}>{newCalc.actualProfitRate.toFixed(2)}%</strong>
               </span>
               {(() => {
                 const d = newCalc.actualProfitRate - oldCalc.actualProfitRate;
@@ -1044,7 +1044,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                   : 'text-[#6B6057] border-[#3D3228]';
                 return (
                   <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${cls}`}>
-                    {d > 0 ? '+' : ''}{d.toFixed(1)}pp
+                    {d > 0 ? '+' : ''}{d.toFixed(2)}pp
                   </span>
                 );
               })()}
@@ -1159,7 +1159,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
               <strong className="text-rose-300 block font-black text-xs mb-1">【審議警告】利管費%が不自然な範囲 (5%未満 / 30%超) です</strong>
               賃率調整だけで辻褄を合わせようとしている場合、<strong className="text-white">工程の「出来高」と「段取時間」の前提見直し</strong>を合わせて行うと自然な数値に収まります。
               <span className="block mt-1 text-rose-300">
-                現在値: 旧={oldEstimate.adjustments.sgaRatePercent?.toFixed(1)}% / 新={newEstimate.adjustments.sgaRatePercent?.toFixed(1)}%
+                現在値: 旧={oldEstimate.adjustments.sgaRatePercent?.toFixed(2)}% / 新={newEstimate.adjustments.sgaRatePercent?.toFixed(2)}%
               </span>
             </div>
           </div>

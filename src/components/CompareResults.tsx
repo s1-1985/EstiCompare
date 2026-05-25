@@ -79,9 +79,9 @@ export const CompareResults: React.FC<CompareResultsProps> = ({
               ¥{oldPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
             <div className="mt-3 pt-3 border-t border-[#EEEBE6] flex flex-wrap gap-x-2 gap-y-1 text-[10px] text-[#9C9490] font-mono">
-              <span className="bg-[#F7F6F2] px-2 py-0.5 rounded border border-[#EEEBE6]">材料: ¥{oldCalc.netMaterialCost.toFixed(1)}</span>
-              <span className="bg-[#F7F6F2] px-2 py-0.5 rounded border border-[#EEEBE6]">加工: ¥{oldCalc.totalProcessCost.toFixed(1)}</span>
-              <span className="bg-[#F7F6F2] px-2 py-0.5 rounded border border-[#EEEBE6]">諸費: ¥{oldCalc.totalOtherExpenses.toFixed(1)}</span>
+              <span className="bg-[#F7F6F2] px-2 py-0.5 rounded border border-[#EEEBE6]">材料: ¥{oldCalc.netMaterialCost.toFixed(2)}</span>
+              <span className="bg-[#F7F6F2] px-2 py-0.5 rounded border border-[#EEEBE6]">加工: ¥{oldCalc.totalProcessCost.toFixed(2)}</span>
+              <span className="bg-[#F7F6F2] px-2 py-0.5 rounded border border-[#EEEBE6]">諸費: ¥{oldCalc.totalOtherExpenses.toFixed(2)}</span>
             </div>
           </div>
         </div>
@@ -98,9 +98,9 @@ export const CompareResults: React.FC<CompareResultsProps> = ({
               ¥{newPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
             <div className="mt-3 pt-3 border-t border-[#EEEBE6] flex flex-wrap gap-x-2 gap-y-1 text-[10px] text-[#1E3A5F] font-bold font-mono">
-              <span className="bg-[#EFF4FD] px-2 py-0.5 rounded border border-[#C5D8EE]">材料: ¥{newCalc.netMaterialCost.toFixed(1)}</span>
-              <span className="bg-[#EFF4FD] px-2 py-0.5 rounded border border-[#C5D8EE]">加工: ¥{newCalc.totalProcessCost.toFixed(1)}</span>
-              <span className="bg-[#EFF4FD] px-2 py-0.5 rounded border border-[#C5D8EE]">諸費: ¥{newCalc.totalOtherExpenses.toFixed(1)}</span>
+              <span className="bg-[#EFF4FD] px-2 py-0.5 rounded border border-[#C5D8EE]">材料: ¥{newCalc.netMaterialCost.toFixed(2)}</span>
+              <span className="bg-[#EFF4FD] px-2 py-0.5 rounded border border-[#C5D8EE]">加工: ¥{newCalc.totalProcessCost.toFixed(2)}</span>
+              <span className="bg-[#EFF4FD] px-2 py-0.5 rounded border border-[#C5D8EE]">諸費: ¥{newCalc.totalOtherExpenses.toFixed(2)}</span>
             </div>
           </div>
         </div>
@@ -272,7 +272,7 @@ export const CompareResults: React.FC<CompareResultsProps> = ({
                       {pDiff > 0 ? '+' : ''}{pDiff.toFixed(2)}円
                     </td>
                     <td className={`px-4 py-4 text-center font-mono font-bold ${pDiff > 0 ? 'text-rose-500' : pDiff < 0 ? 'text-[#1D5C3A]' : 'text-[#9C9490]'}`}>
-                      {oldCost > 0 ? `${(pDiff / oldCost * 100).toFixed(1)}%` : newProc.processName ? '新規追加' : '通常'}
+                      {oldCost > 0 ? `${(pDiff / oldCost * 100).toFixed(2)}%` : newProc.processName ? '新規追加' : '通常'}
                     </td>
                     <td className="px-3 sm:px-5 py-3 sm:py-4 text-[10px] text-[#9C9490] leading-normal max-w-xs font-bold font-sans">
                       {newProc.isDirectInput

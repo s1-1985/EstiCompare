@@ -330,14 +330,14 @@ export default function App() {
                 <div className="flex items-center gap-1.5">
                   <span className="text-[9px] font-black text-[#6B6057] uppercase tracking-wider">旧</span>
                   <span className="font-black font-mono text-[#9C9490] text-sm">
-                    {oldCalc.grandTotalUnitPrice > 0 ? `¥${Math.round(oldCalc.grandTotalUnitPrice).toLocaleString()}` : '—'}
+                    {oldCalc.grandTotalUnitPrice > 0 ? `¥${oldCalc.grandTotalUnitPrice.toLocaleString('ja-JP', {minimumFractionDigits:2,maximumFractionDigits:2})}` : '—'}
                   </span>
                 </div>
                 <span className="text-[#3D3228] select-none">→</span>
                 <div className="flex items-center gap-1.5">
                   <span className="text-[9px] font-black text-[#B5451B] uppercase tracking-wider">新</span>
                   <span className="font-black font-mono text-white text-lg">
-                    {newCalc.grandTotalUnitPrice > 0 ? `¥${Math.round(newCalc.grandTotalUnitPrice).toLocaleString()}` : '—'}
+                    {newCalc.grandTotalUnitPrice > 0 ? `¥${newCalc.grandTotalUnitPrice.toLocaleString('ja-JP', {minimumFractionDigits:2,maximumFractionDigits:2})}` : '—'}
                   </span>
                 </div>
                 {oldCalc.grandTotalUnitPrice > 0 && newCalc.grandTotalUnitPrice > 0 && (() => {
@@ -349,19 +349,19 @@ export default function App() {
                     : 'text-[#6B6057] bg-[#1A1510] border-[#3D3228]';
                   return (
                     <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${cls} whitespace-nowrap`}>
-                      {d > 0 ? '+' : ''}{d.toFixed(0)} ({p > 0 ? '+' : ''}{p.toFixed(1)}%)
+                      {d > 0 ? '+' : ''}{d.toFixed(2)} ({p > 0 ? '+' : ''}{p.toFixed(2)}%)
                     </span>
                   );
                 })()}
                 <div className="ml-auto flex items-center gap-3">
                   {oldCalc.actualProfitRate !== 0 && (
                     <span className="text-[9px] text-[#6B6057]">
-                      旧利益率 <strong className={oldCalc.actualProfitRate >= 0 ? 'text-[#6B9C8A]' : 'text-rose-400'}>{oldCalc.actualProfitRate.toFixed(1)}%</strong>
+                      旧利益率 <strong className={oldCalc.actualProfitRate >= 0 ? 'text-[#6B9C8A]' : 'text-rose-400'}>{oldCalc.actualProfitRate.toFixed(2)}%</strong>
                     </span>
                   )}
                   {newCalc.actualProfitRate !== 0 && (
                     <span className="text-[9px] text-[#9C9490]">
-                      新利益率 <strong className={newCalc.actualProfitRate >= 0 ? 'text-emerald-400' : 'text-rose-400'}>{newCalc.actualProfitRate.toFixed(1)}%</strong>
+                      新利益率 <strong className={newCalc.actualProfitRate >= 0 ? 'text-emerald-400' : 'text-rose-400'}>{newCalc.actualProfitRate.toFixed(2)}%</strong>
                     </span>
                   )}
                 </div>
