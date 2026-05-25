@@ -1,11 +1,11 @@
-import { StrictMode, Component, ReactNode } from 'react';
+import { StrictMode, Component, PropsWithChildren } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
 interface ErrorBoundaryState { hasError: boolean; }
 
-class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
+class ErrorBoundary extends Component<PropsWithChildren, ErrorBoundaryState> {
   state: ErrorBoundaryState = { hasError: false };
 
   static getDerivedStateFromError() {
@@ -49,6 +49,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryStat
         </div>
       );
     }
+    // @ts-expect-error – React Component.props is accessible at runtime
     return this.props.children;
   }
 }
