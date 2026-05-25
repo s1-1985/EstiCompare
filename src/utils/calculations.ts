@@ -108,8 +108,8 @@ export function calculateEstimate(est: DetailedEstimate): CalculatedSection {
   const sgaCost = primeCost * ((adjustments.sgaRatePercent || 0) / 100) + (adjustments.sgaFixedAdjustment || 0);
   const shippingCostPerUnit = logistics.qtyPerBox > 0 ? (logistics.freightPerBox / logistics.qtyPerBox) : 0;
   
-  // 提示用総見積額 ＝ 調整原価 ＋ その他 ＋ 型費 ＋ SGA利管費 ＋ 調整
-  const grandTotalUnitPrice = primeCost + sgaCost + shippingCostPerUnit + (adjustments.toolingCost || 0) + (adjustments.otherAdjustment || 0);
+  // 提示用総見積額 ＝ 材料費 ＋ 加工費 ＋ 利管費 ＋ 送料 ＋ 調整（型費は別途）
+  const grandTotalUnitPrice = primeCost + sgaCost + shippingCostPerUnit + (adjustments.otherAdjustment || 0);
 
   // ==========================================
   // 2. 【社内実原価（実態コスト・調整前）】の算出
@@ -132,8 +132,8 @@ export function calculateEstimate(est: DetailedEstimate): CalculatedSection {
     ? adjustments.actualPurchasePrice
     : actualPrimeCost;
 
-  // 実原価総額（＝調整なしの本質原価、材料＋加工＋物流＋型費）
-  const actualTotalCost = baseActualPrimeCost + actualShippingCost + (adjustments.toolingCost || 0);
+  // 実原価総額（＝調整なしの本質原価、材料＋加工＋物流、型費は別途）
+  const actualTotalCost = baseActualPrimeCost + actualShippingCost;
 
   // ==========================================
   // 3. 【つじつま合わせ（マージン）】シミュレーション
@@ -181,7 +181,7 @@ export function calculateEstimate(est: DetailedEstimate): CalculatedSection {
     primeCost,
     sgaCost,
     shippingCostPerUnit,
-    totalOtherExpenses: sgaCost + shippingCostPerUnit + (adjustments.toolingCost || 0) + (adjustments.otherAdjustment || 0),
+    totalOtherExpenses: sgaCost + shippingCostPerUnit + (adjustments.otherAdjustment || 0),
     grandTotalUnitPrice,
 
     actualNetMaterialCost,
