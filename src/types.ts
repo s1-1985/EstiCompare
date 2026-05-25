@@ -33,11 +33,11 @@ export interface MaterialComputation {
 }
 
 export interface LogisticsComputation {
-  qtyPerBox: number;       // 1箱の入数
-  freightPerBox: number;   // 【客提示用】1箱の運賃
-  
-  // 【実態値】
-  actualFreightPerBox?: number; // 実際の1箱の運賃
+  qtyPerBox: number;               // 1箱の入数
+  freightPerBox: number;           // 【客提示用】1箱の運賃
+  actualFreightPerBox?: number;    // 実際の1箱の運賃
+  originPrefecture?: string;       // 発送元都道府県
+  destinationPrefecture?: string;  // 送付先都道府県
 }
 
 export interface AdvancedAdjustment {
