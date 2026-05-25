@@ -123,12 +123,12 @@ function EstimateBlock({ label, est, calc, tag }: EstimateBlockProps) {
               <tbody>
                 {est.processes.filter(p => p.processName.trim()).map((proc, i) => (
                   <tr key={i} style={{ background: i % 2 === 0 ? 'white' : '#F9F9F9' }}>
-                    <td style={{ border: '1px solid #CCC', padding: '2px 4px', textAlign: 'center' }}>{proc.index + 1}</td>
+                    <td style={{ border: '1px solid #CCC', padding: '2px 4px', textAlign: 'center' }}>{proc.index}</td>
                     <td style={{ border: '1px solid #CCC', padding: '2px 4px' }}>{proc.processName}</td>
                     <td style={{ border: '1px solid #CCC', padding: '2px 4px', color: '#555' }}>{proc.workContent || '—'}</td>
                     <td style={{ border: '1px solid #CCC', padding: '2px 4px', textAlign: 'center' }}>{getModeLabel(proc)}</td>
                     <td style={{ border: '1px solid #CCC', padding: '2px 4px', textAlign: 'right' }}>{getProcessCostDetail(proc)}</td>
-                    <td style={{ border: '1px solid #CCC', padding: '2px 4px', textAlign: 'right', fontWeight: 'bold' }}>¥{fmt(calc.processCosts[i] ?? 0)}</td>
+                    <td style={{ border: '1px solid #CCC', padding: '2px 4px', textAlign: 'right', fontWeight: 'bold' }}>¥{fmt(calc.processCosts[proc.index - 1] ?? 0)}</td>
                   </tr>
                 ))}
                 {est.processes.filter(p => p.processName.trim()).length === 0 && (
@@ -263,10 +263,10 @@ export function PrintSheet({ oldEstimate, newEstimate }: PrintSheetProps) {
 
       rows.push(['■ 加工工程']);
       rows.push(['No', '工程名', '作業内容', '計算方式', '賃率(円/h)', '出来高(個/h)', '段取時間(h)', 'kg単価(円/kg)', '一式金額(円)', '直接加工費(円)', '加工費/個(円)']);
-      est.processes.filter(p => p.processName.trim()).forEach((proc, i) => {
+      est.processes.filter(p => p.processName.trim()).forEach((proc) => {
         const mode = proc.calcMode || (proc.isDirectInput ? 'direct' : proc.kgPrice > 0 ? 'kg' : 'standard');
         rows.push([
-          proc.index + 1,
+          proc.index,
           proc.processName,
           proc.workContent || '',
           getModeLabel(proc),
@@ -276,7 +276,7 @@ export function PrintSheet({ oldEstimate, newEstimate }: PrintSheetProps) {
           mode === 'kg' ? proc.kgPrice : '',
           mode === 'lump' ? (proc.lumpSumPrice ?? '') : '',
           mode === 'direct' ? proc.directProcessingCost : '',
-          calc.processCosts[i] ?? 0,
+          calc.processCosts[proc.index - 1] ?? 0,
         ]);
       });
       rows.push([]);

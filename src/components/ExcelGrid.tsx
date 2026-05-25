@@ -832,9 +832,11 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
           </button>
         </div>
 
-        {/* ── 利益率ゲージ ── */}
+        {/* ── 利益率ゲージ (外掛け比較) ── */}
         <ProfitGauge
-          actualRate={calc.actualProfitRate}
+          actualRate={calc.actualTotalCost > 0
+            ? ((calc.adjustedSellingPrice - calc.actualTotalCost) / calc.actualTotalCost * 100)
+            : 0}
           minRate={est.adjustments.minProfitRate || 0}
           targetRate={est.adjustments.targetProfitRate || 0}
         />
