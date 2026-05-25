@@ -165,7 +165,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     onChangeNew({ ...newEstimate, [key]: value });
   };
 
-  const updateCommonMaterialMeta = (key: 'materialName' | 'inputWeightG' | 'scrapWeightG', value: any) => {
+  const updateCommonMaterialMeta = (key: 'materialName' | 'inputWeightG', value: any) => {
     const rawVal = typeof value === 'string' ? parseFloat(value) : value;
     const finalVal = isNaN(rawVal) && typeof value === 'string' ? value : rawVal;
     onChangeOld({ ...oldEstimate, material: { ...oldEstimate.material, [key]: finalVal } });
@@ -218,7 +218,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
   };
 
   // ─── Per-Side Material / Logistics / Adjustments ──────────────────────────────
-  const updateMaterialPrice = (isNew: boolean, key: 'basePricePerKg' | 'actualBasePricePerKg' | 'scrapPricePerKg', value: any) => {
+  const updateMaterialPrice = (isNew: boolean, key: 'basePricePerKg' | 'actualBasePricePerKg' | 'scrapPricePerKg' | 'scrapWeightG', value: any) => {
     const parsed = parseFloat(value);
     const target = isNew ? newEstimate : oldEstimate;
     const setter = isNew ? onChangeNew : onChangeOld;
@@ -723,7 +723,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
           <span className="ml-2 text-[9px] bg-[#B5451B] px-2 py-0.5 rounded font-black">新旧同期 — 変更すると両側に即反映</span>
         </div>
         <div className="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-          <div className="sm:col-span-3 md:col-span-2">
+          <div className="sm:col-span-2">
             <label className={labelBase}>材質・規格</label>
             <input
               type="text"
@@ -746,23 +746,9 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
               <span className="absolute right-2.5 top-2 text-[9px] text-[#9C9490] pointer-events-none">g</span>
             </div>
           </div>
-          <div>
-            <label className={labelBase}>スクラップ重量</label>
-            <div className="relative">
-              <input
-                type="number"
-                value={newEstimate.material.scrapWeightG || ''}
-                onChange={(e) => updateCommonMaterialMeta('scrapWeightG', e.target.value)}
-                placeholder="40"
-                className="w-full pl-3 pr-8 py-2 text-xs font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#B5451B] focus:ring-[#B5451B]/15 transition-all"
-              />
-              <span className="absolute right-2.5 top-2 text-[9px] text-[#9C9490] pointer-events-none">g</span>
-            </div>
-          </div>
-          <div>
-            <label className={labelBase}>見積ロット</label>
+          <div className="sm:col-span-3">
             <p className="text-[10px] text-[#9C9490] py-2 px-3 border border-[#D6D0C8] rounded bg-[#F7F6F2]">
-              見積ロットは旧・新それぞれ④で設定
+              スクラップ重量・スクラップ単価・見積ロットは旧・新それぞれ⑤で設定
             </p>
           </div>
         </div>
@@ -953,7 +939,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                       <span className="absolute right-2.5 top-1.5 text-[9px] text-[#9C9490] pointer-events-none">円/kg</span>
                     </div>
                   </div>
-                  {/* スクラップ単価 + AIボタン */}
+                  {/* スクラップ建値 + AIボタン */}
                   <div className="flex items-start gap-3">
                     <label className="text-[10px] font-bold text-[#9C9490] w-24 sm:w-28 shrink-0 pt-1.5">スクラップ建値</label>
                     <div className="flex-1 space-y-1.5">
@@ -978,9 +964,32 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                       </div>
                     </div>
                   </div>
-                  <div className="text-[10px] text-[#9C9490] flex items-center justify-between px-1">
-                    <span>スクラップ量: <strong className="font-mono text-[#18130F]">{newEstimate.material.scrapWeightG}g</strong> <span className="text-[9px]">(②で共通設定)</span></span>
-                    <span>材料費計: <strong className="font-mono text-[#18130F]">¥{calc.netMaterialCost.toFixed(2)}</strong></span>
+                  {/* スクラップ量 (per-side input) */}
+                  <div className="flex items-center gap-3">
+                    <label className="text-[10px] font-bold text-[#9C9490] w-24 sm:w-28 shrink-0">スクラップ量</label>
+                    <div className="relative flex-1">
+                      <input
+                        type="number"
+                        value={est.material.scrapWeightG || ''}
+                        onChange={(e) => updateMaterialPrice(isNew, 'scrapWeightG', e.target.value)}
+                        placeholder="0（未入力でも可）"
+                        className="w-full pl-3 pr-8 py-1.5 text-xs font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#B5451B] transition-all"
+                      />
+                      <span className="absolute right-2.5 top-1.5 text-[9px] text-[#9C9490] pointer-events-none">g</span>
+                    </div>
+                  </div>
+                  {/* スクラップ単価 (calculated display) */}
+                  <div className="flex items-center justify-between text-[10px] px-1">
+                    <span className="text-[#9C9490]">
+                      スクラップ単価
+                      <span className="text-[9px] ml-1 text-[#C0BAB4]">(建値×重量÷1000)</span>
+                    </span>
+                    <span className="font-mono font-bold text-[#6B6057]">
+                      ¥{calc.scrapValue.toFixed(2)} / 個
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-[#9C9490] text-right">
+                    ▶ 材料費計: <strong className="font-mono text-[#18130F]">¥{calc.netMaterialCost.toFixed(2)}</strong>
                   </div>
                 </div>
 
