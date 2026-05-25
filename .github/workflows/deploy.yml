@@ -73,15 +73,27 @@ jobs:
           rules = open('firestore.rules').read()
           print(json.dumps({'source': {'files': [{'content': rules, 'name': 'firestore.rules'}]}}))
           ")
-          RULESET_RESPONSE=$(curl -sf -X POST \
+          echo "--- Creating ruleset ---"
+          RULESET_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST \
             "https://firebaserules.googleapis.com/v1/projects/esticompare/rulesets" \
             -H "Authorization: Bearer $ACCESS_TOKEN" \
             -H "Content-Type: application/json" \
             -d "$RULES_JSON")
-          RULESET_NAME=$(echo "$RULESET_RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin)['name'])")
-          curl -sf -X PATCH \
+          HTTP_STATUS=$(echo "$RULESET_RESPONSE" | grep "HTTP_STATUS:" | cut -d: -f2)
+          RULESET_BODY=$(echo "$RULESET_RESPONSE" | grep -v "HTTP_STATUS:")
+          echo "Status: $HTTP_STATUS"
+          echo "Response: $RULESET_BODY"
+          if [ "$HTTP_STATUS" != "200" ]; then exit 1; fi
+          RULESET_NAME=$(echo "$RULESET_BODY" | python3 -c "import json,sys; print(json.load(sys.stdin)['name'])")
+          echo "Ruleset: $RULESET_NAME"
+          echo "--- Applying ruleset ---"
+          RELEASE_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X PATCH \
             "https://firebaserules.googleapis.com/v1/projects/esticompare/releases/cloud.firestore" \
             -H "Authorization: Bearer $ACCESS_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "{\"release\":{\"name\":\"projects/esticompare/releases/cloud.firestore\",\"rulesetName\":\"$RULESET_NAME\"}}"
+            -d "{\"release\":{\"name\":\"projects/esticompare/releases/cloud.firestore\",\"rulesetName\":\"$RULESET_NAME\"}}")
+          HTTP_STATUS2=$(echo "$RELEASE_RESPONSE" | grep "HTTP_STATUS:" | cut -d: -f2)
+          echo "Status: $HTTP_STATUS2"
+          echo "Response: $(echo "$RELEASE_RESPONSE" | grep -v "HTTP_STATUS:")"
+          if [ "$HTTP_STATUS2" != "200" ]; then exit 1; fi
           echo "Firestore rules deployed successfully"
