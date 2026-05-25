@@ -152,16 +152,33 @@ const MAX_PROCESSES = 20;
 // ── Helper: safe error response ───────────────────────────────────────────────
 function sendApiError(res: any, error: any, fallback: string) {
   console.error(fallback, error);
-  // Expose Gemini quota/input errors to the user; hide all other internals
   const isGeminiQuota = error?.status === 429;
   const isGeminiInput = error?.status === 400 && typeof error?.message === "string";
   if (isGeminiQuota) {
-    return res.status(429).json({ error: "APIレート制限に達しました。しばらくしてから再試行してください。" });
+    return res.status(429).json({ error: "AIのAPIレート制限に達しました。1〜2分ほど待ってから再試行してください。（Gemini無料枠の1日上限に達した場合は翌朝9時JST頃にリセットされます）" });
   }
   if (isGeminiInput) {
     return res.status(422).json({ error: "入力内容に問題があります。内容を確認してから再試行してください。" });
   }
   return res.status(500).json({ error: fallback });
+}
+
+// ── Gemini call with automatic retry on 429 ───────────────────────────────────
+async function callGeminiWithRetry<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      if (err?.status === 429 && attempt < retries - 1) {
+        const delay = (attempt + 1) * 5000; // 5s, 10s
+        console.warn(`Gemini 429, retrying in ${delay}ms (attempt ${attempt + 1}/${retries - 1})`);
+        await new Promise(r => setTimeout(r, delay));
+      } else {
+        throw err;
+      }
+    }
+  }
+  throw new Error("Max retries exceeded");
 }
 
 // ── 1. Text parser ────────────────────────────────────────────────────────────
@@ -186,7 +203,7 @@ app.post("/api/parse-estimate", async (req, res) => {
 ${text}
 </user_data>`;
 
-    const response = await client.models.generateContent({
+    const response = await callGeminiWithRetry(() => client.models.generateContent({
       model: "gemini-2.0-flash",
       contents: userContent,
       config: {
@@ -236,7 +253,7 @@ ${text}
           required: ["items"],
         },
       },
-    });
+    }));
 
     res.json(JSON.parse(response.text || "{}"));
   } catch (error: any) {
@@ -282,7 +299,7 @@ ${newJson}
 - 2024年問題などの運賃上昇の影響
 - バイヤーが実際の価格折衝において、サプライヤーに投げかけるべき「強力で論理的な具体的・逆質問」5選`;
 
-    const response = await client.models.generateContent({
+    const response = await callGeminiWithRetry(() => client.models.generateContent({
       model: "gemini-2.0-flash",
       contents: prompt,
       config: {
@@ -319,7 +336,7 @@ ${newJson}
           required: ["summary", "keyChanges", "reasonablenessAssessment", "negotiationTips", "categoryAnalysisPoints"],
         },
       },
-    });
+    }));
 
     res.json(JSON.parse(response.text || "{}"));
   } catch (error: any) {
@@ -353,7 +370,7 @@ app.post("/api/generate-estimate", async (req, res) => {
 【原料・配送スペック】: ${spec || "特になし"}
 </user_request>`;
 
-    const response = await client.models.generateContent({
+    const response = await callGeminiWithRetry(() => client.models.generateContent({
       model: "gemini-2.0-flash",
       contents: userContent,
       config: {
@@ -412,7 +429,7 @@ app.post("/api/generate-estimate", async (req, res) => {
           required: ["partNumber", "material", "processes", "logistics"],
         },
       },
-    });
+    }));
 
     res.json(JSON.parse(response.text || "{}"));
   } catch (error: any) {
@@ -453,7 +470,7 @@ app.post("/api/infer-process-params", async (req, res) => {
 ${processLines}
 </process_list>`;
 
-    const response = await client.models.generateContent({
+    const response = await callGeminiWithRetry(() => client.models.generateContent({
       model: "gemini-2.0-flash",
       contents: userContent,
       config: {
@@ -480,7 +497,7 @@ ${processLines}
           required: ["results"],
         },
       },
-    });
+    }));
 
     res.json(JSON.parse(response.text || "{}"));
   } catch (error: any) {
@@ -515,7 +532,7 @@ app.post("/api/calculate-shipping", async (req, res) => {
 
 日本国内の2024〜2025年現在の標準的な運賃目安に基づき、適切な推定運賃を返してください。`;
 
-    const response = await client.models.generateContent({
+    const response = await callGeminiWithRetry(() => client.models.generateContent({
       model: "gemini-2.0-flash",
       contents: userContent,
       config: {
@@ -531,7 +548,7 @@ app.post("/api/calculate-shipping", async (req, res) => {
           required: ["estimatedFreightPerBox", "basis"],
         },
       },
-    });
+    }));
 
     res.json(JSON.parse(response.text || "{}"));
   } catch (error: any) {
@@ -562,7 +579,7 @@ app.post("/api/get-scrap-price", async (req, res) => {
 
 日本国内のスクラップ業者・金属リサイクル相場（2024〜2025年現在）に基づいた推定値を返してください。`;
 
-    const response = await client.models.generateContent({
+    const response = await callGeminiWithRetry(() => client.models.generateContent({
       model: "gemini-2.0-flash",
       contents: userContent,
       config: {
@@ -578,7 +595,7 @@ app.post("/api/get-scrap-price", async (req, res) => {
           required: ["estimatedScrapPricePerKg", "basis"],
         },
       },
-    });
+    }));
 
     res.json(JSON.parse(response.text || "{}"));
   } catch (error: any) {
