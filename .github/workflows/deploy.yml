@@ -62,5 +62,26 @@ jobs:
             --max-instances 3 \
             --quiet
 
-      - name: Deploy to Firebase Hosting + Firestore Rules
-        run: npx firebase-tools deploy --only hosting,firestore:rules --project esticompare --non-interactive
+      - name: Deploy to Firebase Hosting
+        run: npx firebase-tools deploy --only hosting --project esticompare --non-interactive
+
+      - name: Deploy Firestore Rules
+        run: |
+          ACCESS_TOKEN=$(gcloud auth print-access-token)
+          RULES_JSON=$(python3 -c "
+          import json
+          rules = open('firestore.rules').read()
+          print(json.dumps({'source': {'files': [{'content': rules, 'name': 'firestore.rules'}]}}))
+          ")
+          RULESET_RESPONSE=$(curl -sf -X POST \
+            "https://firebaserules.googleapis.com/v1/projects/esticompare/rulesets" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$RULES_JSON")
+          RULESET_NAME=$(echo "$RULESET_RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin)['name'])")
+          curl -sf -X PATCH \
+            "https://firebaserules.googleapis.com/v1/projects/esticompare/releases/cloud.firestore" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"release\":{\"name\":\"projects/esticompare/releases/cloud.firestore\",\"rulesetName\":\"$RULESET_NAME\"}}"
+          echo "Firestore rules deployed successfully"
