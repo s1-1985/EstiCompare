@@ -293,9 +293,8 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
 
     const updatedAdjustments = { ...target.adjustments, targetUnitPrice: reconciledUnitPrice };
     const shipping = calc.shippingCostPerUnit;
-    const tooling = target.adjustments.toolingCost || 0;
     const otherAdj = target.adjustments.otherAdjustment || 0;
-    const Y = reconciledUnitPrice - shipping - tooling - otherAdj;
+    const Y = reconciledUnitPrice - shipping - otherAdj;
 
     if (Y <= 0) {
       alert("目標単価が低すぎるため、加工費の自動調整ができません。");
@@ -1176,9 +1175,9 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                       <span className={`text-xl font-black font-mono ${totalColor}`}>¥{calc.grandTotalUnitPrice.toFixed(2)}</span>
                     </div>
 
-                    {/* 型費 — shown below unit price */}
-                    <div className="flex items-center justify-between text-xs gap-2 pt-1">
-                      <span className="text-[#9C9490] shrink-0">型費（単価内）</span>
+                    {/* 型費 — separate from unit price */}
+                    <div className="flex items-center justify-between text-xs gap-2 pt-2 border-t border-dashed border-[#D6D0C8]">
+                      <span className="text-[#9C9490] shrink-0">型費（別途）</span>
                       <div className="relative w-32">
                         <span className="absolute left-2 top-1 text-[10px] text-[#9C9490]">¥</span>
                         <input
