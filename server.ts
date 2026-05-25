@@ -70,7 +70,10 @@ app.use(
           },
         }
       : false,
-    crossOriginEmbedderPolicy: false, // required for Firebase Auth popup
+    // Firebase Auth uses a popup window that needs to communicate back via window.closed.
+    // COOP same-origin blocks this, breaking Google Sign-In entirely.
+    crossOriginOpenerPolicy: false,
+    crossOriginEmbedderPolicy: false,
   })
 );
 
