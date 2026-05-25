@@ -8,6 +8,88 @@ import {
   History, Truck, Copy, Package, ArrowLeftRight,
 } from 'lucide-react';
 
+// ─── Visual sub-components ───────────────────────────────────────────────────
+
+const CostCompositionBar: React.FC<{
+  netMaterialCost: number; totalProcessCost: number; sgaCost: number;
+  shippingCostPerUnit: number; total: number;
+}> = ({ netMaterialCost, totalProcessCost, sgaCost, shippingCostPerUnit, total }) => {
+  if (total <= 0) return null;
+  const segs = [
+    { label: '材料', v: netMaterialCost, fill: '#B5451B' },
+    { label: '加工', v: totalProcessCost, fill: '#1E3A5F' },
+    { label: '利管費', v: sgaCost, fill: '#6B3FA0' },
+    { label: '送料', v: shippingCostPerUnit, fill: '#1A6B3A' },
+  ].filter(s => s.v > 0);
+  return (
+    <div className="px-4 pt-3 pb-3 bg-[#FAFAF8] border-b border-[#F0EDE8]">
+      <div className="flex h-5 rounded overflow-hidden gap-[1.5px] mb-2.5">
+        {segs.map(({ label, v, fill }) => {
+          const pct = v / total * 100;
+          return (
+            <div key={label} style={{ width: `${pct.toFixed(1)}%`, background: fill }}
+              title={`${label}: ¥${v.toFixed(0)} (${pct.toFixed(1)}%)`}
+              className="flex items-center justify-center overflow-hidden transition-all duration-700">
+              {pct > 10 && <span className="text-[8px] font-black text-white/90 select-none tracking-tight">{pct.toFixed(0)}%</span>}
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-1">
+        {segs.map(({ label, v, fill }) => (
+          <div key={label} className="flex items-center gap-1">
+            <div className="w-2 h-2 rounded-[2px] shrink-0" style={{ background: fill }} />
+            <span className="text-[9px] text-[#6B6057]">{label}</span>
+            <span className="text-[9px] font-mono font-black text-[#18130F]">¥{Math.round(v).toLocaleString()}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const ProfitGauge: React.FC<{
+  actualRate: number; minRate: number; targetRate: number;
+}> = ({ actualRate, minRate, targetRate }) => {
+  if (targetRate <= 0 && minRate <= 0) return null;
+  const maxVal = Math.max(targetRate + 5, 30, actualRate + 2, 1);
+  const clamp = (v: number) => Math.max(0, Math.min(v, maxVal));
+  const toW = (v: number) => `${(clamp(v) / maxVal * 100).toFixed(1)}%`;
+  const status: 'good' | 'warn' | 'bad' = actualRate >= targetRate ? 'good' : actualRate >= minRate ? 'warn' : 'bad';
+  const clrs = { good: '#1D5C3A', warn: '#D97706', bad: '#DC2626' };
+  const color = clrs[status];
+  const labels = { good: '目標達成', warn: '下限付近', bad: '下限割れ' };
+  return (
+    <div className="px-4 pt-3 pb-3 border-b border-[#F0EDE8] bg-[#FAFAF8]">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[9px] font-black text-[#9C9490] uppercase tracking-wider">実利益率ゲージ</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-base font-black font-mono leading-none" style={{ color }}>{actualRate.toFixed(1)}%</span>
+          <span className="text-[8px] px-1.5 py-0.5 rounded font-bold border leading-none"
+            style={{ color, borderColor: color + '50', background: color + '12' }}>
+            {labels[status]}
+          </span>
+        </div>
+      </div>
+      <div className="relative h-3 rounded-full bg-[#EEEBE6] overflow-hidden">
+        {minRate > 0 && <div className="absolute left-0 top-0 h-full bg-rose-200" style={{ width: toW(minRate) }} />}
+        <div className="absolute top-0 h-full bg-amber-100"
+          style={{ left: toW(Math.min(minRate, targetRate)), width: `${(clamp(targetRate) - clamp(Math.min(minRate, targetRate))) / maxVal * 100}%` }} />
+        <div className="absolute top-0 h-full bg-emerald-100" style={{ left: toW(targetRate), right: 0 }} />
+        <div className="absolute left-0 top-0 h-full transition-all duration-700 opacity-80"
+          style={{ width: toW(actualRate), background: color }} />
+        {minRate > 0 && <div className="absolute top-0 h-full w-[2px] bg-rose-600/70" style={{ left: toW(minRate) }} />}
+        {targetRate > 0 && <div className="absolute top-0 h-full w-[2px] bg-emerald-700/70" style={{ left: toW(targetRate) }} />}
+      </div>
+      <div className="flex gap-3 mt-1.5 text-[8px]">
+        {minRate > 0 && <span className="text-rose-600">下限 {minRate}%</span>}
+        {targetRate > 0 && <span className="text-emerald-700">目標 {targetRate}%</span>}
+        <span className="text-[#9C9490] ml-auto">実態 <strong style={{ color }}>{actualRate.toFixed(1)}%</strong></span>
+      </div>
+    </div>
+  );
+};
+
 const JAPAN_PREFECTURES = [
   '北海道','青森県','岩手県','宮城県','秋田県','山形県','福島県',
   '茨城県','栃木県','群馬県','埼玉県','千葉県','東京都','神奈川県',
@@ -326,6 +408,15 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
           </div>
         </div>
 
+        {/* ── コスト構成バー ── */}
+        <CostCompositionBar
+          netMaterialCost={calc.netMaterialCost}
+          totalProcessCost={calc.totalProcessCost}
+          sgaCost={calc.sgaCost}
+          shippingCostPerUnit={calc.shippingCostPerUnit}
+          total={calc.grandTotalUnitPrice}
+        />
+
         {/* ── 1. 価格目標 ── */}
         {sh(Coins, '1. 価格目標')}
         <div className="px-4 py-3 space-y-2.5">
@@ -574,8 +665,14 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                           <div className="flex items-center justify-center h-7 text-[9px] text-[#D6D0C8] bg-[#F7F6F2] rounded border border-[#EEEBE6]">—</div>
                         )}
                       </td>
-                      <td className="py-1 px-1 text-right font-mono font-bold text-[11px] text-[#18130F]">
-                        ¥{costPerUnit.toFixed(1)}
+                      <td className="py-1 px-1">
+                        <div className="text-right font-mono font-bold text-[11px] text-[#18130F]">¥{costPerUnit.toFixed(1)}</div>
+                        {calc.totalProcessCost > 0 && costPerUnit > 0.01 && (
+                          <div className="mt-0.5 h-1 rounded-full overflow-hidden bg-[#F0EDE8]">
+                            <div className="h-full rounded-full transition-all duration-500"
+                              style={{ width: `${Math.min(100, costPerUnit / calc.totalProcessCost * 100).toFixed(1)}%`, background: isNew ? '#1E3A5F' : '#B5451B' }} />
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );
@@ -735,6 +832,13 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
           </button>
         </div>
 
+        {/* ── 利益率ゲージ ── */}
+        <ProfitGauge
+          actualRate={calc.actualProfitRate}
+          minRate={est.adjustments.minProfitRate || 0}
+          targetRate={est.adjustments.targetProfitRate || 0}
+        />
+
         {/* ── 6. 計算結果 ── */}
         <div className={`p-4 border-t-2 border-[#EEEBE6] ${Math.abs(calc.auditVariance) < 0.1 ? 'bg-[#E8F5EC]/50' : 'bg-[#FEF0EB]/50'}`}>
           <div className="flex items-center justify-between mb-3">
@@ -801,62 +905,151 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     );
   };
 
-  // ─── Diff bar ─────────────────────────────────────────────────────────────────
+  // ─── Waterfall Diff ───────────────────────────────────────────────────────────
   const renderDiffBar = () => {
     if (oldCalc.grandTotalUnitPrice <= 0 && newCalc.grandTotalUnitPrice <= 0) return null;
-    const diff = (a: number, b: number) => b - a;
-    const pct = (d: number, base: number) => base > 0 ? (d / base * 100) : null;
-    const DiffTag = ({ d, base }: { d: number; base: number }) => {
-      const p = pct(d, base);
-      const cls = d > 0.005 ? 'text-rose-600 bg-rose-50 border-rose-200' : d < -0.005 ? 'text-[#1D5C3A] bg-[#E8F5EC] border-[#A8D5B5]' : 'text-[#9C9490] bg-[#F7F6F2] border-[#EEEBE6]';
+
+    const dUnit = newCalc.grandTotalUnitPrice - oldCalc.grandTotalUnitPrice;
+    const pctUnit = oldCalc.grandTotalUnitPrice > 0 ? (dUnit / oldCalc.grandTotalUnitPrice * 100) : null;
+
+    const components = [
+      { label: '材料費/個', o: oldCalc.netMaterialCost, n: newCalc.netMaterialCost, dot: '#B5451B' },
+      { label: '加工費合計', o: oldCalc.totalProcessCost, n: newCalc.totalProcessCost, dot: '#1E3A5F' },
+      { label: '利管費', o: oldCalc.sgaCost, n: newCalc.sgaCost, dot: '#6B3FA0' },
+      { label: '送料/個', o: oldCalc.shippingCostPerUnit, n: newCalc.shippingCostPerUnit, dot: '#1A6B3A' },
+    ].filter(c => c.o > 0 || c.n > 0);
+
+    const maxAbsDelta = Math.max(...components.map(c => Math.abs(c.n - c.o)), 0.01);
+
+    const DiffChip = ({ d, base }: { d: number; base: number }) => {
+      const p = base > 0.01 ? (d / base * 100) : null;
+      const isUp = d > 0.01; const isDn = d < -0.01;
+      const cls = isUp
+        ? 'text-rose-400 bg-rose-900/30 border-rose-700/50'
+        : isDn ? 'text-emerald-400 bg-emerald-900/30 border-emerald-700/50'
+        : 'text-[#6B6057] bg-[#1A1510] border-[#3D3228]';
       return (
-        <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border ${cls}`}>
+        <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${cls} whitespace-nowrap`}>
           {d > 0 ? '+' : ''}{d.toFixed(2)}{p !== null ? ` (${p > 0 ? '+' : ''}${p.toFixed(1)}%)` : ''}
         </span>
       );
     };
-    const dUnitPrice = diff(oldCalc.grandTotalUnitPrice, newCalc.grandTotalUnitPrice);
+
     return (
-      <div className="bg-white rounded-lg border border-[#D6D0C8] overflow-hidden">
-        <div className="bg-[#18130F] text-white px-4 py-2.5 flex items-center gap-2 border-b-2 border-[#B5451B]">
-          <ArrowLeftRight className="w-3.5 h-3.5 text-[#F8C9BB]" />
-          <span className="text-xs font-black">新旧 差額サマリー</span>
-          <span className="text-[9px] text-[#9C9490] ml-auto">旧 → 新</span>
-        </div>
-        <div className="p-4">
-          <div className="flex items-center justify-between mb-3 pb-3 border-b border-[#EEEBE6]">
-            <span className="text-sm font-black text-[#18130F]">御見積単価</span>
-            <div className="flex items-center gap-2 flex-wrap justify-end">
-              <span className="text-sm font-mono text-[#9C9490]">¥{oldCalc.grandTotalUnitPrice.toFixed(2)}</span>
-              <span className="text-[#9C9490]">→</span>
-              <span className="text-sm font-black font-mono text-[#1E3A5F]">¥{newCalc.grandTotalUnitPrice.toFixed(2)}</span>
-              <DiffTag d={dUnitPrice} base={oldCalc.grandTotalUnitPrice} />
-            </div>
+      <div className="bg-[#18130F] rounded-lg overflow-hidden border border-[#2D2219]">
+
+        {/* ─ Header */}
+        <div className="px-4 py-3.5 border-b border-[#2D2219] flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <ArrowLeftRight className="w-4 h-4 text-[#F8C9BB]" />
+            <span className="text-sm font-black text-white tracking-wide">コスト変動ウォーターフォール</span>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            {[
-              { label: '材料費/個', o: oldCalc.netMaterialCost, n: newCalc.netMaterialCost },
-              { label: '加工費合計', o: oldCalc.totalProcessCost, n: newCalc.totalProcessCost },
-              { label: '送料/個', o: oldCalc.shippingCostPerUnit, n: newCalc.shippingCostPerUnit },
-              { label: '実原価', o: oldCalc.actualTotalCost, n: newCalc.actualTotalCost },
-            ].map(({ label, o, n }) => (
-              <div key={label} className="bg-[#F7F6F2] rounded p-2.5">
-                <div className="text-[9px] text-[#9C9490] font-bold mb-1">{label}</div>
-                <div className="text-[10px] font-mono text-[#9C9490] mb-0.5">¥{o.toFixed(2)} → ¥{n.toFixed(2)}</div>
-                <DiffTag d={diff(o, n)} base={o} />
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="text-center">
+              <div className="text-[8px] text-[#6B6057] mb-0.5 font-bold uppercase tracking-wider">旧単価</div>
+              <div className="text-lg font-black font-mono text-[#9C9490]">
+                ¥{Math.round(oldCalc.grandTotalUnitPrice).toLocaleString()}
               </div>
-            ))}
-          </div>
-          {(oldCalc.actualProfitRate !== 0 || newCalc.actualProfitRate !== 0) && (
-            <div className="mt-3 pt-3 border-t border-[#EEEBE6] flex items-center gap-3 flex-wrap text-xs">
-              <span className="text-[#9C9490] font-bold">実利益率 (外掛け):</span>
-              <span>旧 <strong className={oldCalc.actualProfitRate >= 0 ? 'text-[#1D5C3A]' : 'text-rose-600'}>{oldCalc.actualProfitRate.toFixed(1)}%</strong></span>
-              <span className="text-[#9C9490]">→</span>
-              <span>新 <strong className={newCalc.actualProfitRate >= 0 ? 'text-[#1D5C3A]' : 'text-rose-600'}>{newCalc.actualProfitRate.toFixed(1)}%</strong></span>
-              <DiffTag d={newCalc.actualProfitRate - oldCalc.actualProfitRate} base={Math.abs(oldCalc.actualProfitRate)} />
             </div>
-          )}
+            <div className="text-[#3D3228] text-xl font-thin select-none">→</div>
+            <div className="text-center">
+              <div className="text-[8px] text-[#B5451B] mb-0.5 font-bold uppercase tracking-wider">新単価</div>
+              <div className="text-2xl font-black font-mono text-white">
+                ¥{Math.round(newCalc.grandTotalUnitPrice).toLocaleString()}
+              </div>
+            </div>
+            <div className={`text-lg font-black font-mono ${dUnit > 0.01 ? 'text-rose-400' : dUnit < -0.01 ? 'text-emerald-400' : 'text-[#6B6057]'}`}>
+              {dUnit > 0 ? '+' : ''}{dUnit.toFixed(2)}
+              {pctUnit !== null && (
+                <span className="text-[11px] ml-1">({pctUnit > 0 ? '+' : ''}{pctUnit.toFixed(1)}%)</span>
+              )}
+            </div>
+          </div>
         </div>
+
+        {/* ─ Waterfall rows */}
+        <div className="p-4 space-y-2">
+          <div className="text-[9px] font-black text-[#6B6057] uppercase tracking-wider mb-3">コスト内訳の変動</div>
+          {components.map(({ label, o, n, dot }) => {
+            const delta = n - o;
+            const isUp = delta > 0.01;
+            const isDn = delta < -0.01;
+            const noChange = !isUp && !isDn;
+            const barPct = noChange ? 0 : (Math.abs(delta) / maxAbsDelta * 75 + 10);
+            const barColor = isUp ? '#EF4444' : '#22C55E';
+            const textCls = isUp ? 'text-rose-400' : isDn ? 'text-emerald-400' : 'text-[#4D4540]';
+            return (
+              <div key={label} className="flex items-center gap-2.5">
+                <div className="w-2 h-2 rounded-full shrink-0 mt-0.5" style={{ background: dot }} />
+                <span className="text-[9px] text-[#9C9490] w-[4.5rem] shrink-0 leading-tight">{label}</span>
+                <div className="flex-1 h-5 rounded bg-[#1A1510] overflow-hidden flex items-center">
+                  {noChange ? (
+                    <div className="w-full flex items-center justify-center">
+                      <span className="text-[8px] text-[#3D3228] font-mono">変化なし</span>
+                    </div>
+                  ) : (
+                    <div className="h-full rounded transition-all duration-700 flex items-center px-2"
+                      style={{ width: `${barPct.toFixed(1)}%`, background: barColor }}>
+                      <span className="text-[8px] font-black text-white/90 whitespace-nowrap">
+                        {delta > 0 ? '+' : ''}{delta.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div className="w-28 shrink-0 text-right">
+                  <div className={`text-[9px] font-mono font-bold ${textCls}`}>
+                    {noChange ? '±0' : `${delta > 0 ? '+' : ''}${delta.toFixed(2)}`}
+                    {!noChange && o > 0.01 && (
+                      <span className="text-[7px] ml-1 opacity-70">({((delta / o) * 100).toFixed(0)}%)</span>
+                    )}
+                  </div>
+                  <div className="text-[8px] text-[#4D4540] font-mono">¥{o.toFixed(0)} → ¥{n.toFixed(0)}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* ─ Totals row */}
+        <div className="mx-4 mb-3 pt-3 border-t border-[#2D2219] flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-[10px] font-black text-[#9C9490] uppercase tracking-wider">御見積単価 差額</span>
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <span className="text-sm font-mono text-[#9C9490]">¥{oldCalc.grandTotalUnitPrice.toFixed(2)}</span>
+            <span className="text-[#3D3228]">→</span>
+            <span className="text-sm font-black font-mono text-white">¥{newCalc.grandTotalUnitPrice.toFixed(2)}</span>
+            <DiffChip d={dUnit} base={oldCalc.grandTotalUnitPrice} />
+          </div>
+        </div>
+
+        {/* ─ Profit comparison */}
+        {(oldCalc.actualProfitRate !== 0 || newCalc.actualProfitRate !== 0) && (
+          <div className="px-4 pb-4 pt-2 border-t border-[#2D2219] flex items-center flex-wrap gap-x-4 gap-y-1.5">
+            <span className="text-[9px] font-black text-[#6B6057] uppercase tracking-wider">実利益率 (内掛け)</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono text-[#9C9490]">
+                旧 <strong className={oldCalc.actualProfitRate >= 0 ? 'text-[#6B9C8A]' : 'text-rose-500'}>{oldCalc.actualProfitRate.toFixed(1)}%</strong>
+              </span>
+              <span className="text-[#3D3228]">→</span>
+              <span className="text-xs font-mono">
+                新 <strong className={newCalc.actualProfitRate >= 0 ? 'text-emerald-400' : 'text-rose-400'}>{newCalc.actualProfitRate.toFixed(1)}%</strong>
+              </span>
+              {(() => {
+                const d = newCalc.actualProfitRate - oldCalc.actualProfitRate;
+                const isUp = d > 0.05; const isDn = d < -0.05;
+                const cls = isUp
+                  ? 'text-emerald-400 border-emerald-700/40 bg-emerald-900/20'
+                  : isDn ? 'text-rose-400 border-rose-700/40 bg-rose-900/20'
+                  : 'text-[#6B6057] border-[#3D3228]';
+                return (
+                  <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${cls}`}>
+                    {d > 0 ? '+' : ''}{d.toFixed(1)}pp
+                  </span>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+
       </div>
     );
   };

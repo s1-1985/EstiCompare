@@ -19,6 +19,7 @@ import {
 import { auth, loginWithGoogle, logout } from './firebase';
 import { subscribeScenarios, saveUserScenario } from './utils/firestoreService';
 import { apiPost } from './utils/apiClient';
+import { calculateEstimate } from './utils/calculations';
 
 type ActiveView = 'workspace' | 'library';
 
@@ -155,6 +156,9 @@ export default function App() {
   };
 
   const isOverwritable = customScenarios.some(s => s.id === activeScenarioId);
+  const oldCalc = calculateEstimate(oldEstimate);
+  const newCalc = calculateEstimate(newEstimate);
+  const hasAnyPrice = oldCalc.grandTotalUnitPrice > 0 || newCalc.grandTotalUnitPrice > 0;
 
   return (
     <div className="min-h-screen bg-[#F7F6F2] flex flex-col text-[#18130F] font-sans antialiased selection:bg-[#FDE6DC]">
@@ -320,6 +324,50 @@ export default function App() {
           />
         ) : (
           <>
+            {/* ── Live KPI strip ── */}
+            {hasAnyPrice && (
+              <div className="mb-3 bg-[#18130F] rounded-lg border border-[#2D2219] px-4 py-2.5 flex items-center gap-3 flex-wrap overflow-hidden">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[9px] font-black text-[#6B6057] uppercase tracking-wider">旧</span>
+                  <span className="font-black font-mono text-[#9C9490] text-sm">
+                    {oldCalc.grandTotalUnitPrice > 0 ? `¥${Math.round(oldCalc.grandTotalUnitPrice).toLocaleString()}` : '—'}
+                  </span>
+                </div>
+                <span className="text-[#3D3228] select-none">→</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[9px] font-black text-[#B5451B] uppercase tracking-wider">新</span>
+                  <span className="font-black font-mono text-white text-lg">
+                    {newCalc.grandTotalUnitPrice > 0 ? `¥${Math.round(newCalc.grandTotalUnitPrice).toLocaleString()}` : '—'}
+                  </span>
+                </div>
+                {oldCalc.grandTotalUnitPrice > 0 && newCalc.grandTotalUnitPrice > 0 && (() => {
+                  const d = newCalc.grandTotalUnitPrice - oldCalc.grandTotalUnitPrice;
+                  const p = d / oldCalc.grandTotalUnitPrice * 100;
+                  const cls = d > 0.01
+                    ? 'text-rose-400 bg-rose-900/30 border-rose-700/50'
+                    : d < -0.01 ? 'text-emerald-400 bg-emerald-900/30 border-emerald-700/50'
+                    : 'text-[#6B6057] bg-[#1A1510] border-[#3D3228]';
+                  return (
+                    <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${cls} whitespace-nowrap`}>
+                      {d > 0 ? '+' : ''}{d.toFixed(0)} ({p > 0 ? '+' : ''}{p.toFixed(1)}%)
+                    </span>
+                  );
+                })()}
+                <div className="ml-auto flex items-center gap-3">
+                  {oldCalc.actualProfitRate !== 0 && (
+                    <span className="text-[9px] text-[#6B6057]">
+                      旧利益率 <strong className={oldCalc.actualProfitRate >= 0 ? 'text-[#6B9C8A]' : 'text-rose-400'}>{oldCalc.actualProfitRate.toFixed(1)}%</strong>
+                    </span>
+                  )}
+                  {newCalc.actualProfitRate !== 0 && (
+                    <span className="text-[9px] text-[#9C9490]">
+                      新利益率 <strong className={newCalc.actualProfitRate >= 0 ? 'text-emerald-400' : 'text-rose-400'}>{newCalc.actualProfitRate.toFixed(1)}%</strong>
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="mb-4 sm:mb-5">
               <div className="flex items-center justify-between gap-4 mb-2 px-1 flex-wrap">
                 <div className="flex items-center gap-2 text-xs text-[#6B6057] bg-white p-2 sm:p-2.5 rounded border border-[#D6D0C8] min-w-0">
