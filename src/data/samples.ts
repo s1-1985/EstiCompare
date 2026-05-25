@@ -38,7 +38,9 @@ export const createEmptyEstimate = (): DetailedEstimate => ({
   logistics: {
     qtyPerBox: 1,
     freightPerBox: 0,
-    actualFreightPerBox: undefined
+    actualFreightPerBox: undefined,
+    originPrefecture: '',
+    destinationPrefecture: '',
   },
   adjustments: {
     targetProfitRate: 0,
