@@ -4,6 +4,7 @@ import { createEmptyEstimate } from './data/samples';
 import { ExcelGrid } from './components/ExcelGrid';
 import { CompareResults } from './components/CompareResults';
 import { ScenarioLibrary } from './components/ScenarioLibrary';
+import { PrintSheet } from './components/PrintSheet';
 import {
   FileSpreadsheet,
   RotateCcw,
@@ -13,6 +14,7 @@ import {
   BookOpen,
   Info,
   FilePlus,
+  Printer,
 } from 'lucide-react';
 import { auth, loginWithGoogle, logout } from './firebase';
 import { subscribeScenarios, saveUserScenario } from './utils/firestoreService';
@@ -36,7 +38,7 @@ export default function App() {
     JSON.parse(JSON.stringify(createEmptyEstimate()))
   );
 
-  const [activeSheetTab, setActiveSheetTab] = useState<'workspace' | 'compare'>('workspace');
+  const [activeSheetTab, setActiveSheetTab] = useState<'workspace' | 'compare' | 'print'>('workspace');
   const [comparisonResult, setComparisonResult] = useState<ComparisonResult | null>(null);
   const [isComparing, setIsComparing] = useState(false);
 
@@ -364,6 +366,13 @@ export default function App() {
                   onRunComparison={triggerComparisonAnalysis}
                 />
               )}
+
+              {activeSheetTab === 'print' && (
+                <PrintSheet
+                  oldEstimate={oldEstimate}
+                  newEstimate={newEstimate}
+                />
+              )}
             </section>
           </>
         )}
@@ -401,6 +410,20 @@ export default function App() {
                 <span className={`font-mono text-[9px] sm:text-[10px] font-black shrink-0 ${activeSheetTab === 'compare' ? 'text-[#B5451B]' : 'text-[#9C9490]'}`}>Sheet2!</span>
                 <span className="hidden sm:inline">2. 差額要因分析・説明調整監査報告 (Audit)</span>
                 <span className="sm:hidden">差額分析</span>
+              </button>
+
+              <button
+                onClick={() => setActiveSheetTab('print')}
+                className={`px-3 sm:px-5 py-3.5 sm:py-4 font-black flex items-center justify-center gap-1.5 sm:gap-2 cursor-pointer text-xs transition-all flex-1 border-t-2 ${
+                  activeSheetTab === 'print'
+                    ? 'border-t-[#2A4A7F] bg-[#EBF0FA] text-[#2A4A7F]'
+                    : 'border-t-transparent bg-white text-[#9C9490] hover:text-[#2A4A7F] hover:bg-[#F0F4FB]'
+                }`}
+              >
+                <Printer className={`w-3.5 h-3.5 shrink-0 ${activeSheetTab === 'print' ? 'text-[#2A4A7F]' : 'text-[#9C9490]'}`} />
+                <span className={`font-mono text-[9px] sm:text-[10px] font-black shrink-0 ${activeSheetTab === 'print' ? 'text-[#2A4A7F]' : 'text-[#9C9490]'}`}>Sheet3!</span>
+                <span className="hidden sm:inline">3. 見積書 印刷・Excel出力 (Print)</span>
+                <span className="sm:hidden">印刷・出力</span>
               </button>
 
             </div>
