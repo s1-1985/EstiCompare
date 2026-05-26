@@ -405,6 +405,26 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
           </div>
         </div>
 
+        {/* ── 見積ロット（列ごとに独立設定） ── */}
+        <div className="px-4 py-2 flex items-center gap-2 border-b border-[#F0EDE8] bg-[#FAFAF8]">
+          <label className="text-[10px] font-black text-[#18130F] w-24 shrink-0">
+            見積ロット <span className="text-[#B5451B]">*</span>
+          </label>
+          <div className="relative flex-1">
+            <input
+              type="number"
+              value={est.baseLotSize || ''}
+              onChange={(e) => {
+                const v = Math.max(1, parseInt(e.target.value) || 1);
+                (isNew ? onChangeNew : onChangeOld)({ ...est, baseLotSize: v });
+              }}
+              placeholder="300"
+              className={`${inp} pr-12 font-bold ${fld(isEmptyNum(est.baseLotSize))}`}
+            />
+            <span className="absolute right-2 top-1.5 text-[9px] text-[#9C9490] pointer-events-none">個/Lot</span>
+          </div>
+        </div>
+
         {/* ── コスト構成バー ── */}
         <CostCompositionBar
           netMaterialCost={calc.netMaterialCost}
