@@ -101,6 +101,29 @@ const apiLimiter = rateLimit({
 });
 app.use("/api/", apiLimiter);
 
+// ── Health check (no auth) ────────────────────────────────────────────────────
+app.get("/health", async (_req, res) => {
+  const result: Record<string, unknown> = {
+    geminiKeySet: !!process.env.GEMINI_API_KEY,
+    adminInitialized,
+  };
+  try {
+    if (ai) {
+      const r = await ai.models.generateContent({ model: "gemini-2.0-flash", contents: "Reply with just: ok" });
+      result.geminiOk = true;
+      result.geminiSample = r.text?.slice(0, 30);
+    } else {
+      result.geminiOk = false;
+      result.geminiError = "client not initialized";
+    }
+  } catch (e: any) {
+    result.geminiOk = false;
+    result.geminiError = e?.message;
+    result.geminiStatus = e?.status;
+  }
+  res.json(result);
+});
+
 // ── Auth enforcement on all /api/ routes ──────────────────────────────────────
 app.use("/api/", requireAuth);
 
@@ -111,7 +134,7 @@ app.use(express.json({ limit: "512kb" }));
 const apiKey = process.env.GEMINI_API_KEY;
 let ai: GoogleGenAI | null = null;
 if (apiKey) {
-  ai = new GoogleGenAI({ apiKey, httpOptions: { headers: { "User-Agent": "aistudio-build" } } });
+  ai = new GoogleGenAI({ apiKey });
 } else {
   console.warn("Warning: GEMINI_API_KEY is not set.");
 }
@@ -156,9 +179,11 @@ function isDailyQuotaError(error: any): boolean {
 }
 
 function sendApiError(res: any, error: any, fallback: string) {
-  console.error(fallback, "status:", error?.status, "message:", error?.message);
-  const isGeminiQuota = error?.status === 429;
-  const isGeminiInput = error?.status === 400 && typeof error?.message === "string";
+  const errMsg = error?.message || String(error);
+  const errStatus = error?.status;
+  console.error(fallback, "status:", errStatus, "message:", errMsg);
+  const isGeminiQuota = errStatus === 429;
+  const isGeminiInput = errStatus === 400 && typeof errMsg === "string";
   if (isGeminiQuota) {
     if (isDailyQuotaError(error)) {
       // Daily (RPD) limit — retrying won't help until next reset
@@ -176,7 +201,7 @@ function sendApiError(res: any, error: any, fallback: string) {
   if (isGeminiInput) {
     return res.status(422).json({ error: "入力内容に問題があります。内容を確認してから再試行してください。" });
   }
-  return res.status(500).json({ error: fallback });
+  return res.status(500).json({ error: `${fallback} [${errStatus ?? 'no-status'}: ${errMsg}]` });
 }
 
 // ── Gemini call — single attempt; client handles retry with countdown UI ──────
