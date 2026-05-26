@@ -354,6 +354,37 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     setter({ ...target, processes: draftProcesses, adjustments: updatedAdjustments });
   };
 
+  // 利管費率を逆算して売値に合わせる
+  const handleFitToSellPrice = (isNew: boolean) => {
+    const est = isNew ? newEstimate : oldEstimate;
+    const calc = isNew ? newCalc : oldCalc;
+    const setter = isNew ? onChangeNew : onChangeOld;
+    const targetSell = est.adjustments.targetUnitPrice;
+    if (!targetSell || targetSell <= 0) {
+      alert('先に目標売値（旧：現行売値㉒、新：目標売値㉘）を入力してください。');
+      return;
+    }
+    const primeCost = calc.primeCost;
+    if (primeCost <= 0) {
+      alert('材料費・加工費を先に入力してください。');
+      return;
+    }
+    const base = targetSell - calc.shippingCostPerUnit - (est.adjustments.otherAdjustment || 0);
+    if (base <= primeCost * 0.01) {
+      alert('目標売値が積み上げコストより低すぎます。目標売値を見直してください。');
+      return;
+    }
+    const mode = est.adjustments.sgaCalcMode || 'markup';
+    const newRate = mode === 'margin'
+      ? (1 - primeCost / base) * 100
+      : (base / primeCost - 1) * 100;
+    if (newRate < 0) {
+      alert(`目標売値が積み上げコスト(¥${primeCost.toFixed(0)})を下回るため設定できません。`);
+      return;
+    }
+    setter({ ...est, adjustments: { ...est.adjustments, sgaRatePercent: parseFloat(newRate.toFixed(2)) } });
+  };
+
   // ─── Style helpers ────────────────────────────────────────────────────────────
   const isEmptyStr = (v: string | undefined) => !v || v.trim() === '';
   const isEmptyNum = (v: number | undefined | null) => !v || v === 0;
@@ -779,12 +810,27 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
             </div>
           </div>
 
+          {/* 利管費率 + 外掛け/内掛けトグル */}
           <div className="flex items-center justify-between gap-2">
             <label className="text-xs font-bold text-[#18130F] shrink-0">
               利管費率
-              <span className="text-[9px] text-[#6B6057] block">材料+加工に乗算</span>
             </label>
-            <div className="relative w-36 flex-none flex items-center gap-1">
+            <div className="flex items-center gap-1 w-48 flex-none">
+              {/* 外掛け/内掛けトグル */}
+              <button
+                onClick={() => {
+                  const next = (est.adjustments.sgaCalcMode || 'markup') === 'markup' ? 'margin' : 'markup';
+                  (isNew ? onChangeNew : onChangeOld)({ ...est, adjustments: { ...est.adjustments, sgaCalcMode: next } });
+                }}
+                className={`shrink-0 text-[10px] font-black px-1.5 py-1 rounded border cursor-pointer transition-all leading-none ${
+                  (est.adjustments.sgaCalcMode || 'markup') === 'margin'
+                    ? 'bg-[#1E3A5F] text-white border-[#1E3A5F]'
+                    : 'bg-[#FEF0EB] text-[#B5451B] border-[#F8C9BB]'
+                }`}
+                title="クリックで外掛け/内掛けを切替"
+              >
+                {(est.adjustments.sgaCalcMode || 'markup') === 'margin' ? '内掛' : '外掛'}
+              </button>
               <div className="relative flex-1">
                 <input type="number" value={est.adjustments.sgaRatePercent ?? ''}
                   onChange={(e) => updateAdjustments(isNew, 'sgaRatePercent', e.target.value)}
@@ -797,6 +843,13 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
               )}
             </div>
           </div>
+
+          {/* 売値に合わせて利管費率を逆算 */}
+          <button onClick={() => handleFitToSellPrice(isNew)}
+            className={`w-full font-black text-xs py-2 rounded border flex items-center justify-center gap-1.5 cursor-pointer transition-all ${colAccentBg} ${colAccentText} ${colAccentBorder} hover:opacity-80`}>
+            <Settings2 className="w-3.5 h-3.5" />
+            売値に合わせて利益率を設定
+          </button>
 
           <div className="flex items-center justify-between gap-2">
             <label className="text-xs font-bold text-[#18130F] shrink-0">
@@ -870,23 +923,45 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
               </span>
             </div>
 
-            <div className="flex items-center justify-between text-xs gap-2 pt-2 border-t border-dashed border-[#D6D0C8]">
-              <span className="text-[#18130F] shrink-0 font-bold">型費（別途）</span>
-              <div className="relative w-28">
-                <span className="absolute left-2 top-1 text-[10px] text-[#9C9490]">¥</span>
-                <input type="number" value={est.adjustments.toolingCost || ''}
-                  onChange={(e) => updateAdjustments(isNew, 'toolingCost', e.target.value)}
-                  placeholder="0"
-                  className="w-full pl-5 pr-2 py-1 text-xs font-mono text-right rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#B5451B]" />
-              </div>
-            </div>
-
-            {est.adjustments.targetUnitPrice > 0 && (
-              <div className="text-xs text-[#18130F] font-bold flex justify-between pt-1 border-t border-[#EEEBE6]">
-                <span>目標売値</span>
-                <span className="font-mono">¥{est.adjustments.targetUnitPrice.toFixed(2)}</span>
-              </div>
-            )}
+            {/* 目標売値との差額 + 必要利益率 */}
+            {est.adjustments.targetUnitPrice > 0 && calc.grandTotalUnitPrice > 0 && (() => {
+              const targetSell = est.adjustments.targetUnitPrice;
+              const gap = targetSell - calc.grandTotalUnitPrice;
+              const neededMarkup = (targetSell / calc.grandTotalUnitPrice - 1) * 100;
+              const neededMargin = (1 - calc.grandTotalUnitPrice / targetSell) * 100;
+              const isOver = gap < -0.005;
+              const isExact = Math.abs(gap) < 0.005;
+              return (
+                <div className={`mt-2 p-2.5 rounded border text-xs space-y-1.5 ${isExact ? 'bg-[#E8F5EC] border-emerald-300' : isOver ? 'bg-rose-50 border-rose-200' : 'bg-amber-50 border-amber-200'}`}>
+                  <div className="flex justify-between items-baseline">
+                    <span className="font-bold text-[#18130F]">目標売値</span>
+                    <span className="font-mono font-black text-sm text-[#18130F]">¥{targetSell.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-baseline">
+                    <span className="font-bold text-[#18130F]">差額（目標-計算）</span>
+                    <span className={`font-mono font-black text-sm ${isExact ? 'text-emerald-700' : isOver ? 'text-rose-600' : 'text-amber-700'}`}>
+                      {gap >= 0 ? '+' : ''}{gap.toFixed(2)}
+                    </span>
+                  </div>
+                  {!isExact && (
+                    <div className="border-t border-current/20 pt-1.5 space-y-1">
+                      <div className="text-[#6B6057] font-bold text-[10px] uppercase tracking-wide">
+                        {isOver ? '目標達成に必要な利益率' : '現在の計算値から目標まで'}
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-[#18130F]">外掛け</span>
+                        <span className={`font-mono font-black ${neededMarkup < 0 ? 'text-rose-600' : 'text-[#B5451B]'}`}>{neededMarkup.toFixed(2)}%</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-[#18130F]">内掛け</span>
+                        <span className={`font-mono font-black ${neededMargin < 0 ? 'text-rose-600' : 'text-[#1E3A5F]'}`}>{neededMargin.toFixed(2)}%</span>
+                      </div>
+                    </div>
+                  )}
+                  {isExact && <div className="text-emerald-700 font-black text-[10px] text-center">✓ 目標売値と一致</div>}
+                </div>
+              );
+            })()}
           </div>
         </div>
 

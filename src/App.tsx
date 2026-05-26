@@ -675,153 +675,140 @@ export default function App() {
           <div className="flex-none bg-[#F0EDE8] border-b-2 border-[#C8C2B8] px-3 py-3">
             <div className="flex gap-2 sm:gap-3">
 
-              {/* 旧単価 panel */}
+              {/* 旧単価 panel — 2列グリッドで詰める */}
               <div className="flex-1 min-w-0 bg-white rounded-lg border border-[#E0C0B0] overflow-hidden shadow-sm">
-                <div className="bg-[#FEF0EB] px-3 py-1.5 border-b border-[#E8C8BC] flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-sm bg-[#B5451B] shrink-0" />
+                <div className="bg-[#FEF0EB] px-3 py-1 border-b border-[#E8C8BC] flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-sm bg-[#B5451B] shrink-0" />
                   <span className="text-xs font-black text-[#B5451B] uppercase tracking-wider">旧単価</span>
-                </div>
-                <div className="px-3 py-2 space-y-1.5">
-
-                  {/* 計算仕入値：常に表示（賃率変更でリアルタイム変動） */}
-                  <div className="flex items-baseline justify-between gap-1">
-                    <span className="text-xs text-[#9C9490] font-bold shrink-0">計算仕入値</span>
-                    <span className="font-mono font-black text-base text-[#18130F] truncate">
-                      {oldCalc.grandTotalUnitPrice > 0 ? fmtYen(oldCalc.grandTotalUnitPrice) : <span className="text-[#C8C2B8] text-xs">—</span>}
-                    </span>
-                  </div>
-
-                  {/* 仕入実費㉑：手入力時のみ表示 */}
                   {oldEstimate.adjustments.actualPurchasePrice > 0 && (
-                    <div className="flex items-baseline justify-between gap-1">
-                      <span className="text-xs text-[#9C9490] font-bold shrink-0">㉑ 仕入実費</span>
-                      <span className="font-mono font-bold text-sm text-[#18130F] truncate">{fmtYen(oldEstimate.adjustments.actualPurchasePrice)}</span>
-                    </div>
+                    <span className="ml-auto text-[10px] text-[#9C9490]">㉑実費: <strong className="font-mono text-[#18130F]">{fmtYen(oldEstimate.adjustments.actualPurchasePrice)}</strong></span>
                   )}
-
-                  {/* 現行売値㉒ */}
-                  <div className="flex items-baseline justify-between gap-1 border-t border-[#F0EDE8] pt-1.5">
-                    <span className="text-xs text-[#9C9490] font-bold shrink-0">㉒ 現行売値</span>
-                    <span className="font-mono font-black text-lg text-[#B5451B] truncate">
-                      {oldSell > 0 ? fmtYen(oldSell) : <span className="text-[#C8C2B8] text-sm">未入力</span>}
-                    </span>
+                </div>
+                <div className="px-3 py-2">
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                    {/* 計算仕入値 */}
+                    <div>
+                      <div className="text-[10px] text-[#9C9490] font-bold leading-none mb-0.5">計算仕入値</div>
+                      <div className="font-mono font-black text-sm text-[#18130F]">
+                        {oldCalc.grandTotalUnitPrice > 0 ? fmtYen(oldCalc.grandTotalUnitPrice) : '—'}
+                      </div>
+                    </div>
+                    {/* 現行売値㉒ */}
+                    <div>
+                      <div className="text-[10px] text-[#9C9490] font-bold leading-none mb-0.5">㉒ 現行売値</div>
+                      <div className={`font-mono font-black text-base ${oldSell > 0 ? 'text-[#B5451B]' : 'text-[#C8C2B8]'}`}>
+                        {oldSell > 0 ? fmtYen(oldSell) : '未入力'}
+                      </div>
+                    </div>
+                    {/* 外掛け */}
+                    {oldCalcMarkup !== null ? (
+                      <div>
+                        <div className="text-[10px] text-[#9C9490] font-bold leading-none mb-0.5">㉓ 外掛け</div>
+                        <div className={`font-mono font-black text-sm ${profitColorCls(oldCalcMarkup)}`}>{fmtPct(oldCalcMarkup)}</div>
+                      </div>
+                    ) : <div />}
+                    {/* 内掛け */}
+                    {oldCalcMargin !== null ? (
+                      <div>
+                        <div className="text-[10px] text-[#9C9490] font-bold leading-none mb-0.5">㉔ 内掛け</div>
+                        <div className={`font-mono font-black text-sm ${profitColorCls(oldCalcMargin)}`}>{fmtPct(oldCalcMargin)}</div>
+                      </div>
+                    ) : <div />}
+                    {/* 粗利益 */}
+                    {oldGrossPerUnit !== null ? (
+                      <div>
+                        <div className="text-[10px] text-[#9C9490] font-bold leading-none mb-0.5">㉕ 粗利益/個</div>
+                        <div className={`font-mono font-black text-xs ${profitColorCls(oldGrossPerUnit)}`}>{fmtYen(oldGrossPerUnit)}</div>
+                      </div>
+                    ) : <div />}
+                    {/* 売値-計算差 */}
+                    {oldGapToTarget !== null ? (
+                      <div>
+                        <div className="text-[10px] text-[#9C9490] font-bold leading-none mb-0.5">売値-計算差</div>
+                        <div className={`font-mono font-black text-xs ${oldGapToTarget >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                          {oldGapToTarget >= 0 ? '+' : ''}{fmtYen(oldGapToTarget)}
+                        </div>
+                      </div>
+                    ) : <div />}
                   </div>
-
-                  {/* 目標-計算差 */}
-                  {oldGapToTarget !== null && (
-                    <div className="flex items-baseline justify-between gap-1">
-                      <span className="text-xs text-[#9C9490] font-bold shrink-0">売値-計算差</span>
-                      <span className={`font-mono font-black text-sm ${oldGapToTarget >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                        {oldGapToTarget >= 0 ? '+' : ''}{fmtYen(oldGapToTarget)}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* 外掛け/内掛け（計算仕入値ベース） */}
-                  {oldCalcMarkup !== null && (
-                    <div className="flex items-baseline justify-between gap-1 border-t border-[#F0EDE8] pt-1.5">
-                      <span className="text-xs text-[#9C9490] font-bold shrink-0">㉓ 外掛け</span>
-                      <span className={`font-mono font-black text-base ${profitColorCls(oldCalcMarkup)}`}>{fmtPct(oldCalcMarkup)}</span>
-                    </div>
-                  )}
-                  {oldCalcMargin !== null && (
-                    <div className="flex items-baseline justify-between gap-1">
-                      <span className="text-xs text-[#9C9490] font-bold shrink-0">㉔ 内掛け</span>
-                      <span className={`font-mono font-black text-base ${profitColorCls(oldCalcMargin)}`}>{fmtPct(oldCalcMargin)}</span>
-                    </div>
-                  )}
-                  {oldGrossPerUnit !== null && (
-                    <div className="flex items-baseline justify-between gap-1">
-                      <span className="text-xs text-[#9C9490] font-bold shrink-0">㉕ 粗利益/個</span>
-                      <span className={`font-mono font-black text-sm truncate ${profitColorCls(oldGrossPerUnit)}`}>{fmtYen(oldGrossPerUnit)}</span>
-                    </div>
-                  )}
-
                 </div>
               </div>
 
-              {/* 新単価 panel */}
+              {/* 新単価 panel — 2列グリッドで詰める */}
               <div className="flex-1 min-w-0 bg-white rounded-lg border border-[#A8C4E0] overflow-hidden shadow-sm">
-                <div className="bg-[#EFF4FD] px-3 py-1.5 border-b border-[#B8CCE8] flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-sm bg-[#1E3A5F] shrink-0" />
+                <div className="bg-[#EFF4FD] px-3 py-1 border-b border-[#B8CCE8] flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-sm bg-[#1E3A5F] shrink-0" />
                   <span className="text-xs font-black text-[#1E3A5F] uppercase tracking-wider">新単価</span>
-                </div>
-                <div className="px-3 py-2 space-y-1.5">
-
-                  {/* 計算仕入値：常に表示 */}
-                  <div className="flex items-baseline justify-between gap-1">
-                    <span className="text-xs text-[#9C9490] font-bold shrink-0">計算仕入値</span>
-                    <span className="font-mono font-black text-base text-[#18130F] truncate">
-                      {newCalc.grandTotalUnitPrice > 0 ? fmtYen(newCalc.grandTotalUnitPrice) : <span className="text-[#C8C2B8] text-xs">—</span>}
-                    </span>
-                  </div>
-
-                  {/* 仕入実費㉗：手入力時のみ */}
                   {newEstimate.adjustments.actualPurchasePrice > 0 && (
-                    <div className="flex items-baseline justify-between gap-1">
-                      <span className="text-xs text-[#9C9490] font-bold shrink-0">㉗ 仕入実費</span>
-                      <span className="font-mono font-bold text-sm text-[#18130F] truncate">{fmtYen(newEstimate.adjustments.actualPurchasePrice)}</span>
-                    </div>
+                    <span className="ml-auto text-[10px] text-[#9C9490]">㉗実費: <strong className="font-mono text-[#18130F]">{fmtYen(newEstimate.adjustments.actualPurchasePrice)}</strong></span>
                   )}
-
-                  {/* 目標売値㉘ */}
-                  <div className="flex items-baseline justify-between gap-1 border-t border-[#F0EDE8] pt-1.5">
-                    <span className="text-xs text-[#9C9490] font-bold shrink-0">㉘ 目標売値</span>
-                    <span className="font-mono font-black text-lg text-[#1E3A5F] truncate">
-                      {newSell > 0 ? fmtYen(newSell) : <span className="text-[#C8C2B8] text-sm">未入力</span>}
-                    </span>
+                </div>
+                <div className="px-3 py-2">
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                    {/* 計算仕入値 */}
+                    <div>
+                      <div className="text-[10px] text-[#9C9490] font-bold leading-none mb-0.5">計算仕入値</div>
+                      <div className="font-mono font-black text-sm text-[#18130F]">
+                        {newCalc.grandTotalUnitPrice > 0 ? fmtYen(newCalc.grandTotalUnitPrice) : '—'}
+                      </div>
+                    </div>
+                    {/* 目標売値㉘ */}
+                    <div>
+                      <div className="text-[10px] text-[#9C9490] font-bold leading-none mb-0.5">㉘ 目標売値</div>
+                      <div className={`font-mono font-black text-base ${newSell > 0 ? 'text-[#1E3A5F]' : 'text-[#C8C2B8]'}`}>
+                        {newSell > 0 ? fmtYen(newSell) : '未入力'}
+                      </div>
+                    </div>
+                    {/* 外掛け */}
+                    {newCalcMarkup !== null ? (
+                      <div>
+                        <div className="text-[10px] text-[#9C9490] font-bold leading-none mb-0.5">㉙ 外掛け</div>
+                        <div className={`font-mono font-black text-sm ${profitColorCls(newCalcMarkup)}`}>{fmtPct(newCalcMarkup)}</div>
+                      </div>
+                    ) : <div />}
+                    {/* 内掛け */}
+                    {newCalcMargin !== null ? (
+                      <div>
+                        <div className="text-[10px] text-[#9C9490] font-bold leading-none mb-0.5">㉚ 内掛け</div>
+                        <div className={`font-mono font-black text-sm ${profitColorCls(newCalcMargin)}`}>{fmtPct(newCalcMargin)}</div>
+                      </div>
+                    ) : <div />}
+                    {/* 粗利益 */}
+                    {newGrossPerUnit !== null ? (
+                      <div>
+                        <div className="text-[10px] text-[#9C9490] font-bold leading-none mb-0.5">㉛ 粗利益/個</div>
+                        <div className={`font-mono font-black text-xs ${profitColorCls(newGrossPerUnit)}`}>{fmtYen(newGrossPerUnit)}</div>
+                      </div>
+                    ) : <div />}
+                    {/* 売値-計算差 */}
+                    {newGapToTarget !== null ? (
+                      <div>
+                        <div className="text-[10px] text-[#9C9490] font-bold leading-none mb-0.5">売値-計算差</div>
+                        <div className={`font-mono font-black text-xs ${newGapToTarget >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                          {newGapToTarget >= 0 ? '+' : ''}{fmtYen(newGapToTarget)}
+                        </div>
+                      </div>
+                    ) : <div />}
+                    {/* 新旧比較（2列フル） */}
+                    {purchaseRatio !== null && (
+                      <div className="col-span-2 border-t border-[#F0EDE8] pt-1 grid grid-cols-2 gap-x-3">
+                        <div>
+                          <div className="text-[10px] text-[#9C9490] font-bold leading-none mb-0.5">仕入比 新/旧</div>
+                          <div className={`font-mono font-black text-xs ${purchaseDiff > 0.01 ? 'text-rose-600' : purchaseDiff < -0.01 ? 'text-emerald-700' : 'text-[#6B6057]'}`}>
+                            {purchaseRatio.toFixed(1)}% <span className="opacity-70">({purchaseDiff > 0 ? '+' : ''}{Math.round(purchaseDiff).toLocaleString()})</span>
+                          </div>
+                        </div>
+                        {sellRatio !== null && (
+                          <div>
+                            <div className="text-[10px] text-[#9C9490] font-bold leading-none mb-0.5">売価比 新/旧</div>
+                            <div className={`font-mono font-black text-xs ${sellDiff > 0.01 ? 'text-rose-600' : sellDiff < -0.01 ? 'text-emerald-700' : 'text-[#6B6057]'}`}>
+                              {sellRatio.toFixed(1)}% <span className="opacity-70">({sellDiff > 0 ? '+' : ''}{Math.round(sellDiff).toLocaleString()})</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-
-                  {/* 目標-計算差 */}
-                  {newGapToTarget !== null && (
-                    <div className="flex items-baseline justify-between gap-1">
-                      <span className="text-xs text-[#9C9490] font-bold shrink-0">売値-計算差</span>
-                      <span className={`font-mono font-black text-sm ${newGapToTarget >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                        {newGapToTarget >= 0 ? '+' : ''}{fmtYen(newGapToTarget)}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* 外掛け/内掛け（計算仕入値ベース） */}
-                  {newCalcMarkup !== null && (
-                    <div className="flex items-baseline justify-between gap-1 border-t border-[#F0EDE8] pt-1.5">
-                      <span className="text-xs text-[#9C9490] font-bold shrink-0">㉙ 外掛け</span>
-                      <span className={`font-mono font-black text-base ${profitColorCls(newCalcMarkup)}`}>{fmtPct(newCalcMarkup)}</span>
-                    </div>
-                  )}
-                  {newCalcMargin !== null && (
-                    <div className="flex items-baseline justify-between gap-1">
-                      <span className="text-xs text-[#9C9490] font-bold shrink-0">㉚ 内掛け</span>
-                      <span className={`font-mono font-black text-base ${profitColorCls(newCalcMargin)}`}>{fmtPct(newCalcMargin)}</span>
-                    </div>
-                  )}
-                  {newGrossPerUnit !== null && (
-                    <div className="flex items-baseline justify-between gap-1">
-                      <span className="text-xs text-[#9C9490] font-bold shrink-0">㉛ 粗利益/個</span>
-                      <span className={`font-mono font-black text-sm truncate ${profitColorCls(newGrossPerUnit)}`}>{fmtYen(newGrossPerUnit)}</span>
-                    </div>
-                  )}
-
-                  {/* 新旧比較 */}
-                  {purchaseRatio !== null && (
-                    <div className="flex items-baseline justify-between gap-1 border-t border-[#F0EDE8] pt-1.5">
-                      <span className="text-xs text-[#9C9490] font-bold shrink-0">仕入比 新/旧</span>
-                      <span className={`font-mono font-black text-sm ${purchaseDiff > 0.01 ? 'text-rose-600' : purchaseDiff < -0.01 ? 'text-emerald-700' : 'text-[#6B6057]'}`}>
-                        {purchaseRatio.toFixed(1)}%
-                        <span className="text-[10px] ml-1 opacity-80">({purchaseDiff > 0 ? '+' : ''}{Math.round(purchaseDiff).toLocaleString()})</span>
-                      </span>
-                    </div>
-                  )}
-                  {sellRatio !== null && (
-                    <div className="flex items-baseline justify-between gap-1">
-                      <span className="text-xs text-[#9C9490] font-bold shrink-0">売価比 新/旧</span>
-                      <span className={`font-mono font-black text-sm ${sellDiff > 0.01 ? 'text-rose-600' : sellDiff < -0.01 ? 'text-emerald-700' : 'text-[#6B6057]'}`}>
-                        {sellRatio.toFixed(1)}%
-                        <span className="text-[10px] ml-1 opacity-80">({sellDiff > 0 ? '+' : ''}{Math.round(sellDiff).toLocaleString()})</span>
-                      </span>
-                    </div>
-                  )}
-
                 </div>
               </div>
 

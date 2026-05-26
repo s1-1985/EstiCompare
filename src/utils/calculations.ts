@@ -103,9 +103,12 @@ export function calculateEstimate(est: DetailedEstimate): CalculatedSection {
   const totalProcessCost = processCosts.reduce((a, b) => a + b, 0);
   const primeCost = netMaterialCost + totalProcessCost;
 
-  // 利管費 (調整後の直製造原価に対して、客提出用マージン率（内掛け）を乗せて積み上げる)
-  // エクセル再現：(材料費 + 加工費) * sgaRatePercent
-  const sgaCost = primeCost * ((adjustments.sgaRatePercent || 0) / 100) + (adjustments.sgaFixedAdjustment || 0);
+  // 利管費: 外掛け(markup) = primeCost × rate / 内掛け(margin) = primeCost × rate/(1−rate)
+  const sgaRate = (adjustments.sgaRatePercent || 0) / 100;
+  const sgaBase = adjustments.sgaCalcMode === 'margin'
+    ? (sgaRate < 1 ? primeCost * sgaRate / (1 - sgaRate) : 0)
+    : primeCost * sgaRate;
+  const sgaCost = sgaBase + (adjustments.sgaFixedAdjustment || 0);
   const shippingCostPerUnit = logistics.qtyPerBox > 0 ? (logistics.freightPerBox / logistics.qtyPerBox) : 0;
   
   // 提示用総見積額 ＝ 材料費 ＋ 加工費 ＋ 利管費 ＋ 送料 ＋ 調整（型費は別途）
