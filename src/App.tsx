@@ -1460,17 +1460,18 @@ export default function App() {
         )}
         <button
           onClick={async () => {
+            if (!user) { setAiTestStatus('error'); setAiTestMsg('✗ 先にログインしてください'); setTimeout(() => setAiTestStatus('idle'), 5000); return; }
             setAiTestStatus('loading');
             setAiTestMsg('確認中...');
             try {
-              const r = await fetch('/api/health');
-              const d = await r.json();
-              if (d.geminiOk) {
+              const res = await apiPost('/api/ping-ai', {});
+              const d = await res.json();
+              if (d.ok) {
                 setAiTestStatus('ok');
-                setAiTestMsg(`✓ AI接続OK\n${d.geminiSample || ''}`);
+                setAiTestMsg(`✓ AI接続OK: ${d.response || ''}`);
               } else {
                 setAiTestStatus('error');
-                setAiTestMsg(`✗ ${d.geminiError || 'APIキー未設定'}`);
+                setAiTestMsg(`✗ ${d.error || '不明なエラー'}`);
               }
             } catch (e: any) {
               setAiTestStatus('error');

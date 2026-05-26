@@ -101,29 +101,6 @@ const apiLimiter = rateLimit({
 });
 app.use("/api/", apiLimiter);
 
-// ── Health check (no auth — must be before requireAuth middleware) ───────────
-app.get("/api/health", async (_req, res) => {
-  const result: Record<string, unknown> = {
-    geminiKeySet: !!process.env.GEMINI_API_KEY,
-    adminInitialized,
-  };
-  try {
-    if (ai) {
-      const r = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: "Reply with just: ok" });
-      result.geminiOk = true;
-      result.geminiSample = r.text?.slice(0, 30);
-    } else {
-      result.geminiOk = false;
-      result.geminiError = "client not initialized";
-    }
-  } catch (e: any) {
-    result.geminiOk = false;
-    result.geminiError = e?.message;
-    result.geminiStatus = e?.status;
-  }
-  res.json(result);
-});
-
 // ── Auth enforcement on all /api/ routes ──────────────────────────────────────
 app.use("/api/", requireAuth);
 
@@ -208,6 +185,17 @@ function sendApiError(res: any, error: any, fallback: string) {
 async function callGemini<T>(fn: () => Promise<T>): Promise<T> {
   return fn();
 }
+
+// ── 0. Health / AI connection test (auth required) ───────────────────────────
+app.post("/api/ping-ai", async (_req, res) => {
+  try {
+    const client = getAIClient();
+    const r = await client.models.generateContent({ model: "gemini-2.5-flash", contents: "Reply with just: ok" });
+    res.json({ ok: true, response: r.text?.trim().slice(0, 30) });
+  } catch (e: any) {
+    res.status(500).json({ ok: false, error: e?.message, status: e?.status });
+  }
+});
 
 // ── 1. Text parser ────────────────────────────────────────────────────────────
 app.post("/api/parse-estimate", async (req, res) => {
