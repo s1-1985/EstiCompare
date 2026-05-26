@@ -47,6 +47,8 @@ export default function App() {
   const [comparisonResult, setComparisonResult] = useState<ComparisonResult | null>(null);
   const [isComparing, setIsComparing] = useState(false);
   const [aiRetryCountdown, setAiRetryCountdown] = useState<number | null>(null);
+  const [aiTestStatus, setAiTestStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
+  const [aiTestMsg, setAiTestMsg] = useState('');
 
   useEffect(() => {
     const unsub = auth.onAuthStateChanged((u) => {
@@ -1444,6 +1446,44 @@ export default function App() {
           </div>
         </nav>
       )}
+
+      {/* AI疎通確認デモボタン */}
+      <div className="fixed bottom-20 right-3 z-50 flex flex-col items-end gap-2">
+        {aiTestStatus !== 'idle' && (
+          <div className={`text-[10px] font-mono font-black px-2 py-1 rounded shadow-lg max-w-[220px] text-right leading-snug ${
+            aiTestStatus === 'loading' ? 'bg-amber-100 text-amber-800' :
+            aiTestStatus === 'ok' ? 'bg-emerald-100 text-emerald-800' :
+            'bg-rose-100 text-rose-800'
+          }`}>
+            {aiTestMsg}
+          </div>
+        )}
+        <button
+          onClick={async () => {
+            setAiTestStatus('loading');
+            setAiTestMsg('確認中...');
+            try {
+              const r = await fetch('/health');
+              const d = await r.json();
+              if (d.geminiOk) {
+                setAiTestStatus('ok');
+                setAiTestMsg(`✓ AI接続OK\n${d.geminiSample || ''}`);
+              } else {
+                setAiTestStatus('error');
+                setAiTestMsg(`✗ ${d.geminiError || 'APIキー未設定'}`);
+              }
+            } catch (e: any) {
+              setAiTestStatus('error');
+              setAiTestMsg(`✗ ${e?.message}`);
+            }
+            setTimeout(() => setAiTestStatus('idle'), 8000);
+          }}
+          className="bg-[#18130F] hover:bg-[#B5451B] text-white text-[10px] font-black px-3 py-1.5 rounded-full shadow-lg cursor-pointer transition-all flex items-center gap-1.5"
+        >
+          <Zap className="w-3 h-3" />
+          AI疎通確認
+        </button>
+      </div>
 
     </div>
   );
