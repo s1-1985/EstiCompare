@@ -42,6 +42,7 @@ export default function App() {
   const [activeSheetTab, setActiveSheetTab] = useState<'workspace' | 'compare' | 'print'>('workspace');
   const [comparisonResult, setComparisonResult] = useState<ComparisonResult | null>(null);
   const [isComparing, setIsComparing] = useState(false);
+  const [aiRetryCountdown, setAiRetryCountdown] = useState<number | null>(null);
 
   useEffect(() => {
     const unsub = auth.onAuthStateChanged((u) => {
@@ -144,7 +145,7 @@ export default function App() {
     setIsComparing(true);
     setComparisonResult(null);
     try {
-      const response = await apiPost('/api/compare-estimates', { oldEstimate, newEstimate });
+      const response = await apiPost('/api/compare-estimates', { oldEstimate, newEstimate }, { onRetryCountdown: setAiRetryCountdown });
       const report = await response.json();
       setComparisonResult(report);
     } catch (err: any) {
@@ -411,6 +412,7 @@ export default function App() {
                   newEstimate={newEstimate}
                   comparison={comparisonResult}
                   isLoading={isComparing}
+                  retryCountdown={aiRetryCountdown}
                   onRunComparison={triggerComparisonAnalysis}
                 />
               )}

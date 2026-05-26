@@ -124,6 +124,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
   const [isCalcShippingNew, setIsCalcShippingNew] = useState(false);
   const [isGettingScrapOld, setIsGettingScrapOld] = useState(false);
   const [isGettingScrapNew, setIsGettingScrapNew] = useState(false);
+  const [aiRetryCountdown, setAiRetryCountdown] = useState<number | null>(null);
 
   // ─── Handlers ────────────────────────────────────────────────────────────────
 
@@ -136,7 +137,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       const response = await apiPost('/api/infer-process-params', {
         processes: est.processes.filter(p => !p.isDirectInput && p.processName),
         partNumber: est.partNumber,
-      });
+      }, { onRetryCountdown: setAiRetryCountdown });
       const { results } = await response.json();
       if (!results || !Array.isArray(results)) return;
       const filtered = est.processes.filter(p => !p.isDirectInput && p.processName.trim());
@@ -166,7 +167,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     if (boxWeightKg <= 0) { alert('完成品重量と箱入り数を先に入力してください。'); return; }
     try {
       setLoading(true);
-      const response = await apiPost('/api/calculate-shipping', { weightKg: boxWeightKg, qtyPerBox, originPrefecture, destinationPrefecture });
+      const response = await apiPost('/api/calculate-shipping', { weightKg: boxWeightKg, qtyPerBox, originPrefecture, destinationPrefecture }, { onRetryCountdown: setAiRetryCountdown });
       const data = await response.json();
       if (data.estimatedFreightPerBox > 0) {
         setter({ ...est, logistics: { ...est.logistics, freightPerBox: Math.round(data.estimatedFreightPerBox) } });
@@ -185,7 +186,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     if (!materialName.trim()) { alert('共通諸元で材質・規格を入力してください。'); return; }
     try {
       setLoading(true);
-      const response = await apiPost('/api/get-scrap-price', { materialName });
+      const response = await apiPost('/api/get-scrap-price', { materialName }, { onRetryCountdown: setAiRetryCountdown });
       const data = await response.json();
       if (data.estimatedScrapPricePerKg > 0) {
         setter({ ...est, material: { ...est.material, scrapPricePerKg: data.estimatedScrapPricePerKg } });
@@ -516,7 +517,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
               <button onClick={() => handleGetScrapPrice(isNew)} disabled={isGettingScrap}
                 className="w-full bg-[#2D1A5F] hover:bg-[#3D2570] text-white text-[9px] font-bold py-1.5 rounded flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer border border-[#4A3080] transition-colors">
                 <Sparkles className={`w-3 h-3 ${isGettingScrap ? 'animate-spin' : ''}`} />
-                {isGettingScrap ? 'AI相場確認中...' : 'AIにスクラップ相場を確認させる'}
+                {isGettingScrap && aiRetryCountdown !== null ? `レート制限中 — ${aiRetryCountdown}秒後に自動再試行...` : isGettingScrap ? 'AI相場確認中...' : 'AIにスクラップ相場を確認させる'}
               </button>
               <div className="relative">
                 <span className="absolute left-2.5 top-1.5 text-[10px] text-[#9C9490]">¥</span>
@@ -547,7 +548,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
             <button onClick={() => handleInferProcessParams(isNew)} disabled={isInferring}
               className="text-[9px] px-2 py-1.5 bg-[#18130F] hover:bg-[#2D2219] text-white rounded font-bold border border-[#2D2219] flex items-center gap-1 cursor-pointer disabled:opacity-50 transition-colors">
               <Sparkles className={`w-3 h-3 ${isInferring ? 'animate-spin' : ''}`} />
-              {isInferring ? 'AI推定中...' : 'AI自動設定'}
+              {isInferring && aiRetryCountdown !== null ? `${aiRetryCountdown}秒後再試行` : isInferring ? 'AI推定中...' : 'AI自動設定'}
             </button>
           </div>
 
@@ -731,7 +732,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
           <button onClick={() => handleCalculateShipping(isNew)} disabled={isCalcShipping}
             className="w-full bg-[#1A4A2E] hover:bg-[#215E3A] text-white text-[9px] font-bold py-1.5 rounded flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer border border-[#2D6B44] transition-colors">
             <Truck className={`w-3.5 h-3.5 ${isCalcShipping ? 'animate-bounce' : ''}`} />
-            {isCalcShipping ? 'AI算出中...' : 'AIで送料を試算（ヤマト/佐川目安）'}
+            {isCalcShipping && aiRetryCountdown !== null ? `レート制限中 — ${aiRetryCountdown}秒後に自動再試行...` : isCalcShipping ? 'AI算出中...' : 'AIで送料を試算（ヤマト/佐川目安）'}
           </button>
 
           <div className="flex items-center gap-2">
