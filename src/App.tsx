@@ -290,7 +290,7 @@ export default function App() {
   const profitColorCls = (v: number | null) =>
     v === null ? 'text-[#6B6057]' : v >= 0 ? 'text-emerald-700' : 'text-rose-600';
 
-  const sideInp = 'w-full px-2 py-1 text-xs font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#B5451B] focus:ring-[#B5451B]/15 transition-all';
+  const sideInp = 'w-full px-2 py-1 text-sm font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#B5451B] focus:ring-[#B5451B]/15 transition-all';
 
   return (
     <div className="h-screen bg-[#F7F6F2] flex flex-col text-[#18130F] font-sans antialiased selection:bg-[#FDE6DC] overflow-hidden">
@@ -365,11 +365,11 @@ export default function App() {
       <div className="flex-1 flex overflow-hidden">
 
         {/* ── LEFT SIDEBAR ── */}
-        <aside className="w-48 flex-none bg-white border-r border-[#D6D0C8] overflow-y-auto flex flex-col">
+        <aside className="w-72 flex-none bg-white border-r border-[#D6D0C8] overflow-y-auto flex flex-col">
 
           {/* Scenario actions */}
           <div className="border-b border-[#D6D0C8] p-2 space-y-1.5">
-            <div className="text-[8px] font-black text-[#9C9490] uppercase tracking-widest px-1 pb-0.5">シナリオ操作</div>
+            <div className="text-[10px] font-black text-[#9C9490] uppercase tracking-widest px-1 pb-0.5">シナリオ操作</div>
 
             <button
               onClick={() => setActiveView(activeView === 'library' ? 'workspace' : 'library')}
@@ -439,10 +439,10 @@ export default function App() {
 
           {/* 共通諸元 inputs — 見積ロットは各列で設定するため除外 */}
           <div className="border-b border-[#D6D0C8] p-2 space-y-1.5">
-            <div className="text-[8px] font-black text-[#9C9490] uppercase tracking-widest px-1 pb-0.5">共通諸元</div>
+            <div className="text-[10px] font-black text-[#9C9490] uppercase tracking-widest px-1 pb-0.5">共通諸元</div>
 
             <div>
-              <label className="block text-[9px] font-bold text-[#6B6057] mb-0.5">品番</label>
+              <label className="block text-xs font-bold text-[#18130F] mb-0.5">品番</label>
               <input
                 type="text"
                 value={newEstimate.partNumber}
@@ -453,7 +453,7 @@ export default function App() {
             </div>
 
             <div>
-              <label className="block text-[9px] font-bold text-[#6B6057] mb-0.5">品名</label>
+              <label className="block text-xs font-bold text-[#18130F] mb-0.5">品名</label>
               <input
                 type="text"
                 value={newEstimate.partName ?? ''}
@@ -464,7 +464,7 @@ export default function App() {
             </div>
 
             <div>
-              <label className="block text-[9px] font-bold text-[#6B6057] mb-0.5">材質・規格</label>
+              <label className="block text-xs font-bold text-[#18130F] mb-0.5">材質・規格</label>
               <input
                 type="text"
                 value={newEstimate.material.materialName}
@@ -475,7 +475,7 @@ export default function App() {
             </div>
 
             <div>
-              <label className="block text-[9px] font-bold text-[#6B6057] mb-0.5">材料投入量 (g)</label>
+              <label className="block text-xs font-bold text-[#18130F] mb-0.5">材料投入量 (g)</label>
               <input
                 type="number"
                 value={newEstimate.material.inputWeightG || ''}
@@ -486,7 +486,7 @@ export default function App() {
             </div>
 
             <div>
-              <label className="block text-[9px] font-bold text-[#6B6057] mb-0.5">完成品重量 (g)</label>
+              <label className="block text-xs font-bold text-[#18130F] mb-0.5">完成品重量 (g)</label>
               <input
                 type="number"
                 value={newEstimate.finishedWeightG || ''}
@@ -499,12 +499,12 @@ export default function App() {
 
           {/* 旧単価 KPI section */}
           <div className="border-b border-[#D6D0C8] p-2 space-y-1.5" style={{ borderTop: '3px solid #B5451B' }}>
-            <div className="text-[8px] font-black uppercase tracking-widest px-1 pb-0.5" style={{ color: '#B5451B' }}>旧単価</div>
+            <div className="text-[10px] font-black uppercase tracking-widest px-1 pb-0.5" style={{ color: '#B5451B' }}>旧単価</div>
 
             <div>
-              <label className="block text-[9px] font-bold text-[#6B6057] mb-0.5">㉑ 仕入実費</label>
+              <label className="block text-xs font-bold text-[#18130F] mb-0.5">㉑ 仕入実費</label>
               <div className="relative">
-                <span className="absolute left-2 top-1 text-[9px] text-[#9C9490]">¥</span>
+                <span className="absolute left-2 top-1 text-xs text-[#9C9490]">¥</span>
                 <input
                   type="number"
                   value={oldEstimate.adjustments.actualPurchasePrice || ''}
@@ -514,16 +514,16 @@ export default function App() {
                 />
               </div>
               {oldCalc.grandTotalUnitPrice > 0 && (
-                <div className="text-[8px] text-[#9C9490] mt-0.5 font-mono">
+                <div className="text-[10px] text-[#9C9490] mt-0.5 font-mono">
                   算出: {fmtYen(oldCalc.grandTotalUnitPrice)}
                 </div>
               )}
             </div>
 
             <div>
-              <label className="block text-[9px] font-bold text-[#6B6057] mb-0.5">㉒ 現行売価</label>
+              <label className="block text-xs font-bold text-[#18130F] mb-0.5">㉒ 現行売価</label>
               <div className="relative">
-                <span className="absolute left-2 top-1 text-[9px] text-[#9C9490]">¥</span>
+                <span className="absolute left-2 top-1 text-xs text-[#9C9490]">¥</span>
                 <input
                   type="number"
                   value={oldEstimate.adjustments.targetUnitPrice || ''}
@@ -535,24 +535,24 @@ export default function App() {
             </div>
 
             <div className="flex justify-between items-baseline">
-              <span className="text-[9px] text-[#6B6057]">㉓ 利益率（外掛け）</span>
+              <span className="text-xs text-[#18130F] font-bold">㉓ 利益率（外掛け）</span>
               <span className={`font-mono font-black text-xs ${profitColorCls(oldMarkup)}`}>{fmtPct(oldMarkup)}</span>
             </div>
 
             <div className="flex justify-between items-baseline">
-              <span className="text-[9px] text-[#6B6057]">㉔ 利益率（内掛け）</span>
+              <span className="text-xs text-[#18130F] font-bold">㉔ 利益率（内掛け）</span>
               <span className={`font-mono font-black text-xs ${profitColorCls(oldMargin)}`}>{fmtPct(oldMargin)}</span>
             </div>
 
             <div className="flex justify-between items-baseline">
-              <span className="text-[9px] text-[#6B6057]">㉕ 粗利益/個</span>
+              <span className="text-xs text-[#18130F] font-bold">㉕ 粗利益/個</span>
               <span className={`font-mono font-black text-xs ${profitColorCls(oldGrossPerUnit)}`}>
                 {oldGrossPerUnit !== null ? fmtYen(oldGrossPerUnit) : '—'}
               </span>
             </div>
 
             <div>
-              <label className="block text-[9px] font-bold text-[#6B6057] mb-0.5">㉖ 設定時期 (yyyymm)</label>
+              <label className="block text-xs font-bold text-[#18130F] mb-0.5">㉖ 設定時期 (yyyymm)</label>
               <input
                 type="text"
                 value={oldEstimate.date || ''}
@@ -566,12 +566,12 @@ export default function App() {
 
           {/* 新単価 KPI section */}
           <div className="p-2 space-y-1.5" style={{ borderTop: '3px solid #1E3A5F' }}>
-            <div className="text-[8px] font-black uppercase tracking-widest px-1 pb-0.5" style={{ color: '#1E3A5F' }}>新単価</div>
+            <div className="text-[10px] font-black uppercase tracking-widest px-1 pb-0.5" style={{ color: '#1E3A5F' }}>新単価</div>
 
             <div>
-              <label className="block text-[9px] font-bold text-[#6B6057] mb-0.5">㉗ 仕入実費</label>
+              <label className="block text-xs font-bold text-[#18130F] mb-0.5">㉗ 仕入実費</label>
               <div className="relative">
-                <span className="absolute left-2 top-1 text-[9px] text-[#9C9490]">¥</span>
+                <span className="absolute left-2 top-1 text-xs text-[#9C9490]">¥</span>
                 <input
                   type="number"
                   value={newEstimate.adjustments.actualPurchasePrice || ''}
@@ -581,7 +581,7 @@ export default function App() {
                 />
               </div>
               {newCalc.grandTotalUnitPrice > 0 && (
-                <div className="text-[8px] text-[#9C9490] mt-0.5 font-mono">
+                <div className="text-[10px] text-[#9C9490] mt-0.5 font-mono">
                   算出: {fmtYen(newCalc.grandTotalUnitPrice)}
                 </div>
               )}
@@ -590,10 +590,10 @@ export default function App() {
             <div>
               <label className="block text-[9px] font-bold text-[#1E3A5F] mb-0.5">
                 ㉘ 目標売値
-                <span className="text-[8px] text-[#9C9490] font-normal ml-1">← 連動</span>
+                <span className="text-[10px] text-[#9C9490] font-normal ml-1">← 連動</span>
               </label>
               <div className="relative">
-                <span className="absolute left-2 top-1 text-[9px] text-[#9C9490]">¥</span>
+                <span className="absolute left-2 top-1 text-xs text-[#9C9490]">¥</span>
                 <input
                   type="number"
                   value={newEstimate.adjustments.targetUnitPrice || ''}
@@ -607,7 +607,7 @@ export default function App() {
             <div>
               <label className="block text-[9px] font-bold text-[#1E3A5F] mb-0.5">
                 ㉙ 目標利益率（外掛け）
-                <span className="text-[8px] text-[#9C9490] font-normal ml-1">← 連動</span>
+                <span className="text-[10px] text-[#9C9490] font-normal ml-1">← 連動</span>
               </label>
               <div className="relative">
                 <input
@@ -624,7 +624,7 @@ export default function App() {
             <div>
               <label className="block text-[9px] font-bold text-[#1E3A5F] mb-0.5">
                 ㉚ 目標利益率（内掛け）
-                <span className="text-[8px] text-[#9C9490] font-normal ml-1">← 連動</span>
+                <span className="text-[10px] text-[#9C9490] font-normal ml-1">← 連動</span>
               </label>
               <div className="relative">
                 <input
@@ -639,14 +639,14 @@ export default function App() {
             </div>
 
             <div className="flex justify-between items-baseline">
-              <span className="text-[9px] text-[#6B6057]">㉛ 粗利益/個</span>
+              <span className="text-xs text-[#18130F] font-bold">㉛ 粗利益/個</span>
               <span className={`font-mono font-black text-xs ${profitColorCls(newGrossPerUnit)}`}>
                 {newGrossPerUnit !== null ? fmtYen(newGrossPerUnit) : '—'}
               </span>
             </div>
 
             <div>
-              <label className="block text-[9px] font-bold text-[#6B6057] mb-0.5">㉜ 下限利益率 (%)</label>
+              <label className="block text-xs font-bold text-[#18130F] mb-0.5">㉜ 下限利益率 (%)</label>
               <input
                 type="number"
                 value={newEstimate.adjustments.minProfitRate ?? ''}
@@ -674,28 +674,28 @@ export default function App() {
                 </div>
                 <div className="px-3 py-2 space-y-1.5">
                   <div className="flex items-baseline justify-between gap-1">
-                    <span className="text-[9px] text-[#9C9490] font-bold shrink-0">仕入実費 ㉑</span>
+                    <span className="text-xs text-[#9C9490] font-bold shrink-0">仕入実費 ㉑</span>
                     <span className="font-mono font-black text-xs text-[#18130F] truncate">{fmtYen(oldPurchase)}</span>
                   </div>
                   <div className="flex items-baseline justify-between gap-1">
-                    <span className="text-[9px] text-[#9C9490] font-bold shrink-0">現行売値 ㉒</span>
+                    <span className="text-xs text-[#9C9490] font-bold shrink-0">現行売値 ㉒</span>
                     <span className="font-mono font-black text-sm text-[#18130F] truncate">{oldSell > 0 ? fmtYen(oldSell) : <span className="text-[#C8C2B8] text-xs">未入力</span>}</span>
                   </div>
                   {oldGrossPerUnit !== null && (
                     <div className="flex items-baseline justify-between gap-1 pt-1 border-t border-[#F0EDE8]">
-                      <span className="text-[9px] text-[#9C9490] font-bold shrink-0">粗利益 ㉕</span>
+                      <span className="text-xs text-[#9C9490] font-bold shrink-0">粗利益 ㉕</span>
                       <span className={`font-mono font-black text-xs truncate ${profitColorCls(oldGrossPerUnit)}`}>{fmtYen(oldGrossPerUnit)}</span>
                     </div>
                   )}
                   {oldMarkup !== null && (
                     <div className="flex items-baseline justify-between gap-1">
-                      <span className="text-[9px] text-[#9C9490] font-bold shrink-0">外掛け ㉓</span>
+                      <span className="text-xs text-[#9C9490] font-bold shrink-0">外掛け ㉓</span>
                       <span className={`font-mono font-black text-xs ${profitColorCls(oldMarkup)}`}>{fmtPct(oldMarkup)}</span>
                     </div>
                   )}
                   {oldMargin !== null && (
                     <div className="flex items-baseline justify-between gap-1">
-                      <span className="text-[9px] text-[#9C9490] font-bold shrink-0">内掛け ㉔</span>
+                      <span className="text-xs text-[#9C9490] font-bold shrink-0">内掛け ㉔</span>
                       <span className={`font-mono font-black text-xs ${profitColorCls(oldMargin)}`}>{fmtPct(oldMargin)}</span>
                     </div>
                   )}
@@ -710,34 +710,34 @@ export default function App() {
                 </div>
                 <div className="px-3 py-2 space-y-1.5">
                   <div className="flex items-baseline justify-between gap-1">
-                    <span className="text-[9px] text-[#9C9490] font-bold shrink-0">仕入実費 ㉗</span>
+                    <span className="text-xs text-[#9C9490] font-bold shrink-0">仕入実費 ㉗</span>
                     <span className="font-mono font-black text-xs text-[#18130F] truncate">{fmtYen(newPurchase)}</span>
                   </div>
                   <div className="flex items-baseline justify-between gap-1">
-                    <span className="text-[9px] text-[#9C9490] font-bold shrink-0">目標売値 ㉘</span>
+                    <span className="text-xs text-[#9C9490] font-bold shrink-0">目標売値 ㉘</span>
                     <span className="font-mono font-black text-sm text-[#1E3A5F] truncate">{newSell > 0 ? fmtYen(newSell) : <span className="text-[#C8C2B8] text-xs">未入力</span>}</span>
                   </div>
                   {newGrossPerUnit !== null && (
                     <div className="flex items-baseline justify-between gap-1 pt-1 border-t border-[#F0EDE8]">
-                      <span className="text-[9px] text-[#9C9490] font-bold shrink-0">粗利益 ㉛</span>
+                      <span className="text-xs text-[#9C9490] font-bold shrink-0">粗利益 ㉛</span>
                       <span className={`font-mono font-black text-xs truncate ${profitColorCls(newGrossPerUnit)}`}>{fmtYen(newGrossPerUnit)}</span>
                     </div>
                   )}
                   {newMarkup !== null && (
                     <div className="flex items-baseline justify-between gap-1">
-                      <span className="text-[9px] text-[#9C9490] font-bold shrink-0">外掛け ㉙</span>
+                      <span className="text-xs text-[#9C9490] font-bold shrink-0">外掛け ㉙</span>
                       <span className={`font-mono font-black text-xs ${profitColorCls(newMarkup)}`}>{fmtPct(newMarkup)}</span>
                     </div>
                   )}
                   {newMargin !== null && (
                     <div className="flex items-baseline justify-between gap-1">
-                      <span className="text-[9px] text-[#9C9490] font-bold shrink-0">内掛け ㉚</span>
+                      <span className="text-xs text-[#9C9490] font-bold shrink-0">内掛け ㉚</span>
                       <span className={`font-mono font-black text-xs ${profitColorCls(newMargin)}`}>{fmtPct(newMargin)}</span>
                     </div>
                   )}
                   {purchaseRatio !== null && (
                     <div className="flex items-baseline justify-between gap-1 pt-1 border-t border-[#F0EDE8]">
-                      <span className="text-[9px] text-[#9C9490] font-bold shrink-0">仕入比 新/旧</span>
+                      <span className="text-xs text-[#9C9490] font-bold shrink-0">仕入比 新/旧</span>
                       <span className={`font-mono font-black text-xs ${purchaseDiff > 0.01 ? 'text-rose-600' : purchaseDiff < -0.01 ? 'text-emerald-700' : 'text-[#6B6057]'}`}>
                         {purchaseRatio.toFixed(1)}%
                         <span className="text-[8px] ml-1 opacity-80">({purchaseDiff > 0 ? '+' : ''}{purchaseDiff.toFixed(0)})</span>
@@ -746,7 +746,7 @@ export default function App() {
                   )}
                   {sellRatio !== null && (
                     <div className="flex items-baseline justify-between gap-1">
-                      <span className="text-[9px] text-[#9C9490] font-bold shrink-0">売価比 新/旧</span>
+                      <span className="text-xs text-[#9C9490] font-bold shrink-0">売価比 新/旧</span>
                       <span className={`font-mono font-black text-xs ${sellDiff > 0.01 ? 'text-rose-600' : sellDiff < -0.01 ? 'text-emerald-700' : 'text-[#6B6057]'}`}>
                         {sellRatio.toFixed(1)}%
                         <span className="text-[8px] ml-1 opacity-80">({sellDiff > 0 ? '+' : ''}{sellDiff.toFixed(0)})</span>
