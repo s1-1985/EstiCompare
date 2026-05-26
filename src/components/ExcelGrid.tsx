@@ -3,7 +3,7 @@ import { DetailedEstimate, ProcessRow, ProcessCalcMode, Scenario } from '../type
 import { calculateEstimate } from '../utils/calculations';
 import { apiPost } from '../utils/apiClient';
 import {
-  Settings2, Lock, Zap, CheckCircle2, AlertTriangle,
+  Settings2, Zap, CheckCircle2, AlertTriangle,
   Sparkles, TrendingUp, BarChart3, Coins,
   History, Truck, Copy, Package, ArrowLeftRight,
 } from 'lucide-react';
@@ -385,10 +385,6 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       </div>
     );
 
-    const sellPrice = est.adjustments.targetUnitPrice || 0;
-    const actualCost = calc.actualTotalCost;
-    const profitMarkup = (sellPrice > 0 && actualCost > 0) ? ((sellPrice - actualCost) / actualCost * 100) : null;
-    const profitMargin = (sellPrice > 0 && actualCost > 0) ? ((sellPrice - actualCost) / sellPrice * 100) : null;
     const boxWeightKg = est.finishedWeightG > 0 && est.logistics.qtyPerBox > 0
       ? ((est.finishedWeightG * est.logistics.qtyPerBox) / 1000).toFixed(2) : null;
 
@@ -418,27 +414,13 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
           total={calc.grandTotalUnitPrice}
         />
 
-        {/* ── 1. 価格目標 ── */}
-        {sh(Coins, '1. 価格目標')}
-        <div className="px-4 py-3 space-y-2.5">
-
-          <div className="flex items-center gap-2">
-            <label className="text-[10px] font-bold text-[#6B6057] w-24 shrink-0">
-              見積ロット
-              <span className="text-[8px] text-[#9C9490] block font-normal">段取費配賦基準</span>
-            </label>
-            <div className="relative flex-1">
-              <input type="number" value={est.baseLotSize || ''}
-                onChange={(e) => { const v = Math.max(1, parseInt(e.target.value) || 1); isNew ? onChangeNew({ ...est, baseLotSize: v }) : onChangeOld({ ...est, baseLotSize: v }); }}
-                className={`${inp} pr-14 ${fld(isEmptyNum(est.baseLotSize))}`} />
-              <span className="absolute right-2 top-1.5 text-[9px] text-[#9C9490] pointer-events-none">個/Lot</span>
-            </div>
-          </div>
-
+        {/* ── 1. 仕入実費（社内のみ） ── */}
+        {sh(Coins, '1. 仕入実費（社内のみ）')}
+        <div className="px-4 py-3">
           <div className="flex items-center gap-2">
             <label className="text-[10px] font-bold text-[#1E3A5F] w-24 shrink-0">
               仕入れ実費
-              <span className="text-[8px] text-[#93B4D9] block font-normal">社内のみ</span>
+              <span className="text-[8px] text-[#93B4D9] block font-normal">整合チェック用</span>
             </label>
             <div className="relative flex-1">
               <span className="absolute left-2.5 top-1.5 text-[10px] text-[#9C9490]">¥</span>
@@ -448,28 +430,6 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                 className={`${inp} pl-6 text-[#1E3A5F] border-[#C5D8EE] bg-[#EFF4FD]/30 focus:border-[#1E3A5F] focus:ring-[#1E3A5F]/15`} />
             </div>
           </div>
-
-          <div className="flex items-center gap-2">
-            <label className="text-[10px] font-black text-[#18130F] w-24 shrink-0">
-              {isNew ? '目標' : '現行'}売値 <span className="text-[#B5451B]">*</span>
-              <span className="text-[8px] text-[#9C9490] block font-normal">客提示価格</span>
-            </label>
-            <div className="relative flex-1">
-              <span className="absolute left-2.5 top-1.5 text-[10px] text-[#9C9490]">¥</span>
-              <input type="number" value={est.adjustments.targetUnitPrice || ''}
-                onChange={(e) => updateAdjustments(isNew, 'targetUnitPrice', e.target.value)}
-                placeholder={isNew ? '新しい売値を入力' : '現行売値'}
-                className={`${inp} pl-6 text-sm font-black focus:ring-2 ${fld(isEmptyNum(est.adjustments.targetUnitPrice))}`} />
-            </div>
-          </div>
-
-          {profitMarkup !== null && (
-            <div className={`text-[10px] font-mono px-3 py-1.5 rounded border ${Math.min(profitMarkup, profitMargin || 0) >= 0 ? 'bg-[#E8F5EC] border-[#A8D5B5] text-[#1D5C3A]' : 'bg-rose-50 border-rose-200 text-rose-700'}`}>
-              外掛け <strong>{profitMarkup.toFixed(2)}%</strong>
-              <span className="mx-1.5 opacity-40">/</span>
-              内掛け <strong>{profitMargin!.toFixed(2)}%</strong>
-            </div>
-          )}
         </div>
 
         {/* ── 2. 材料 ── */}
@@ -782,20 +742,6 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            <label className="text-[10px] font-bold text-[#6B6057] w-24 shrink-0">
-              下限利益率
-              <span className="text-[8px] text-[#9C9490] block">外掛け下限</span>
-            </label>
-            <div className="relative flex-1">
-              <input type="number" value={est.adjustments.minProfitRate ?? ''}
-                onChange={(e) => updateAdjustments(isNew, 'minProfitRate', e.target.value)}
-                placeholder="例: 15"
-                className={`${inp} pr-8 border-[#D6D0C8] bg-white focus:border-[#B5451B] focus:ring-[#B5451B]/15`} />
-              <span className="absolute right-2 top-1.5 text-[9px] text-[#9C9490]">%</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
             <label className="text-[10px] font-black text-[#18130F] w-24 shrink-0">
               利管費率
               <span className="text-[8px] text-[#9C9490] block">材料+加工に乗算</span>
@@ -1060,58 +1006,6 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
   // ─── Main render ──────────────────────────────────────────────────────────────
   return (
     <div className="space-y-3 pb-16">
-
-      {/* ── 共通諸元バンド ── */}
-      <section className="bg-white rounded-lg border border-[#D6D0C8] overflow-hidden">
-        <div className="bg-[#18130F] text-white px-4 py-2.5 flex items-center gap-2 border-b-2 border-[#B5451B]">
-          <Lock className="w-3.5 h-3.5 text-[#F8C9BB] shrink-0" />
-          <h2 className="text-xs font-black tracking-wide">共通諸元</h2>
-          <span className="ml-2 text-[9px] bg-[#B5451B] px-2 py-0.5 rounded font-black">新旧同期 — 変更すると両側に即反映</span>
-        </div>
-        <div className="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          <div className="col-span-2 lg:col-span-1">
-            <label className="block text-[10px] font-black text-[#9C9490] mb-1 uppercase tracking-wider">品番 <span className="text-[#B5451B]">*</span></label>
-            <input type="text" value={newEstimate.partNumber}
-              onChange={(e) => updateCommonMeta('partNumber', e.target.value)}
-              placeholder="例: 66-13401-09100-02"
-              className={`w-full px-3 py-2 text-xs font-mono font-bold rounded border outline-none focus:ring-1 transition-all ${fld(isEmptyStr(newEstimate.partNumber))}`} />
-          </div>
-          <div className="col-span-2 lg:col-span-1">
-            <label className="block text-[10px] font-black text-[#9C9490] mb-1 uppercase tracking-wider">品名</label>
-            <input type="text" value={newEstimate.partName ?? ''}
-              onChange={(e) => updateCommonMeta('partName', e.target.value)}
-              placeholder="例: 板金プレスブラケット"
-              className={`w-full px-3 py-2 text-xs font-bold rounded border outline-none focus:ring-1 transition-all ${fld(isEmptyStr(newEstimate.partName))}`} />
-          </div>
-          <div>
-            <label className="block text-[10px] font-black text-[#9C9490] mb-1 uppercase tracking-wider">完成品重量 <span className="text-[#B5451B]">*</span></label>
-            <div className="relative">
-              <input type="number" value={newEstimate.finishedWeightG || ''}
-                onChange={(e) => updateCommonMeta('finishedWeightG', parseFloat(e.target.value) || 0)}
-                placeholder="180"
-                className={`w-full pl-3 pr-8 py-2 text-xs font-mono font-bold rounded border outline-none focus:ring-1 transition-all ${fld(isEmptyNum(newEstimate.finishedWeightG))}`} />
-              <span className="absolute right-2.5 top-2 text-[9px] text-[#9C9490] pointer-events-none">g</span>
-            </div>
-          </div>
-          <div className="col-span-2 lg:col-span-1">
-            <label className="block text-[10px] font-black text-[#9C9490] mb-1 uppercase tracking-wider">材質・規格</label>
-            <input type="text" value={newEstimate.material.materialName}
-              onChange={(e) => updateCommonMaterialMeta('materialName', e.target.value)}
-              placeholder="例: SPCC t2.0"
-              className={`w-full px-3 py-2 text-xs font-bold rounded border outline-none focus:ring-1 transition-all ${fld(isEmptyStr(newEstimate.material.materialName))}`} />
-          </div>
-          <div>
-            <label className="block text-[10px] font-black text-[#9C9490] mb-1 uppercase tracking-wider">材料投入量 <span className="text-[#B5451B]">*</span></label>
-            <div className="relative">
-              <input type="number" value={newEstimate.material.inputWeightG || ''}
-                onChange={(e) => updateCommonMaterialMeta('inputWeightG', e.target.value)}
-                placeholder="220"
-                className={`w-full pl-3 pr-8 py-2 text-xs font-mono rounded border outline-none focus:ring-1 transition-all ${fld(isEmptyNum(newEstimate.material.inputWeightG))}`} />
-              <span className="absolute right-2.5 top-2 text-[9px] text-[#9C9490] pointer-events-none">g</span>
-            </div>
-          </div>
-        </div>
-      </section>
 
       {/* ── 過去履歴 ── */}
       {historyScenarios.length > 0 && (
