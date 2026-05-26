@@ -125,6 +125,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
   const [isGettingScrapOld, setIsGettingScrapOld] = useState(false);
   const [isGettingScrapNew, setIsGettingScrapNew] = useState(false);
   const [aiRetryCountdown, setAiRetryCountdown] = useState<number | null>(null);
+  const [slideRate, setSlideRate] = useState<string>('');
 
   // ─── Handlers ────────────────────────────────────────────────────────────────
 
@@ -385,6 +386,40 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     setter({ ...est, adjustments: { ...est.adjustments, sgaRatePercent: parseFloat(newRate.toFixed(2)) } });
   };
 
+  // A: 旧からスライド率一括転記
+  const handleSlideFromOld = () => {
+    const rate = parseFloat(slideRate);
+    if (isNaN(rate)) { alert('スライド率を数値で入力してください (例: 5 → +5%)'); return; }
+    const m = 1 + rate / 100;
+    onChangeNew({
+      ...newEstimate,
+      baseLotSize: oldEstimate.baseLotSize,
+      material: {
+        ...oldEstimate.material,
+        basePricePerKg: parseFloat((oldEstimate.material.basePricePerKg * m).toFixed(2)),
+        actualBasePricePerKg: oldEstimate.material.actualBasePricePerKg != null
+          ? parseFloat((oldEstimate.material.actualBasePricePerKg * m).toFixed(2)) : undefined,
+      },
+      processes: oldEstimate.processes.map(p => ({
+        ...p,
+        hourlyRate: p.hourlyRate ? Math.round(p.hourlyRate * m / 100) * 100 : 0,
+        actualHourlyRate: p.actualHourlyRate != null
+          ? Math.round(p.actualHourlyRate * m / 100) * 100 : undefined,
+        directProcessingCost: p.directProcessingCost
+          ? parseFloat((p.directProcessingCost * m).toFixed(2)) : 0,
+        kgPrice: p.kgPrice ? parseFloat((p.kgPrice * m).toFixed(2)) : 0,
+        lumpSumPrice: p.lumpSumPrice != null
+          ? parseFloat((p.lumpSumPrice * m).toFixed(2)) : undefined,
+      })),
+      logistics: {
+        ...oldEstimate.logistics,
+        freightPerBox: Math.round(oldEstimate.logistics.freightPerBox * m),
+        actualFreightPerBox: oldEstimate.logistics.actualFreightPerBox != null
+          ? Math.round(oldEstimate.logistics.actualFreightPerBox * m) : undefined,
+      },
+    });
+  };
+
   // ─── Style helpers ────────────────────────────────────────────────────────────
   const isEmptyStr = (v: string | undefined) => !v || v.trim() === '';
   const isEmptyNum = (v: number | undefined | null) => !v || v === 0;
@@ -451,6 +486,27 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
             <Copy className="w-3.5 h-3.5" />
             {isNew ? '← 旧の全内訳を転記' : '新の全内訳を転記 →'}
           </button>
+          {isNew && (
+            <div className="flex items-center gap-1.5 mt-2">
+              <div className="relative flex-1">
+                <input
+                  type="number"
+                  value={slideRate}
+                  onChange={(e) => setSlideRate(e.target.value)}
+                  placeholder="スライド率 例: 5"
+                  step="0.1"
+                  className="w-full px-2.5 py-1.5 pr-7 text-xs font-mono rounded border border-white/30 bg-white/10 text-white placeholder-white/40 outline-none focus:border-white/60"
+                />
+                <span className="absolute right-2 top-1.5 text-[9px] text-white/60 pointer-events-none">%</span>
+              </div>
+              <button
+                onClick={handleSlideFromOld}
+                className="shrink-0 text-[10px] font-black px-2 py-1.5 rounded border border-white/40 bg-white/20 hover:bg-white/30 text-white flex items-center gap-1 cursor-pointer transition-colors whitespace-nowrap"
+              >
+                旧からスライド転記
+              </button>
+            </div>
+          )}
         </div>
 
         {/* ── 見積ロット（列ごとに独立設定） ── */}
@@ -484,7 +540,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
 
         {/* ── 1. 仕入実費（社内のみ） ── */}
         {sh(Coins, '1. 仕入実費（社内のみ）')}
-        <div className="px-4 py-3">
+        <div className="px-4 py-3 space-y-2">
           <div className="flex items-center justify-between gap-2">
             <label className="text-xs font-bold text-[#18130F] shrink-0">
               仕入れ実費
@@ -498,6 +554,29 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                 className={`${inp} pl-6 text-[#1E3A5F] border-[#C5D8EE] bg-[#EFF4FD]/30 focus:border-[#1E3A5F] focus:ring-[#1E3A5F]/15`} />
             </div>
           </div>
+          {/* C: 架空仕入原価・逆算パネル */}
+          {est.adjustments.targetProfitMarginOff > 0 && calc.suggestedPurchasePriceForClient > 0 && (
+            <div className={`p-2 rounded border text-[10px] space-y-1 ${colAccentBg} ${colAccentBorder}`}>
+              <div className="text-[9px] font-black text-[#9C9490] uppercase tracking-wide mb-1">架空仕入原価（客先提出用）</div>
+              <div className="flex justify-between items-baseline">
+                <span className="text-[#18130F]">提出用仕入原価</span>
+                <span className={`font-mono font-black text-sm ${colAccentText}`}>
+                  ¥{Math.round(calc.suggestedPurchasePriceForClient).toLocaleString()}
+                </span>
+              </div>
+              {calc.makeupGapAmount > 0.5 && (
+                <div className="flex justify-between items-baseline">
+                  <span className="text-[#6B6057]">積み上げ不足（ゲタ）</span>
+                  <span className="font-mono font-black text-sm text-amber-700">
+                    +¥{Math.round(calc.makeupGapAmount).toLocaleString()}
+                  </span>
+                </div>
+              )}
+              {calc.makeupGapAmount <= 0.5 && (
+                <div className="text-[9px] text-emerald-700 font-black">✓ 積み上げ充足</div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ── 2. 材料 ── */}
@@ -563,6 +642,19 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
             <span className={`font-bold ${colAccentText}`}>材料費/個</span>
             <span className={`font-mono font-black ${colAccentText}`}>¥{calc.netMaterialCost.toFixed(2)}</span>
           </div>
+
+          {/* D: 材料変動理由 */}
+          <input
+            type="text"
+            value={est.material.changeReason || ''}
+            onChange={(e) => {
+              const target = isNew ? newEstimate : oldEstimate;
+              const setter = isNew ? onChangeNew : onChangeOld;
+              setter({ ...target, material: { ...target.material, changeReason: e.target.value } });
+            }}
+            placeholder="材料変動理由（任意）"
+            className="w-full px-2 py-0.5 text-[10px] text-[#6B6057] italic bg-amber-50/50 border border-amber-200/50 rounded outline-none focus:border-amber-300"
+          />
         </div>
 
         {/* ── 3. 加工工程 ── */}
@@ -600,7 +692,8 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                   const mode = getCalcMode(proc);
                   const costPerUnit = calc.processCosts[i] ?? 0;
                   return (
-                    <tr key={proc.index} className="hover:bg-[#FAFAF8]">
+                    <React.Fragment key={proc.index}>
+                    <tr className="hover:bg-[#FAFAF8]">
                       <td className="py-1 px-1 text-center text-[9px] text-[#9C9490] font-mono">#{proc.index}</td>
                       <td className="py-1 px-1.5">
                         <input type="text" value={proc.processName}
@@ -705,6 +798,21 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                         )}
                       </td>
                     </tr>
+                    {/* D: 変動理由メモ */}
+                    {proc.processName.trim() && (
+                      <tr className="bg-amber-50/40">
+                        <td colSpan={8} className="px-2 pb-1.5 pt-0">
+                          <input
+                            type="text"
+                            value={proc.changeReason || ''}
+                            onChange={(e) => updateProcessMeta(isNew, proc.index, 'changeReason', e.target.value)}
+                            placeholder="変動理由（任意）"
+                            className="w-full px-2 py-0.5 text-[10px] text-[#6B6057] italic bg-amber-50/50 border border-amber-200/50 rounded outline-none focus:border-amber-300"
+                          />
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>

@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, Fragment } from 'react';
 import * as XLSX from 'xlsx';
 import { Printer, Download } from 'lucide-react';
 import { DetailedEstimate } from '../types';
@@ -122,14 +122,23 @@ function EstimateBlock({ label, est, calc, tag }: EstimateBlockProps) {
               </thead>
               <tbody>
                 {est.processes.filter(p => p.processName.trim()).map((proc, i) => (
-                  <tr key={i} style={{ background: i % 2 === 0 ? 'white' : '#F9F9F9' }}>
-                    <td style={{ border: '1px solid #CCC', padding: '2px 4px', textAlign: 'center' }}>{proc.index}</td>
-                    <td style={{ border: '1px solid #CCC', padding: '2px 4px' }}>{proc.processName}</td>
-                    <td style={{ border: '1px solid #CCC', padding: '2px 4px', color: '#555' }}>{proc.workContent || '—'}</td>
-                    <td style={{ border: '1px solid #CCC', padding: '2px 4px', textAlign: 'center' }}>{getModeLabel(proc)}</td>
-                    <td style={{ border: '1px solid #CCC', padding: '2px 4px', textAlign: 'right' }}>{getProcessCostDetail(proc)}</td>
-                    <td style={{ border: '1px solid #CCC', padding: '2px 4px', textAlign: 'right', fontWeight: 'bold' }}>¥{fmt(calc.processCosts[proc.index - 1] ?? 0)}</td>
-                  </tr>
+                  <Fragment key={i}>
+                    <tr style={{ background: i % 2 === 0 ? 'white' : '#F9F9F9' }}>
+                      <td style={{ border: '1px solid #CCC', padding: '2px 4px', textAlign: 'center' }}>{proc.index}</td>
+                      <td style={{ border: '1px solid #CCC', padding: '2px 4px' }}>{proc.processName}</td>
+                      <td style={{ border: '1px solid #CCC', padding: '2px 4px', color: '#555' }}>{proc.workContent || '—'}</td>
+                      <td style={{ border: '1px solid #CCC', padding: '2px 4px', textAlign: 'center' }}>{getModeLabel(proc)}</td>
+                      <td style={{ border: '1px solid #CCC', padding: '2px 4px', textAlign: 'right' }}>{getProcessCostDetail(proc)}</td>
+                      <td style={{ border: '1px solid #CCC', padding: '2px 4px', textAlign: 'right', fontWeight: 'bold' }}>¥{fmt(calc.processCosts[proc.index - 1] ?? 0)}</td>
+                    </tr>
+                    {proc.changeReason?.trim() && (
+                      <tr style={{ background: '#FFFDF0' }}>
+                        <td colSpan={6} style={{ border: '1px solid #CCC', padding: '1px 8px', color: '#8B6914', fontSize: 9, fontStyle: 'italic' }}>
+                          └ 変動理由: {proc.changeReason}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
                 {est.processes.filter(p => p.processName.trim()).length === 0 && (
                   <tr>
@@ -225,6 +234,60 @@ function EstimateBlock({ label, est, calc, tag }: EstimateBlockProps) {
       </div>
     </div>
   );
+}
+
+function buildChecklist(oldEstimate: DetailedEstimate, newEstimate: DetailedEstimate, oldCalc: CalculatedSection, newCalc: CalculatedSection) {
+  const oldPurchase = oldEstimate.adjustments.actualPurchasePrice > 0
+    ? oldEstimate.adjustments.actualPurchasePrice : oldCalc.grandTotalUnitPrice;
+  const oldSell = oldEstimate.adjustments.targetUnitPrice || 0;
+  const oldMarkup = (oldSell > 0 && oldPurchase > 0) ? ((oldSell - oldPurchase) / oldPurchase * 100) : null;
+
+  const newPurchase = newEstimate.adjustments.actualPurchasePrice > 0
+    ? newEstimate.adjustments.actualPurchasePrice : newCalc.grandTotalUnitPrice;
+  const newSell = newEstimate.adjustments.targetUnitPrice || 0;
+  const newMarkup = (newSell > 0 && newPurchase > 0) ? ((newSell - newPurchase) / newPurchase * 100) : null;
+
+  const oldMarginOff = oldEstimate.adjustments.targetProfitMarginOff || 0;
+  const newMarginOff = newEstimate.adjustments.targetProfitMarginOff || 0;
+
+  const hasChangeReason =
+    !!newEstimate.material.changeReason?.trim() ||
+    !!oldEstimate.material.changeReason?.trim() ||
+    newEstimate.processes.some(p => p.processName.trim() && p.changeReason?.trim()) ||
+    oldEstimate.processes.some(p => p.processName.trim() && p.changeReason?.trim());
+
+  return [
+    {
+      label: '旧単価: 社内外掛け ≥ 25%',
+      ok: oldMarkup !== null && oldMarkup >= 25,
+      na: oldMarkup === null,
+      detail: oldMarkup !== null ? `${oldMarkup.toFixed(2)}%` : 'データ不足',
+    },
+    {
+      label: '新単価: 社内外掛け ≥ 25%',
+      ok: newMarkup !== null && newMarkup >= 25,
+      na: newMarkup === null,
+      detail: newMarkup !== null ? `${newMarkup.toFixed(2)}%` : 'データ不足',
+    },
+    {
+      label: '旧単価: 客先内掛け ≤ 15%',
+      ok: oldMarginOff > 0 && oldMarginOff <= 15,
+      na: oldMarginOff === 0,
+      detail: oldMarginOff > 0 ? `${oldMarginOff}%` : '未設定',
+    },
+    {
+      label: '新単価: 客先内掛け ≤ 15%',
+      ok: newMarginOff > 0 && newMarginOff <= 15,
+      na: newMarginOff === 0,
+      detail: newMarginOff > 0 ? `${newMarginOff}%` : '未設定',
+    },
+    {
+      label: '変動理由の記載（工程/材料）',
+      ok: hasChangeReason,
+      na: false,
+      detail: hasChangeReason ? '記載あり' : '未記載',
+    },
+  ];
 }
 
 export function PrintSheet({ oldEstimate, newEstimate }: PrintSheetProps) {
@@ -427,6 +490,40 @@ export function PrintSheet({ oldEstimate, newEstimate }: PrintSheetProps) {
         <div style={{ flex: 1 }}>
           <EstimateBlock label="新単価" est={newEstimate} calc={newCalc} tag="new" />
         </div>
+
+        {/* E: 客先提出前チェックリスト */}
+        {(() => {
+          const checks = buildChecklist(oldEstimate, newEstimate, oldCalc, newCalc);
+          const allOk = checks.filter(c => !c.na).every(c => c.ok);
+          return (
+            <div style={{ border: `2px solid ${allOk ? '#1A6B3A' : '#B5451B'}`, borderRadius: 4, overflow: 'hidden', fontFamily: '"Noto Sans JP", "Meiryo", sans-serif', fontSize: 10 }}>
+              <div style={{ background: allOk ? '#1A6B3A' : '#B5451B', color: 'white', padding: '4px 10px', fontWeight: 'bold', fontSize: 11, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span>{allOk ? '✓' : '⚠'}</span>
+                <span>客先提出前チェックリスト</span>
+                <span style={{ marginLeft: 'auto', fontSize: 9, fontWeight: 'normal', opacity: 0.8 }}>
+                  {checks.filter(c => !c.na && c.ok).length}/{checks.filter(c => !c.na).length} 項目クリア
+                </span>
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
+                <tbody>
+                  {checks.map((chk, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid #EEEEEE', background: chk.na ? '#F9F9F9' : chk.ok ? '#F0FAF4' : '#FEF0EB' }}>
+                      <td style={{ padding: '3px 8px', width: 22, textAlign: 'center', fontSize: 12 }}>
+                        {chk.na ? '—' : chk.ok ? '✅' : '❌'}
+                      </td>
+                      <td style={{ padding: '3px 6px', fontWeight: chk.ok || chk.na ? 'normal' : 'bold', color: chk.na ? '#999' : chk.ok ? '#1A6B3A' : '#B5451B' }}>
+                        {chk.label}
+                      </td>
+                      <td style={{ padding: '3px 8px', textAlign: 'right', fontFamily: 'monospace', color: chk.na ? '#999' : chk.ok ? '#1A6B3A' : '#B5451B' }}>
+                        {chk.detail}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Print styles */}

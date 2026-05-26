@@ -677,9 +677,20 @@ export default function App() {
 
               {/* 旧単価 panel — 2列グリッドで詰める */}
               <div className="flex-1 min-w-0 bg-white rounded-lg border border-[#E0C0B0] overflow-hidden shadow-sm">
-                <div className="bg-[#FEF0EB] px-3 py-1 border-b border-[#E8C8BC] flex items-center gap-1.5">
+                <div className="bg-[#FEF0EB] px-3 py-1 border-b border-[#E8C8BC] flex items-center gap-1.5 flex-wrap">
                   <span className="w-2 h-2 rounded-sm bg-[#B5451B] shrink-0" />
                   <span className="text-xs font-black text-[#B5451B] uppercase tracking-wider">旧単価</span>
+                  {/* B: Constraint badges */}
+                  {oldMarkup !== null && (
+                    <span className={`text-[9px] font-black px-1 py-0.5 rounded border leading-none ${
+                      oldMarkup >= 25 ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-rose-100 text-rose-700 border-rose-300'
+                    }`}>外{oldMarkup >= 25 ? '✓' : '✗'}25%</span>
+                  )}
+                  {oldEstimate.adjustments.targetProfitMarginOff > 0 && (
+                    <span className={`text-[9px] font-black px-1 py-0.5 rounded border leading-none ${
+                      oldEstimate.adjustments.targetProfitMarginOff <= 15 ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-amber-100 text-amber-700 border-amber-300'
+                    }`}>内{oldEstimate.adjustments.targetProfitMarginOff <= 15 ? '✓' : '!'}15%</span>
+                  )}
                   {oldEstimate.adjustments.actualPurchasePrice > 0 && (
                     <span className="ml-auto text-[10px] text-[#9C9490]">㉑実費: <strong className="font-mono text-[#18130F]">{fmtYen(oldEstimate.adjustments.actualPurchasePrice)}</strong></span>
                   )}
@@ -736,9 +747,20 @@ export default function App() {
 
               {/* 新単価 panel — 2列グリッドで詰める */}
               <div className="flex-1 min-w-0 bg-white rounded-lg border border-[#A8C4E0] overflow-hidden shadow-sm">
-                <div className="bg-[#EFF4FD] px-3 py-1 border-b border-[#B8CCE8] flex items-center gap-1.5">
+                <div className="bg-[#EFF4FD] px-3 py-1 border-b border-[#B8CCE8] flex items-center gap-1.5 flex-wrap">
                   <span className="w-2 h-2 rounded-sm bg-[#1E3A5F] shrink-0" />
                   <span className="text-xs font-black text-[#1E3A5F] uppercase tracking-wider">新単価</span>
+                  {/* B: Constraint badges */}
+                  {newMarkup !== null && (
+                    <span className={`text-[9px] font-black px-1 py-0.5 rounded border leading-none ${
+                      newMarkup >= 25 ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-rose-100 text-rose-700 border-rose-300'
+                    }`}>外{newMarkup >= 25 ? '✓' : '✗'}25%</span>
+                  )}
+                  {newEstimate.adjustments.targetProfitMarginOff > 0 && (
+                    <span className={`text-[9px] font-black px-1 py-0.5 rounded border leading-none ${
+                      newEstimate.adjustments.targetProfitMarginOff <= 15 ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-amber-100 text-amber-700 border-amber-300'
+                    }`}>内{newEstimate.adjustments.targetProfitMarginOff <= 15 ? '✓' : '!'}15%</span>
+                  )}
                   {newEstimate.adjustments.actualPurchasePrice > 0 && (
                     <span className="ml-auto text-[10px] text-[#9C9490]">㉗実費: <strong className="font-mono text-[#18130F]">{fmtYen(newEstimate.adjustments.actualPurchasePrice)}</strong></span>
                   )}
