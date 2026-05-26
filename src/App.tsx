@@ -1463,7 +1463,7 @@ export default function App() {
             setAiTestStatus('loading');
             setAiTestMsg('確認中...');
             try {
-              const r = await fetch('/health');
+              const r = await fetch('/api/health');
               const d = await r.json();
               if (d.geminiOk) {
                 setAiTestStatus('ok');

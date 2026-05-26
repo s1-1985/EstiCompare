@@ -101,8 +101,8 @@ const apiLimiter = rateLimit({
 });
 app.use("/api/", apiLimiter);
 
-// ── Health check (no auth) ────────────────────────────────────────────────────
-app.get("/health", async (_req, res) => {
+// ── Health check (no auth — must be before requireAuth middleware) ───────────
+app.get("/api/health", async (_req, res) => {
   const result: Record<string, unknown> = {
     geminiKeySet: !!process.env.GEMINI_API_KEY,
     adminInitialized,

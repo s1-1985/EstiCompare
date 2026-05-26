@@ -8,13 +8,6 @@
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
       {
-        "source": "/health",
-        "run": {
-          "serviceId": "esticompare-api",
-          "region": "asia-northeast1"
-        }
-      },
-      {
         "source": "/api/**",
         "run": {
           "serviceId": "esticompare-api",
