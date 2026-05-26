@@ -189,7 +189,7 @@ export default function App() {
   const handleNew28Change = (value: string) => {
     const sell = parseFloat(value);
     if (isNaN(sell) || sell <= 0) {
-      setNewEstimate(prev => ({ ...prev, adjustments: { ...prev.adjustments, targetUnitPrice: sell || 0 } }));
+      setNewEstimate(prev => ({ ...prev, adjustments: { ...prev.adjustments, targetUnitPrice: 0 } }));
       return;
     }
     const cost = getNewCost();
@@ -212,14 +212,14 @@ export default function App() {
   const handleNew29Change = (value: string) => {
     const markup = parseFloat(value);
     const cost = getNewCost();
-    if (!isNaN(markup) && cost > 0 && markup >= 0) {
+    if (!isNaN(markup) && cost > 0) {
       const sell = cost * (1 + markup / 100);
       setNewEstimate(prev => ({
         ...prev,
         adjustments: {
           ...prev.adjustments,
           targetProfitRate: markup,
-          targetUnitPrice: parseFloat(sell.toFixed(2)),
+          targetUnitPrice: sell > 0 ? parseFloat(sell.toFixed(2)) : 0,
         },
       }));
     } else {

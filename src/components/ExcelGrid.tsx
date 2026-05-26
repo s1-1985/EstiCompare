@@ -325,14 +325,17 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       return sum + (processHoursList[i] * (proc.actualHourlyRate ?? proc.hourlyRate ?? 3000));
     }, 0);
     let draftProcesses = [...target.processes];
-    let finalSgaPercent = target.adjustments.sgaRatePercent || 15;
+    const sgaMode = target.adjustments.sgaCalcMode || 'markup';
+    let finalSgaPercent = target.adjustments.sgaRatePercent ?? 15;
     const materialCost = calc.netMaterialCost;
     const directInputTotal = target.processes.reduce((sum, proc) => {
       if (!proc.processName.trim() || !proc.isDirectInput) return sum;
       return sum + (proc.directProcessingCost || 0);
     }, 0);
     if (currentTotalProcessCostTemp > 0) {
-      const targetPrimeCost = Y / (1 + finalSgaPercent / 100);
+      const targetPrimeCost = sgaMode === 'margin'
+        ? Y * (1 - finalSgaPercent / 100)
+        : Y / (1 + finalSgaPercent / 100);
       const targetNonDirectProcessCost = Math.max(0, targetPrimeCost - materialCost - directInputTotal);
       const multiplier = Math.max(0.1, targetNonDirectProcessCost / currentTotalProcessCostTemp);
       draftProcesses = target.processes.map((proc) => {
@@ -349,7 +352,9 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       return sum + (processHoursList[i] * (proc.hourlyRate || 0));
     }, 0);
     if (tempPrimeCost > 0) {
-      finalSgaPercent = Math.max(0, Math.round(((Y / tempPrimeCost) - 1) * 10000) / 100);
+      finalSgaPercent = sgaMode === 'margin'
+        ? Math.max(0, Math.round((1 - tempPrimeCost / Y) * 10000) / 100)
+        : Math.max(0, Math.round(((Y / tempPrimeCost) - 1) * 10000) / 100);
     }
     updatedAdjustments.sgaRatePercent = finalSgaPercent;
     setter({ ...target, processes: draftProcesses, adjustments: updatedAdjustments });
@@ -988,12 +993,14 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
         />
 
         {/* ── 6. 計算結果 ── */}
-        <div className={`p-4 border-t-2 border-[#EEEBE6] ${Math.abs(calc.auditVariance) < 0.1 ? 'bg-[#E8F5EC]/50' : 'bg-[#FEF0EB]/50'}`}>
+        <div className={`p-4 border-t-2 border-[#EEEBE6] ${est.adjustments.targetUnitPrice > 0 && Math.abs(calc.auditVariance) < 0.1 ? 'bg-[#E8F5EC]/50' : 'bg-[#FEF0EB]/50'}`}>
           <div className="flex items-center justify-between mb-3">
             <h4 className="text-[10px] font-black text-[#6B6057] uppercase tracking-wider">計算結果</h4>
-            {Math.abs(calc.auditVariance) < 0.1
+            {est.adjustments.targetUnitPrice > 0 && Math.abs(calc.auditVariance) < 0.1
               ? <span className="text-[10px] font-black text-[#1D5C3A] flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> 整合済み</span>
-              : <span className="text-[10px] font-black text-[#B5451B] flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> 乖離: {calc.auditVariance > 0 ? '+' : ''}{calc.auditVariance.toFixed(2)}円</span>
+              : est.adjustments.targetUnitPrice > 0
+                ? <span className="text-[10px] font-black text-[#B5451B] flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> 乖離: {calc.auditVariance > 0 ? '+' : ''}{calc.auditVariance.toFixed(2)}円</span>
+                : <span className="text-[10px] font-black text-[#9C9490]">目標売値未設定</span>
             }
           </div>
 
@@ -1280,8 +1287,8 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
 
       {/* ── 利管費警告 ── */}
       {(oldCalc.grandTotalUnitPrice > 0 || newCalc.grandTotalUnitPrice > 0) &&
-        ((oldEstimate.adjustments.sgaRatePercent !== undefined && (oldEstimate.adjustments.sgaRatePercent < 5 || oldEstimate.adjustments.sgaRatePercent > 30)) ||
-         (newEstimate.adjustments.sgaRatePercent !== undefined && (newEstimate.adjustments.sgaRatePercent < 5 || newEstimate.adjustments.sgaRatePercent > 30))) && (
+        ((+(oldEstimate.adjustments.sgaRatePercent || 0) > 0 && ((+(oldEstimate.adjustments.sgaRatePercent || 0)) < 5 || (+(oldEstimate.adjustments.sgaRatePercent || 0)) > 30)) ||
+         (+(newEstimate.adjustments.sgaRatePercent || 0) > 0 && ((+(newEstimate.adjustments.sgaRatePercent || 0)) < 5 || (+(newEstimate.adjustments.sgaRatePercent || 0)) > 30))) && (
         <div className="p-4 bg-rose-950/80 border border-rose-800 text-rose-200 rounded-lg text-[10.5px] leading-relaxed">
           <div className="flex items-start gap-2">
             <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
@@ -1289,7 +1296,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
               <strong className="text-rose-300 block font-black text-xs mb-1">【審議警告】利管費%が不自然な範囲 (5%未満 / 30%超) です</strong>
               賃率調整だけで辻褄を合わせようとしている場合、<strong className="text-white">工程の「出来高」と「段取時間」の前提見直し</strong>を合わせて行うと自然な数値に収まります。
               <span className="block mt-1 text-rose-300">
-                現在値: 旧={oldEstimate.adjustments.sgaRatePercent?.toFixed(2)}% / 新={newEstimate.adjustments.sgaRatePercent?.toFixed(2)}%
+                現在値: 旧={(+(oldEstimate.adjustments.sgaRatePercent || 0)).toFixed(2)}% / 新={(+(newEstimate.adjustments.sgaRatePercent || 0)).toFixed(2)}%
               </span>
             </div>
           </div>

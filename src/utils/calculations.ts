@@ -117,7 +117,7 @@ export function calculateEstimate(est: DetailedEstimate): CalculatedSection {
   // ==========================================
   // 2. 【社内実原価（実態コスト・調整前）】の算出
   // ==========================================
-  const actualRawMaterialPrice = material.actualBasePricePerKg || material.basePricePerKg;
+  const actualRawMaterialPrice = material.actualBasePricePerKg ?? material.basePricePerKg;
   const actualRawMaterialCost = (material.inputWeightG / 1000) * actualRawMaterialPrice;
   const actualNetMaterialCost = Math.max(0, actualRawMaterialCost - scrapValue);
 
@@ -126,7 +126,7 @@ export function calculateEstimate(est: DetailedEstimate): CalculatedSection {
   const actualTotalProcessCost = actualProcessCosts.reduce((a, b) => a + b, 0);
   const actualPrimeCost = actualNetMaterialCost + actualTotalProcessCost;
   
-  const actFreight = logistics.actualFreightPerBox || logistics.freightPerBox;
+  const actFreight = logistics.actualFreightPerBox ?? logistics.freightPerBox;
   const actualShippingCost = logistics.qtyPerBox > 0 ? (actFreight / logistics.qtyPerBox) : 0;
 
   // 手動で入力した「実際の仕入単価」がある場合は、それを仕入原価(actualPrimeCost)の代わりに実質製造コストのベースにします。
