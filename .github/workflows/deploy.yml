@@ -1,3 +1,4 @@
+# CI/CD pipeline for EstiCompare
 name: Build & Deploy to Firebase + Cloud Run
 
 on:
