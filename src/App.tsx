@@ -169,11 +169,13 @@ export default function App() {
   };
 
   const updateOldAdj = (key: string, value: string) => {
-    setOldEstimate(prev => ({ ...prev, adjustments: { ...prev.adjustments, [key]: parseFloat(value) || 0 } }));
+    const parsed = parseFloat(value);
+    setOldEstimate(prev => ({ ...prev, adjustments: { ...prev.adjustments, [key]: isNaN(parsed) ? 0 : parsed } }));
   };
 
   const updateNewAdj = (key: string, value: string) => {
-    setNewEstimate(prev => ({ ...prev, adjustments: { ...prev.adjustments, [key]: parseFloat(value) || 0 } }));
+    const parsed = parseFloat(value);
+    setNewEstimate(prev => ({ ...prev, adjustments: { ...prev.adjustments, [key]: isNaN(parsed) ? 0 : parsed } }));
   };
 
   // ─── 3-way linkage for ㉘/㉙/㉚ ───────────────────────────────────────────────
@@ -183,7 +185,7 @@ export default function App() {
       ? newEstimate.adjustments.actualPurchasePrice
       : newCalc.grandTotalUnitPrice;
 
-  // ㉘ 目標売値 → auto-derive ㉙ markup and ㉚ margin
+  // ㉘ 目標売値 → auto-derive ㉙ markup only (internal)
   const handleNew28Change = (value: string) => {
     const sell = parseFloat(value);
     if (isNaN(sell) || sell <= 0) {
@@ -193,14 +195,12 @@ export default function App() {
     const cost = getNewCost();
     if (cost > 0) {
       const markup = (sell - cost) / cost * 100;
-      const margin = (sell - cost) / sell * 100;
       setNewEstimate(prev => ({
         ...prev,
         adjustments: {
           ...prev.adjustments,
           targetUnitPrice: sell,
           targetProfitRate: parseFloat(markup.toFixed(2)),
-          targetProfitMarginOff: parseFloat(margin.toFixed(2)),
         },
       }));
     } else {
@@ -208,20 +208,18 @@ export default function App() {
     }
   };
 
-  // ㉙ 目標利益率（外掛け）→ auto-derive ㉘ sell price and ㉚ margin
+  // ㉙ 目標利益率（外掛け）→ auto-derive ㉘ sell price only (internal)
   const handleNew29Change = (value: string) => {
     const markup = parseFloat(value);
     const cost = getNewCost();
     if (!isNaN(markup) && cost > 0 && markup >= 0) {
       const sell = cost * (1 + markup / 100);
-      const margin = markup / (1 + markup / 100) * 100;
       setNewEstimate(prev => ({
         ...prev,
         adjustments: {
           ...prev.adjustments,
           targetProfitRate: markup,
           targetUnitPrice: parseFloat(sell.toFixed(2)),
-          targetProfitMarginOff: parseFloat(margin.toFixed(2)),
         },
       }));
     } else {
@@ -229,25 +227,21 @@ export default function App() {
     }
   };
 
-  // ㉚ 目標利益率（内掛け）→ auto-derive ㉘ sell price and ㉙ markup
-  const handleNew30Change = (value: string) => {
-    const margin = parseFloat(value);
-    const cost = getNewCost();
-    if (!isNaN(margin) && cost > 0 && margin >= 0 && margin < 100) {
-      const sell = cost / (1 - margin / 100);
-      const markup = (sell - cost) / cost * 100;
-      setNewEstimate(prev => ({
-        ...prev,
-        adjustments: {
-          ...prev.adjustments,
-          targetProfitMarginOff: margin,
-          targetUnitPrice: parseFloat(sell.toFixed(2)),
-          targetProfitRate: parseFloat(markup.toFixed(2)),
-        },
-      }));
+  // 得意先用目標利益率（外掛け）→ derive targetProfitMarginOff (internal margin for client)
+  const handleNewClientMarkupChange = (value: string) => {
+    const mu = parseFloat(value);
+    if (!isNaN(mu) && mu >= 0) {
+      const mg = mu / (1 + mu / 100);
+      setNewEstimate(prev => ({ ...prev, adjustments: { ...prev.adjustments, targetProfitMarginOff: parseFloat(mg.toFixed(4)) } }));
     } else {
-      setNewEstimate(prev => ({ ...prev, adjustments: { ...prev.adjustments, targetProfitMarginOff: isNaN(margin) ? 0 : margin } }));
+      setNewEstimate(prev => ({ ...prev, adjustments: { ...prev.adjustments, targetProfitMarginOff: 0 } }));
     }
+  };
+
+  // 得意先用目標利益率（内掛け）→ directly sets targetProfitMarginOff
+  const handleNewClientMarginChange = (value: string) => {
+    const m = parseFloat(value);
+    setNewEstimate(prev => ({ ...prev, adjustments: { ...prev.adjustments, targetProfitMarginOff: isNaN(m) ? 0 : m } }));
   };
 
   // ─── Derived values ───────────────────────────────────────────────────────────
@@ -273,6 +267,15 @@ export default function App() {
   const newMarkup = (newSell > 0 && newPurchase > 0) ? ((newSell - newPurchase) / newPurchase * 100) : null;
   const newMargin = (newSell > 0 && newPurchase > 0) ? ((newSell - newPurchase) / newSell * 100) : null;
   const newGrossPerUnit = newSell > 0 && newPurchase > 0 ? newSell - newPurchase : null;
+
+  // ㉚ derived display values (internal)
+  const newInternalMarkup = newEstimate.adjustments.targetProfitRate || 0;
+  const newInternalMargin = newInternalMarkup > 0 ? newInternalMarkup / (1 + newInternalMarkup / 100) : null;
+  // 得意先用: derive external markup from stored internal margin
+  const newClientMarginOff = newEstimate.adjustments.targetProfitMarginOff || 0;
+  const newClientMarkupOff = newClientMarginOff > 0 && newClientMarginOff < 100
+    ? parseFloat((newClientMarginOff / (1 - newClientMarginOff / 100)).toFixed(2))
+    : null;
 
   const purchaseRatio = (oldPurchase > 0 && newPurchase > 0) ? (newPurchase / oldPurchase * 100) : null;
   const sellRatio = (oldSell > 0 && newSell > 0) ? (newSell / oldSell * 100) : null;
@@ -630,21 +633,11 @@ export default function App() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-[9px] font-bold text-[#1E3A5F] mb-0.5">
-                ㉚ 目標利益率（内掛け）
-                <span className="text-[10px] text-[#9C9490] font-normal ml-1">← 連動</span>
-              </label>
-              <div className="relative">
-                <input
-                  type="number"
-                  value={newEstimate.adjustments.targetProfitMarginOff || ''}
-                  onChange={(e) => handleNew30Change(e.target.value)}
-                  placeholder="例: 20"
-                  className={`${sideInp} pr-6 border-[#93B4D9] focus:border-[#1E3A5F] focus:ring-[#1E3A5F]/15`}
-                />
-                <span className="absolute right-2 top-1 text-[9px] text-[#9C9490]">%</span>
-              </div>
+            <div className="flex justify-between items-baseline px-0.5">
+              <span className="text-[9px] font-bold text-[#1E3A5F]">㉚ 目標利益率（内掛け）</span>
+              <span className="font-mono font-black text-xs text-[#1E3A5F]">
+                {newInternalMargin !== null ? `${newInternalMargin.toFixed(2)}%` : '—'}
+              </span>
             </div>
 
             <div className="flex justify-between items-baseline">
@@ -658,11 +651,50 @@ export default function App() {
               <label className="block text-xs font-bold text-[#18130F] mb-0.5">㉜ 下限利益率 (%)</label>
               <input
                 type="number"
-                value={newEstimate.adjustments.minProfitRate ?? ''}
+                value={newEstimate.adjustments.minProfitRate || ''}
                 onChange={(e) => updateNewAdj('minProfitRate', e.target.value)}
                 placeholder="例: 15"
                 className={sideInp}
               />
+            </div>
+
+            {/* 得意先用目標利益率 */}
+            <div className="pt-1 border-t border-[#C5D8EE]">
+              <div className="text-[9px] font-black uppercase tracking-widest text-[#6B6057] mb-1">得意先用目標利益率</div>
+              <div className="space-y-1">
+                <div>
+                  <label className="block text-[9px] font-bold text-[#6B6057] mb-0.5">
+                    外掛け
+                    <span className="text-[9px] font-normal ml-1">→ 内掛け連動</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      value={newClientMarkupOff !== null ? newClientMarkupOff : ''}
+                      onChange={(e) => handleNewClientMarkupChange(e.target.value)}
+                      placeholder="例: 17.6"
+                      className={`${sideInp} pr-6 text-sm border-[#C8C2B8] focus:border-[#6B6057] focus:ring-[#6B6057]/15`}
+                    />
+                    <span className="absolute right-2 top-1 text-[9px] text-[#9C9490]">%</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[9px] font-bold text-[#6B6057] mb-0.5">
+                    内掛け
+                    <span className="text-[9px] font-normal ml-1">→ 外掛け連動</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      value={newClientMarginOff || ''}
+                      onChange={(e) => handleNewClientMarginChange(e.target.value)}
+                      placeholder="例: 15"
+                      className={`${sideInp} pr-6 text-sm border-[#C8C2B8] focus:border-[#6B6057] focus:ring-[#6B6057]/15`}
+                    />
+                    <span className="absolute right-2 top-1 text-[9px] text-[#9C9490]">%</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 

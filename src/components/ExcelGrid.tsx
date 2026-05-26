@@ -280,7 +280,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
 
   const updateAdjustments = (isNew: boolean, key: 'targetProfitRate' | 'minProfitRate' | 'targetProfitMarginOff' | 'targetUnitPrice' | 'actualPurchasePrice' | 'sgaRatePercent' | 'toolingCost' | 'otherAdjustment', value: any) => {
     const parsed = parseFloat(value);
-    const val = value === '' ? '' : (isNaN(parsed) ? 0 : parsed);
+    const val = isNaN(parsed) ? 0 : parsed;
     if (key === 'targetProfitRate' || key === 'minProfitRate') {
       onChangeOld({ ...oldEstimate, adjustments: { ...oldEstimate.adjustments, [key]: val as any } });
       onChangeNew({ ...newEstimate, adjustments: { ...newEstimate.adjustments, [key]: val as any } });
@@ -486,8 +486,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
             <Copy className="w-3.5 h-3.5" />
             {isNew ? '← 旧の全内訳を転記' : '新の全内訳を転記 →'}
           </button>
-          {isNew && (
-            <div className="flex items-center gap-1.5 mt-2">
+          <div className={`flex items-center gap-1.5 mt-2 ${!isNew ? 'invisible pointer-events-none' : ''}`}>
               <div className="relative flex-1">
                 <input
                   type="number"
@@ -506,7 +505,6 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                 旧からスライド転記
               </button>
             </div>
-          )}
         </div>
 
         {/* ── 見積ロット（列ごとに独立設定） ── */}
@@ -678,12 +676,12 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
               <thead>
                 <tr className="bg-[#F0EDE8] text-xs text-[#18130F] font-black uppercase tracking-wider">
                   <th className="py-1.5 px-1 text-center w-5">#</th>
-                  <th className="py-1.5 px-1.5 text-left" style={{minWidth: 70, maxWidth: 90}}>工程名</th>
+                  <th className="py-1.5 px-1.5 text-left" style={{minWidth: 50, maxWidth: 63}}>工程名</th>
                   <th className="py-1.5 px-1 text-center w-10">種別</th>
-                  <th className="py-1.5 px-1 text-right w-24">出来高</th>
-                  <th className="py-1.5 px-1 text-right w-16">段取(h)</th>
-                  <th className="py-1.5 px-1 text-right w-24 text-[#B5451B]">客提示賃率</th>
-                  <th className="py-1.5 px-1 text-right w-24 text-[#1E3A5F]">実態賃率</th>
+                  <th className="py-1.5 px-1 text-right w-28">出来高</th>
+                  <th className="py-1.5 px-1 text-right w-20">段取(h)</th>
+                  <th className="py-1.5 px-1 text-right w-28 text-[#B5451B]">客提示賃率</th>
+                  <th className="py-1.5 px-1 text-right w-28 text-[#1E3A5F]">実態賃率</th>
                   <th className="py-1.5 px-1 text-right w-20">→費用</th>
                 </tr>
               </thead>
@@ -717,7 +715,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                             <input type="number" value={proc.yieldPerHour || ''}
                               onChange={(e) => updateProcessMeta(isNew, proc.index, 'yieldPerHour', e.target.value)}
                               placeholder="0"
-                              className={`w-full pl-1.5 pr-7 py-1 text-xs font-mono rounded border outline-none focus:ring-1 ${proc.processName && !proc.yieldPerHour ? 'border-[#F8C9BB] bg-[#FEF0EB]' : 'border-[#D6D0C8] bg-white'}`} />
+                              className={`no-spin w-full pl-1.5 pr-7 py-1 text-xs font-mono rounded border outline-none focus:ring-1 ${proc.processName && !proc.yieldPerHour ? 'border-[#F8C9BB] bg-[#FEF0EB]' : 'border-[#D6D0C8] bg-white'}`} />
                             <span className="absolute right-0.5 top-1 text-[8px] text-[#9C9490]">個/h</span>
                           </div>
                         )}
@@ -755,7 +753,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                             <input type="number" value={proc.totalHours || ''}
                               onChange={(e) => updateProcessMeta(isNew, proc.index, 'totalHours', e.target.value)}
                               placeholder="0" step="any"
-                              className="w-full pl-1.5 pr-4 py-1 text-xs font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1" />
+                              className="no-spin w-full pl-1.5 pr-4 py-1 text-xs font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1" />
                             <span className="absolute right-0.5 top-1 text-[8px] text-[#9C9490]">h</span>
                           </div>
                         ) : (
@@ -768,7 +766,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                             <input type="number" value={proc.hourlyRate || ''}
                               onChange={(e) => updateProcessRates(isNew, proc.index, 'hourlyRate', e.target.value)}
                               placeholder="0"
-                              className={`w-full pl-1.5 pr-7 py-1 text-xs font-mono font-bold rounded border outline-none focus:ring-1 ${fld(isEmptyNum(proc.hourlyRate))}`} />
+                              className={`no-spin w-full pl-1.5 pr-7 py-1 text-xs font-mono font-bold rounded border outline-none focus:ring-1 ${fld(isEmptyNum(proc.hourlyRate))}`} />
                             <span className="absolute right-0.5 top-1 text-[8px] text-[#9C9490]">円/h</span>
                           </div>
                         ) : (
@@ -781,7 +779,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                             <input type="number" value={proc.actualHourlyRate || ''}
                               onChange={(e) => updateProcessMeta(isNew, proc.index, 'actualHourlyRate', e.target.value)}
                               placeholder="実態"
-                              className="w-full pl-1.5 pr-7 py-1 text-xs font-mono text-[#1E3A5F] rounded border border-[#C5D8EE] bg-[#EFF4FD]/30 outline-none focus:ring-1" />
+                              className="no-spin w-full pl-1.5 pr-7 py-1 text-xs font-mono text-[#1E3A5F] rounded border border-[#C5D8EE] bg-[#EFF4FD]/30 outline-none focus:ring-1" />
                             <span className="absolute right-0.5 top-1 text-[8px] text-[#1E3A5F]">円/h</span>
                           </div>
                         ) : (
@@ -940,13 +938,13 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                 {(est.adjustments.sgaCalcMode || 'markup') === 'margin' ? '内掛' : '外掛'}
               </button>
               <div className="relative flex-1">
-                <input type="number" value={est.adjustments.sgaRatePercent ?? ''}
+                <input type="number" value={est.adjustments.sgaRatePercent || ''}
                   onChange={(e) => updateAdjustments(isNew, 'sgaRatePercent', e.target.value)}
                   placeholder="15" step="0.01"
                   className={`${inp} pr-8 font-bold border-[#D6D0C8] bg-white focus:border-[#B5451B] focus:ring-[#B5451B]/15`} />
                 <span className="absolute right-2 top-1.5 text-[9px] text-[#9C9490]">%</span>
               </div>
-              {est.adjustments.sgaRatePercent !== undefined && (est.adjustments.sgaRatePercent < 5 || est.adjustments.sgaRatePercent > 30) && calc.grandTotalUnitPrice > 0 && (
+              {(+(est.adjustments.sgaRatePercent || 0)) > 0 && ((+(est.adjustments.sgaRatePercent || 0)) < 5 || (+(est.adjustments.sgaRatePercent || 0)) > 30) && calc.grandTotalUnitPrice > 0 && (
                 <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
               )}
             </div>
@@ -1004,7 +1002,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
               { label: '材料費', val: calc.netMaterialCost },
               { label: '加工費計', val: calc.totalProcessCost },
               { label: '直製造原価', val: calc.primeCost },
-              { label: `利管費 (${est.adjustments.sgaRatePercent?.toFixed(2) ?? 0}%)`, val: calc.sgaCost },
+              { label: `利管費 (${(+(est.adjustments.sgaRatePercent || 0)).toFixed(2)}%)`, val: calc.sgaCost },
               { label: '送料/個', val: calc.shippingCostPerUnit },
             ].map(({ label, val }) => (
               <div key={label} className="flex justify-between text-xs">
@@ -1031,14 +1029,17 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
               </span>
             </div>
 
-            {/* 目標売値との差額 + 必要利益率 */}
+            {/* 目標売値との差額 + 必要利管費率 */}
             {est.adjustments.targetUnitPrice > 0 && calc.grandTotalUnitPrice > 0 && (() => {
               const targetSell = est.adjustments.targetUnitPrice;
               const gap = targetSell - calc.grandTotalUnitPrice;
-              const neededMarkup = (targetSell / calc.grandTotalUnitPrice - 1) * 100;
-              const neededMargin = (1 - calc.grandTotalUnitPrice / targetSell) * 100;
               const isOver = gap < -0.005;
               const isExact = Math.abs(gap) < 0.005;
+              const primeCost = calc.primeCost;
+              const base = targetSell - calc.shippingCostPerUnit - (est.adjustments.otherAdjustment || 0);
+              const mode = est.adjustments.sgaCalcMode || 'markup';
+              const reqSgaMarkup = primeCost > 0.01 && base > primeCost ? (base / primeCost - 1) * 100 : null;
+              const reqSgaMargin = primeCost > 0.01 && base > 0 ? (1 - primeCost / base) * 100 : null;
               return (
                 <div className={`mt-2 p-2.5 rounded border text-xs space-y-1.5 ${isExact ? 'bg-[#E8F5EC] border-emerald-300' : isOver ? 'bg-rose-50 border-rose-200' : 'bg-amber-50 border-amber-200'}`}>
                   <div className="flex justify-between items-baseline">
@@ -1054,16 +1055,27 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                   {!isExact && (
                     <div className="border-t border-current/20 pt-1.5 space-y-1">
                       <div className="text-[#6B6057] font-bold text-[10px] uppercase tracking-wide">
-                        {isOver ? '目標達成に必要な利益率' : '現在の計算値から目標まで'}
+                        目標達成の利管費率
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-[#18130F]">外掛け</span>
-                        <span className={`font-mono font-black ${neededMarkup < 0 ? 'text-rose-600' : 'text-[#B5451B]'}`}>{neededMarkup.toFixed(2)}%</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-[#18130F]">内掛け</span>
-                        <span className={`font-mono font-black ${neededMargin < 0 ? 'text-rose-600' : 'text-[#1E3A5F]'}`}>{neededMargin.toFixed(2)}%</span>
-                      </div>
+                      {mode === 'markup' && reqSgaMarkup !== null ? (
+                        <div className="flex justify-between">
+                          <span className="text-[#18130F]">外掛けで</span>
+                          <span className={`font-mono font-black ${reqSgaMarkup < 0 ? 'text-rose-600' : 'text-[#B5451B]'}`}>{reqSgaMarkup.toFixed(2)}%</span>
+                        </div>
+                      ) : mode === 'margin' && reqSgaMargin !== null ? (
+                        <div className="flex justify-between">
+                          <span className="text-[#18130F]">内掛けで</span>
+                          <span className={`font-mono font-black ${reqSgaMargin < 0 ? 'text-rose-600' : 'text-[#1E3A5F]'}`}>{reqSgaMargin.toFixed(2)}%</span>
+                        </div>
+                      ) : (
+                        <div className="text-[#9C9490] text-[10px]">計算不可（原価不足）</div>
+                      )}
+                      {mode === 'markup' && reqSgaMarkup !== null && (
+                        <div className="text-[#9C9490] text-[9px]">利管費率を {reqSgaMarkup.toFixed(2)}% に設定</div>
+                      )}
+                      {mode === 'margin' && reqSgaMargin !== null && (
+                        <div className="text-[#9C9490] text-[9px]">利管費率を {reqSgaMargin.toFixed(2)}% に設定</div>
+                      )}
                     </div>
                   )}
                   {isExact && <div className="text-emerald-700 font-black text-[10px] text-center">✓ 目標売値と一致</div>}
