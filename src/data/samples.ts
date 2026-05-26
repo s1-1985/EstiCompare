@@ -49,6 +49,7 @@ export const createEmptyEstimate = (): DetailedEstimate => ({
     targetUnitPrice: 0,
     actualPurchasePrice: 0,
     sgaRatePercent: 0,
+    sgaCalcMode: 'markup' as const,
     sgaFixedAdjustment: 0,
     otherAdjustment: 0,
     toolingCost: 0

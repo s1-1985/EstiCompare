@@ -47,10 +47,11 @@ export interface AdvancedAdjustment {
   targetUnitPrice: number;       // 目標単価・決定売価 (円)
   
   actualPurchasePrice: number;    // 実際の仕入単価（サプライヤー仕入れ単価） (円)
-  sgaRatePercent: number;        // 利管費率 (%) - 例: 15% (客提示用エクセルの利管費)
+  sgaRatePercent: number;        // 利管費率 (%) - 例: 15%
+  sgaCalcMode?: 'markup' | 'margin'; // 利管費計算方式: 外掛け(markup) / 内掛け(margin)
   sgaFixedAdjustment: number;    // 利管費固定調整 (円)
   otherAdjustment: number;       // 調整 (円)
-  toolingCost: number;           // 略図・型費・その他 (円)
+  toolingCost: number;           // 略図・型費・その他 (円、非表示だが後方互換のため残す)
 }
 
 export interface DetailedEstimate {
