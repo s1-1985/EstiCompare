@@ -41,10 +41,6 @@ jobs:
           gcloud config set project $PROJECT_ID
           echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-key.json" >> $GITHUB_ENV
 
-      - name: Cleanup credentials
-        if: always()
-        run: rm -f /tmp/gcp-key.json
-
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker asia-northeast1-docker.pkg.dev --quiet
 
@@ -103,3 +99,7 @@ jobs:
           echo "Response: $(echo "$RELEASE_RESPONSE" | grep -v "HTTP_STATUS:")"
           if [ "$HTTP_STATUS2" != "200" ]; then exit 1; fi
           echo "Firestore rules deployed successfully"
+
+      - name: Cleanup credentials
+        if: always()
+        run: rm -f /tmp/gcp-key.json
