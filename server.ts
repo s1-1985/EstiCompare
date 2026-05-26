@@ -109,7 +109,7 @@ app.get("/health", async (_req, res) => {
   };
   try {
     if (ai) {
-      const r = await ai.models.generateContent({ model: "gemini-2.0-flash", contents: "Reply with just: ok" });
+      const r = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: "Reply with just: ok" });
       result.geminiOk = true;
       result.geminiSample = r.text?.slice(0, 30);
     } else {
@@ -232,7 +232,7 @@ ${text}
 </user_data>`;
 
     const response = await callGemini(() => client.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-flash",
       contents: userContent,
       config: {
         systemInstruction: `あなたは精密金属加工および射出成形・機械加工見積を精査するプロフェッショナルバイヤーです。
@@ -328,7 +328,7 @@ ${newJson}
 - バイヤーが実際の価格折衝において、サプライヤーに投げかけるべき「強力で論理的な具体的・逆質問」5選`;
 
     const response = await callGemini(() => client.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-flash",
       contents: prompt,
       config: {
         systemInstruction:
@@ -399,7 +399,7 @@ app.post("/api/generate-estimate", async (req, res) => {
 </user_request>`;
 
     const response = await callGemini(() => client.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-flash",
       contents: userContent,
       config: {
         systemInstruction: `あなたは製造原価（プレス板金、切削、溶接、プラスチック射出成形、めっき等）を算出する原価企画エキスパートです。
@@ -499,7 +499,7 @@ ${processLines}
 </process_list>`;
 
     const response = await callGemini(() => client.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-flash",
       contents: userContent,
       config: {
         systemInstruction:
@@ -561,7 +561,7 @@ app.post("/api/calculate-shipping", async (req, res) => {
 日本国内の2024〜2025年現在の標準的な運賃目安に基づき、適切な推定運賃を返してください。`;
 
     const response = await callGemini(() => client.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-flash",
       contents: userContent,
       config: {
         systemInstruction:
@@ -608,7 +608,7 @@ app.post("/api/get-scrap-price", async (req, res) => {
 日本国内のスクラップ業者・金属リサイクル相場（2024〜2025年現在）に基づいた推定値を返してください。`;
 
     const response = await callGemini(() => client.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-flash",
       contents: userContent,
       config: {
         systemInstruction:
