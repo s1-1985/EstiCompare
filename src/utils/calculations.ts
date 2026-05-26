@@ -172,7 +172,8 @@ export function calculateEstimate(est: DetailedEstimate): CalculatedSection {
   // 旧仕様互換
   const adjustedSellingPrice = sellingPrice;
   const actualProfitRate = actualTotalCost > 0 ? ((sellingPrice - actualTotalCost) / sellingPrice) * 100 : 0;
-  const priceVarianceFromTarget = grandTotalUnitPrice - sellingPrice;
+  // Same as auditVariance; retained for backward compat with CompareResults
+  const priceVarianceFromTarget = auditVariance;
   const actualProfitAmount = sellingPrice - actualTotalCost;
 
   return {

@@ -198,18 +198,6 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     } finally { setLoading(false); }
   };
 
-  const updateCommonMeta = (key: 'partNumber' | 'partName' | 'baseLotSize' | 'finishedWeightG', value: any) => {
-    onChangeOld({ ...oldEstimate, [key]: value });
-    onChangeNew({ ...newEstimate, [key]: value });
-  };
-
-  const updateCommonMaterialMeta = (key: 'materialName' | 'inputWeightG', value: any) => {
-    const rawVal = typeof value === 'string' ? parseFloat(value) : value;
-    const finalVal = isNaN(rawVal) && typeof value === 'string' ? value : rawVal;
-    onChangeOld({ ...oldEstimate, material: { ...oldEstimate.material, [key]: finalVal } });
-    onChangeNew({ ...newEstimate, material: { ...newEstimate.material, [key]: finalVal } });
-  };
-
   const updateProcessMeta = (isNew: boolean, index: number, key: keyof ProcessRow, value: any) => {
     const numericKeys = ['totalHours','yieldPerHour','actualHourlyRate','directProcessingCost','lumpSumPrice','kgPrice'];
     const est = isNew ? newEstimate : oldEstimate;
@@ -278,13 +266,15 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     }
   };
 
-  const updateAdjustments = (isNew: boolean, key: 'targetProfitRate' | 'minProfitRate' | 'targetProfitMarginOff' | 'targetUnitPrice' | 'actualPurchasePrice' | 'sgaRatePercent' | 'toolingCost' | 'otherAdjustment', value: any) => {
+  const updateAdjustments = (isNew: boolean, key: 'targetProfitRate' | 'minProfitRate' | 'targetProfitMarginOff' | 'targetUnitPrice' | 'actualPurchasePrice' | 'sgaRatePercent' | 'sgaFixedAdjustment' | 'toolingCost' | 'otherAdjustment', value: any) => {
     const parsed = parseFloat(value);
     const val = isNaN(parsed) ? 0 : parsed;
-    if (key === 'targetProfitRate' || key === 'minProfitRate') {
+    if (key === 'targetProfitRate') {
+      // 目標利益率は両列共通ルールとして同期
       onChangeOld({ ...oldEstimate, adjustments: { ...oldEstimate.adjustments, [key]: val as any } });
       onChangeNew({ ...newEstimate, adjustments: { ...newEstimate.adjustments, [key]: val as any } });
     } else {
+      // minProfitRate・その他はすべて列ごとに独立
       const target = isNew ? newEstimate : oldEstimate;
       const setter = isNew ? onChangeNew : onChangeOld;
       setter({ ...target, adjustments: { ...target.adjustments, [key]: val as any } });
@@ -910,12 +900,26 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
           <div className="flex items-center justify-between gap-2">
             <label className="text-xs font-bold text-[#18130F] shrink-0">
               目標利益率
-              <span className="text-[9px] text-[#6B6057] block">外掛け目標</span>
+              <span className="text-[9px] text-[#6B6057] block">外掛け目標（両列共通）</span>
             </label>
             <div className="relative w-36 flex-none">
               <input type="number" value={est.adjustments.targetProfitRate ?? ''}
                 onChange={(e) => updateAdjustments(isNew, 'targetProfitRate', e.target.value)}
                 placeholder="例: 25"
+                className={`${inp} pr-8 border-[#D6D0C8] bg-white focus:border-[#B5451B] focus:ring-[#B5451B]/15`} />
+              <span className="absolute right-2 top-1.5 text-[9px] text-[#9C9490]">%</span>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-xs font-bold text-[#18130F] shrink-0">
+              下限利益率
+              <span className="text-[9px] text-[#6B6057] block">外掛け下限（この列）</span>
+            </label>
+            <div className="relative w-36 flex-none">
+              <input type="number" value={est.adjustments.minProfitRate || ''}
+                onChange={(e) => updateAdjustments(isNew, 'minProfitRate', e.target.value)}
+                placeholder="例: 15"
                 className={`${inp} pr-8 border-[#D6D0C8] bg-white focus:border-[#B5451B] focus:ring-[#B5451B]/15`} />
               <span className="absolute right-2 top-1.5 text-[9px] text-[#9C9490]">%</span>
             </div>
@@ -952,6 +956,20 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
               {(+(est.adjustments.sgaRatePercent || 0)) > 0 && ((+(est.adjustments.sgaRatePercent || 0)) < 5 || (+(est.adjustments.sgaRatePercent || 0)) > 30) && calc.grandTotalUnitPrice > 0 && (
                 <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
               )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-xs font-bold text-[#18130F] shrink-0">
+              利管費固定額
+              <span className="text-[9px] text-[#6B6057] block">率に上乗せ (円)</span>
+            </label>
+            <div className="relative w-36 flex-none">
+              <span className="absolute left-2 top-1.5 text-[9px] text-[#9C9490]">¥</span>
+              <input type="number" value={est.adjustments.sgaFixedAdjustment ?? ''}
+                onChange={(e) => updateAdjustments(isNew, 'sgaFixedAdjustment', e.target.value)}
+                placeholder="0"
+                className={`${inp} pl-5 pr-2 border-[#D6D0C8] bg-white focus:border-[#B5451B] focus:ring-[#B5451B]/15`} />
             </div>
           </div>
 
@@ -1022,7 +1040,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
               <span className="text-[#18130F] shrink-0 font-bold">調整</span>
               <div className="relative w-28">
                 <span className="absolute left-2 top-1 text-[10px] text-[#9C9490]">¥</span>
-                <input type="number" value={est.adjustments.otherAdjustment || ''}
+                <input type="number" value={est.adjustments.otherAdjustment ?? ''}
                   onChange={(e) => updateAdjustments(isNew, 'otherAdjustment', e.target.value)}
                   placeholder="0"
                   className="w-full pl-5 pr-2 py-1 text-xs font-mono text-right rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#B5451B]" />

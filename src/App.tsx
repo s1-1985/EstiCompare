@@ -231,8 +231,8 @@ export default function App() {
   const handleNewClientMarkupChange = (value: string) => {
     const mu = parseFloat(value);
     if (!isNaN(mu) && mu >= 0) {
-      const mg = mu / (1 + mu / 100);
-      setNewEstimate(prev => ({ ...prev, adjustments: { ...prev.adjustments, targetProfitMarginOff: parseFloat(mg.toFixed(4)) } }));
+      const mg = mu / (1 + mu / 100); // store full precision to avoid round-trip drift
+      setNewEstimate(prev => ({ ...prev, adjustments: { ...prev.adjustments, targetProfitMarginOff: mg } }));
     } else {
       setNewEstimate(prev => ({ ...prev, adjustments: { ...prev.adjustments, targetProfitMarginOff: 0 } }));
     }
@@ -274,7 +274,7 @@ export default function App() {
   // 得意先用: derive external markup from stored internal margin
   const newClientMarginOff = newEstimate.adjustments.targetProfitMarginOff || 0;
   const newClientMarkupOff = newClientMarginOff > 0 && newClientMarginOff < 100
-    ? parseFloat((newClientMarginOff / (1 - newClientMarginOff / 100)).toFixed(2))
+    ? parseFloat((newClientMarginOff / (1 - newClientMarginOff / 100)).toFixed(4))
     : null;
 
   const purchaseRatio = (oldPurchase > 0 && newPurchase > 0) ? (newPurchase / oldPurchase * 100) : null;
@@ -564,7 +564,18 @@ export default function App() {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-[#18130F] mb-0.5">㉖ 設定時期 (yyyymm)</label>
+              <label className="block text-xs font-bold text-[#18130F] mb-0.5">㉖ 下限利益率 (%)</label>
+              <input
+                type="number"
+                value={oldEstimate.adjustments.minProfitRate || ''}
+                onChange={(e) => updateOldAdj('minProfitRate', e.target.value)}
+                placeholder="例: 15"
+                className={sideInp}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-[#18130F] mb-0.5">㉗ 設定時期 (yyyymm)</label>
               <input
                 type="text"
                 value={oldEstimate.date || ''}
