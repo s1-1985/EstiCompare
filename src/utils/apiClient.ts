@@ -36,14 +36,17 @@ export async function apiPost(
       data = await res.json();
     } catch { /* ignore parse errors */ }
 
-    if (res.status === 429 && attempt < maxRetries && onRetryCountdown) {
+    if (res.status === 429) {
       const retryAfter = typeof data.retryAfter === 'number' ? data.retryAfter : 62;
-      for (let s = retryAfter; s > 0; s--) {
-        onRetryCountdown(s);
-        await new Promise<void>(r => setTimeout(r, 1000));
+      const isDailyLimit = retryAfter === 0;
+      if (!isDailyLimit && attempt < maxRetries && onRetryCountdown) {
+        for (let s = retryAfter; s > 0; s--) {
+          onRetryCountdown(s);
+          await new Promise<void>(r => setTimeout(r, 1000));
+        }
+        onRetryCountdown(null);
+        continue;
       }
-      onRetryCountdown(null);
-      continue;
     }
 
     const message = typeof data.error === 'string' ? data.error : `HTTPエラー ${res.status}`;
