@@ -11,7 +11,6 @@ import {
   Save,
   Plus,
   Database,
-  BookOpen,
   Info,
   FilePlus,
   Printer,
@@ -156,17 +155,71 @@ export default function App() {
     }
   };
 
+  // ─── Common sidebar handlers ──────────────────────────────────────────────────
+
+  const updateCommonMeta = (key: 'partNumber' | 'partName' | 'baseLotSize' | 'finishedWeightG', value: any) => {
+    const v = key === 'baseLotSize' ? Math.max(1, parseInt(value) || 1) : value;
+    setOldEstimate(prev => ({ ...prev, [key]: v }));
+    setNewEstimate(prev => ({ ...prev, [key]: v }));
+  };
+
+  const updateCommonMaterial = (key: 'materialName' | 'inputWeightG', value: any) => {
+    const v = key === 'inputWeightG' ? (parseFloat(value) || 0) : value;
+    setOldEstimate(prev => ({ ...prev, material: { ...prev.material, [key]: v } }));
+    setNewEstimate(prev => ({ ...prev, material: { ...prev.material, [key]: v } }));
+  };
+
+  const updateOldAdj = (key: string, value: string) => {
+    setOldEstimate(prev => ({ ...prev, adjustments: { ...prev.adjustments, [key]: parseFloat(value) || 0 } }));
+  };
+
+  const updateNewAdj = (key: string, value: string) => {
+    setNewEstimate(prev => ({ ...prev, adjustments: { ...prev.adjustments, [key]: parseFloat(value) || 0 } }));
+  };
+
+  // ─── Derived values ───────────────────────────────────────────────────────────
+
   const isOverwritable = customScenarios.some(s => s.id === activeScenarioId);
   const oldCalc = calculateEstimate(oldEstimate);
   const newCalc = calculateEstimate(newEstimate);
-  const hasAnyPrice = oldCalc.grandTotalUnitPrice > 0 || newCalc.grandTotalUnitPrice > 0;
+
+  // KPI calculations
+  const oldPurchase = oldCalc.grandTotalUnitPrice;
+  const oldSell = oldEstimate.adjustments.targetUnitPrice || 0;
+  const oldMarkup = (oldSell > 0 && oldPurchase > 0) ? ((oldSell - oldPurchase) / oldPurchase * 100) : null;
+  const oldMargin = (oldSell > 0 && oldPurchase > 0) ? ((oldSell - oldPurchase) / oldSell * 100) : null;
+  const oldGrossPerUnit = oldSell > 0 ? oldSell - oldPurchase : null;
+
+  const newPurchase = newCalc.grandTotalUnitPrice;
+  const newSell = newEstimate.adjustments.targetUnitPrice || 0;
+  const newMarkup = (newSell > 0 && newPurchase > 0) ? ((newSell - newPurchase) / newPurchase * 100) : null;
+  const newMargin = (newSell > 0 && newPurchase > 0) ? ((newSell - newPurchase) / newSell * 100) : null;
+  const newGrossPerUnit = newSell > 0 ? newSell - newPurchase : null;
+
+  const purchaseRatio = (oldPurchase > 0 && newPurchase > 0) ? (newPurchase / oldPurchase * 100) : null;
+  const sellRatio = (oldSell > 0 && newSell > 0) ? (newSell / oldSell * 100) : null;
+  const purchaseDiff = newPurchase - oldPurchase;
+  const sellDiff = newSell - oldSell;
+
+  // ─── Format helpers ───────────────────────────────────────────────────────────
+
+  const fmtYen = (v: number) =>
+    v !== 0 ? `¥${v.toLocaleString('ja-JP', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
+
+  const fmtPct = (v: number | null) =>
+    v !== null ? `${v.toFixed(2)}%` : '—';
+
+  const profitColorCls = (v: number | null) =>
+    v === null ? 'text-[#6B6057]' : v >= 0 ? 'text-emerald-600' : 'text-rose-600';
+
+  const sideInp = 'w-full px-2 py-1 text-xs font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#B5451B] focus:ring-[#B5451B]/15 transition-all';
 
   return (
-    <div className="min-h-screen bg-[#F7F6F2] flex flex-col text-[#18130F] font-sans antialiased selection:bg-[#FDE6DC]">
+    <div className="h-screen bg-[#F7F6F2] flex flex-col text-[#18130F] font-sans antialiased selection:bg-[#FDE6DC] overflow-hidden">
 
       {/* HEADER */}
-      <header className="bg-[#18130F] text-white sticky top-0 z-50 border-b border-[#2A2018]">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 sm:py-3 flex flex-row items-center justify-between gap-2 sm:gap-4">
+      <header className="bg-[#18130F] text-white sticky top-0 z-50 border-b border-[#2A2018] flex-none">
+        <div className="max-w-full px-3 sm:px-6 py-2.5 sm:py-3 flex flex-row items-center justify-between gap-2 sm:gap-4">
 
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <div className="bg-[#B5451B] p-1.5 sm:p-2 rounded text-white flex items-center justify-center shrink-0">
@@ -230,29 +283,30 @@ export default function App() {
         </div>
       </header>
 
-      {/* TOOLBAR RIBBON */}
-      <div className="bg-[#F7F6F2] border-b border-[#D6D0C8] py-2 sm:py-2.5 select-none">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-4">
+      {/* MIDDLE AREA: sidebar + right pane */}
+      <div className="flex-1 flex overflow-hidden">
 
-          <div className="flex flex-wrap items-center gap-2">
+        {/* ── LEFT SIDEBAR ── */}
+        <aside className="w-48 flex-none bg-white border-r border-[#D6D0C8] overflow-y-auto flex flex-col">
 
-            {/* マイシナリオ ライブラリ */}
+          {/* Scenario actions */}
+          <div className="border-b border-[#D6D0C8] p-2 space-y-1.5">
+            <div className="text-[8px] font-black text-[#9C9490] uppercase tracking-widest px-1 pb-0.5">シナリオ操作</div>
+
             <button
               onClick={() => setActiveView(activeView === 'library' ? 'workspace' : 'library')}
-              className={`p-2 px-2.5 sm:px-3 border rounded font-bold flex items-center gap-1.5 cursor-pointer text-xs select-none transition-all min-h-[34px] ${
+              className={`w-full p-1.5 border rounded font-bold flex items-center gap-1.5 cursor-pointer text-[10px] select-none transition-all ${
                 activeView === 'library'
                   ? 'bg-[#B5451B] text-white border-[#8A3215] hover:bg-[#8A3215]'
                   : 'bg-white hover:bg-[#FEF0EB] text-[#B5451B] border-[#D6D0C8] hover:border-[#F8C9BB]'
               }`}
               title="保存済み見積シナリオの一覧・検索・読み込み"
             >
-              <Database className="w-4 h-4 shrink-0" />
-              <span className="hidden sm:inline">マイシナリオ</span>
+              <Database className="w-3 h-3 shrink-0" />
+              <span>マイシナリオ</span>
               {customScenarios.length > 0 && (
-                <span className={`text-[9px] font-black rounded-full px-1.5 py-0.5 leading-none ${
-                  activeView === 'library'
-                    ? 'bg-white/20 text-white'
-                    : 'bg-[#B5451B] text-white'
+                <span className={`ml-auto text-[8px] font-black rounded-full px-1.5 py-0.5 leading-none ${
+                  activeView === 'library' ? 'bg-white/20 text-white' : 'bg-[#B5451B] text-white'
                 }`}>
                   {customScenarios.length}
                 </span>
@@ -261,178 +315,372 @@ export default function App() {
 
             <button
               onClick={handleCreateNewSheet}
-              className="p-2 px-2.5 sm:px-3 bg-white hover:bg-[#FEF0EB] active:bg-[#FDE6DC] text-[#B5451B] border border-[#D6D0C8] hover:border-[#F8C9BB] rounded font-bold flex items-center gap-1.5 cursor-pointer text-xs select-none transition-all min-h-[34px]"
+              className="w-full p-1.5 bg-white hover:bg-[#FEF0EB] text-[#B5451B] border border-[#D6D0C8] hover:border-[#F8C9BB] rounded font-bold flex items-center gap-1.5 cursor-pointer text-[10px] select-none transition-all"
               title="シートを完全にクリアして新しい見積データを作成します。"
             >
-              <FilePlus className="w-4 h-4 shrink-0" />
-              <span className="hidden sm:inline">新規白紙シート作成</span>
+              <FilePlus className="w-3 h-3 shrink-0" />
+              <span>新規作成</span>
             </button>
 
             <button
               onClick={handleResetActiveSheet}
-              className="p-2 px-2.5 sm:px-3 bg-white hover:bg-[#F0EDE8] border border-[#D6D0C8] rounded font-bold text-[#6B6057] flex items-center gap-1.5 cursor-pointer text-xs select-none transition-all min-h-[34px]"
+              className="w-full p-1.5 bg-white hover:bg-[#F0EDE8] border border-[#D6D0C8] rounded font-bold text-[#6B6057] flex items-center gap-1.5 cursor-pointer text-[10px] select-none transition-all"
               title={isOverwritable ? '保存済みの状態に戻します。' : 'シートを初期化します。'}
             >
-              <RotateCcw className="w-4 h-4 text-[#9C9490] shrink-0" />
-              <span className="hidden sm:inline">数値リセット</span>
+              <RotateCcw className="w-3 h-3 text-[#9C9490] shrink-0" />
+              <span>数値リセット</span>
             </button>
 
-          </div>
-
-          <div className="flex items-center justify-end gap-2 shrink-0">
             {user ? (
-              <div className="flex items-center gap-2">
+              <>
                 {isOverwritable && (
                   <button
                     onClick={() => handleSaveScenario(true)}
                     disabled={isSaving}
-                    className="p-2 px-3 sm:px-4 bg-white border border-[#D6D0C8] hover:bg-[#F0EDE8] text-[#18130F] rounded font-bold flex items-center gap-1.5 cursor-pointer text-xs transition-all min-h-[34px]"
+                    className="w-full p-1.5 bg-white border border-[#D6D0C8] hover:bg-[#F0EDE8] text-[#18130F] rounded font-bold flex items-center gap-1.5 cursor-pointer text-[10px] transition-all disabled:opacity-50"
                   >
-                    <Save className="w-4 h-4 shrink-0" />
-                    <span className="hidden sm:inline">上書き保存</span>
+                    <Save className="w-3 h-3 shrink-0" />
+                    <span>上書き保存</span>
                   </button>
                 )}
                 <button
                   onClick={() => handleSaveScenario(false)}
                   disabled={isSaving}
-                  className="p-2 px-3 sm:px-4 bg-[#B5451B] hover:bg-[#8A3215] text-white rounded font-bold flex items-center gap-1.5 cursor-pointer text-xs transition-all min-h-[34px]"
+                  className="w-full p-1.5 bg-[#B5451B] hover:bg-[#8A3215] text-white rounded font-bold flex items-center gap-1.5 cursor-pointer text-[10px] transition-all disabled:opacity-50"
                 >
-                  <Plus className="w-4 h-4 shrink-0" />
-                  <span className="hidden sm:inline">新規ブックとしてクラウド保存</span>
-                  <span className="sm:hidden">保存</span>
+                  <Plus className="w-3 h-3 shrink-0" />
+                  <span className="leading-tight">保存</span>
                 </button>
-              </div>
+              </>
             ) : (
-              <div className="text-[10px] text-[#9C9490] font-bold tracking-wider bg-white p-2 rounded border border-[#D6D0C8] hidden md:block">
-                ※サインインすると変更した独自見積配列をクラウドへ無制限保存できます
+              <div className="text-[8px] text-[#9C9490] font-bold p-1.5 rounded border border-[#D6D0C8] bg-[#F7F6F2] leading-tight">
+                サインインでクラウド保存
               </div>
             )}
           </div>
 
-        </div>
-      </div>
+          {/* 共通諸元 inputs */}
+          <div className="border-b border-[#D6D0C8] p-2 space-y-1.5">
+            <div className="text-[8px] font-black text-[#9C9490] uppercase tracking-widest px-1 pb-0.5">共通諸元</div>
 
-      {/* MAIN WORKSPACE */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-6">
+            <div>
+              <label className="block text-[9px] font-bold text-[#6B6057] mb-0.5">品番</label>
+              <input
+                type="text"
+                value={newEstimate.partNumber}
+                onChange={(e) => updateCommonMeta('partNumber', e.target.value)}
+                placeholder="例: 66-13401-09"
+                className={sideInp}
+              />
+            </div>
 
-        {activeView === 'library' ? (
-          <ScenarioLibrary
-            scenarios={customScenarios}
-            onLoad={handleScenarioLoad}
-            onBack={() => setActiveView('workspace')}
-            isLoggedIn={!!user}
-            onNewSheet={handleCreateNewSheet}
-          />
-        ) : (
-          <>
-            {/* ── Live KPI strip ── */}
-            {hasAnyPrice && (
-              <div className="mb-3 bg-[#18130F] rounded-lg border border-[#2D2219] px-4 py-2.5 flex items-center gap-3 flex-wrap overflow-hidden">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[9px] font-black text-[#6B6057] uppercase tracking-wider">旧</span>
-                  <span className="font-black font-mono text-[#9C9490] text-sm">
-                    {oldCalc.grandTotalUnitPrice > 0 ? `¥${oldCalc.grandTotalUnitPrice.toLocaleString('ja-JP', {minimumFractionDigits:2,maximumFractionDigits:2})}` : '—'}
-                  </span>
-                </div>
-                <span className="text-[#3D3228] select-none">→</span>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[9px] font-black text-[#B5451B] uppercase tracking-wider">新</span>
-                  <span className="font-black font-mono text-white text-lg">
-                    {newCalc.grandTotalUnitPrice > 0 ? `¥${newCalc.grandTotalUnitPrice.toLocaleString('ja-JP', {minimumFractionDigits:2,maximumFractionDigits:2})}` : '—'}
-                  </span>
-                </div>
-                {oldCalc.grandTotalUnitPrice > 0 && newCalc.grandTotalUnitPrice > 0 && (() => {
-                  const d = newCalc.grandTotalUnitPrice - oldCalc.grandTotalUnitPrice;
-                  const p = d / oldCalc.grandTotalUnitPrice * 100;
-                  const cls = d > 0.01
-                    ? 'text-rose-400 bg-rose-900/30 border-rose-700/50'
-                    : d < -0.01 ? 'text-emerald-400 bg-emerald-900/30 border-emerald-700/50'
-                    : 'text-[#6B6057] bg-[#1A1510] border-[#3D3228]';
-                  return (
-                    <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${cls} whitespace-nowrap`}>
-                      {d > 0 ? '+' : ''}{d.toFixed(2)} ({p > 0 ? '+' : ''}{p.toFixed(2)}%)
-                    </span>
-                  );
-                })()}
-                <div className="ml-auto flex items-center gap-3">
-                  {oldCalc.actualProfitRate !== 0 && (
-                    <span className="text-[9px] text-[#6B6057]">
-                      旧利益率 <strong className={oldCalc.actualProfitRate >= 0 ? 'text-[#6B9C8A]' : 'text-rose-400'}>{oldCalc.actualProfitRate.toFixed(2)}%</strong>
-                    </span>
-                  )}
-                  {newCalc.actualProfitRate !== 0 && (
-                    <span className="text-[9px] text-[#9C9490]">
-                      新利益率 <strong className={newCalc.actualProfitRate >= 0 ? 'text-emerald-400' : 'text-rose-400'}>{newCalc.actualProfitRate.toFixed(2)}%</strong>
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
+            <div>
+              <label className="block text-[9px] font-bold text-[#6B6057] mb-0.5">品名</label>
+              <input
+                type="text"
+                value={newEstimate.partName ?? ''}
+                onChange={(e) => updateCommonMeta('partName', e.target.value)}
+                placeholder="例: 板金プレス"
+                className={sideInp}
+              />
+            </div>
 
-            <div className="mb-4 sm:mb-5">
-              <div className="flex items-center justify-between gap-4 mb-2 px-1 flex-wrap">
-                <div className="flex items-center gap-2 text-xs text-[#6B6057] bg-white p-2 sm:p-2.5 rounded border border-[#D6D0C8] min-w-0">
-                  <BookOpen className="w-4 h-4 text-[#B5451B] shrink-0" />
-                  <span className="font-bold shrink-0">品目コード:</span>
-                  {newEstimate.partNumber ? (
-                    <strong className="font-mono text-[#B5451B] text-xs sm:text-sm bg-[#FEF0EB] px-2 sm:px-2.5 py-0.5 sm:py-1 rounded border border-[#F8C9BB] truncate">
-                      {newEstimate.partNumber}
-                    </strong>
-                  ) : (
-                    <span className="text-[#9C9490] italic">未入力</span>
-                  )}
-                </div>
+            <div>
+              <label className="block text-[9px] font-bold text-[#6B6057] mb-0.5">材質・規格</label>
+              <input
+                type="text"
+                value={newEstimate.material.materialName}
+                onChange={(e) => updateCommonMaterial('materialName', e.target.value)}
+                placeholder="例: SPCC t2.0"
+                className={sideInp}
+              />
+            </div>
 
-                <div className="text-[10px] text-[#9C9490] font-bold bg-white px-3 py-2 rounded border border-[#D6D0C8] hidden lg:block select-none">
-                  エクセル内の全関数・材料物量・アワー調達賃・利管積上・運賃等は全自動で一元連動します。
-                </div>
+            <div>
+              <label className="block text-[9px] font-bold text-[#6B6057] mb-0.5">材料投入量 (g)</label>
+              <input
+                type="number"
+                value={newEstimate.material.inputWeightG || ''}
+                onChange={(e) => updateCommonMaterial('inputWeightG', e.target.value)}
+                placeholder="220"
+                className={sideInp}
+              />
+            </div>
+
+            <div>
+              <label className="block text-[9px] font-bold text-[#6B6057] mb-0.5">完成品重量 (g)</label>
+              <input
+                type="number"
+                value={newEstimate.finishedWeightG || ''}
+                onChange={(e) => updateCommonMeta('finishedWeightG', parseFloat(e.target.value) || 0)}
+                placeholder="180"
+                className={sideInp}
+              />
+            </div>
+
+            <div>
+              <label className="block text-[9px] font-bold text-[#6B6057] mb-0.5">見積ロット (個/Lot)</label>
+              <input
+                type="number"
+                value={newEstimate.baseLotSize || ''}
+                onChange={(e) => updateCommonMeta('baseLotSize', e.target.value)}
+                placeholder="300"
+                className={sideInp}
+              />
+            </div>
+          </div>
+
+          {/* 旧単価 KPI section */}
+          <div className="border-b border-[#D6D0C8] p-2 space-y-1.5" style={{ borderTop: '3px solid #B5451B' }}>
+            <div className="text-[8px] font-black uppercase tracking-widest px-1 pb-0.5" style={{ color: '#B5451B' }}>旧単価</div>
+
+            <div className="flex justify-between items-baseline">
+              <span className="text-[9px] text-[#6B6057]">㉑ 仕入実費</span>
+              <span className="font-mono font-black text-xs text-[#18130F]">{fmtYen(oldPurchase)}</span>
+            </div>
+
+            <div>
+              <label className="block text-[9px] font-bold text-[#6B6057] mb-0.5">㉒ 現行売価</label>
+              <div className="relative">
+                <span className="absolute left-2 top-1 text-[9px] text-[#9C9490]">¥</span>
+                <input
+                  type="number"
+                  value={oldEstimate.adjustments.targetUnitPrice || ''}
+                  onChange={(e) => updateOldAdj('targetUnitPrice', e.target.value)}
+                  placeholder="現行売値"
+                  className={`${sideInp} pl-5`}
+                />
               </div>
             </div>
 
-            <section>
-              {activeSheetTab === 'workspace' && (
-                <ExcelGrid
-                  title="【新旧見積対比・調整シミュレーター】"
-                  oldEstimate={oldEstimate}
-                  onChangeOld={setOldEstimate}
-                  newEstimate={newEstimate}
-                  onChangeNew={setNewEstimate}
-                  historyScenarios={customScenarios.filter(
-                    (s) => s.newEstimate.partNumber.trim() !== '' &&
-                           s.newEstimate.partNumber === newEstimate.partNumber &&
-                           s.id !== activeScenarioId
-                  )}
-                  onLoadHistory={handleScenarioLoad}
-                />
-              )}
+            <div className="flex justify-between items-baseline">
+              <span className="text-[9px] text-[#6B6057]">㉓ 利益率（外掛け）</span>
+              <span className={`font-mono font-black text-xs ${profitColorCls(oldMarkup)}`}>{fmtPct(oldMarkup)}</span>
+            </div>
 
-              {activeSheetTab === 'compare' && (
-                <CompareResults
-                  oldEstimate={oldEstimate}
-                  newEstimate={newEstimate}
-                  comparison={comparisonResult}
-                  isLoading={isComparing}
-                  retryCountdown={aiRetryCountdown}
-                  onRunComparison={triggerComparisonAnalysis}
-                />
-              )}
+            <div className="flex justify-between items-baseline">
+              <span className="text-[9px] text-[#6B6057]">㉔ 利益率（内掛け）</span>
+              <span className={`font-mono font-black text-xs ${profitColorCls(oldMargin)}`}>{fmtPct(oldMargin)}</span>
+            </div>
 
-              {activeSheetTab === 'print' && (
-                <PrintSheet
-                  oldEstimate={oldEstimate}
-                  newEstimate={newEstimate}
-                />
-              )}
-            </section>
-          </>
-        )}
+            <div className="flex justify-between items-baseline">
+              <span className="text-[9px] text-[#6B6057]">㉕ 粗利益/個</span>
+              <span className={`font-mono font-black text-xs ${profitColorCls(oldGrossPerUnit)}`}>
+                {oldGrossPerUnit !== null ? fmtYen(oldGrossPerUnit) : '—'}
+              </span>
+            </div>
 
-      </main>
+            <div>
+              <label className="block text-[9px] font-bold text-[#6B6057] mb-0.5">㉖ 設定時期 (yyyymm)</label>
+              <input
+                type="text"
+                value={oldEstimate.date || ''}
+                onChange={(e) => setOldEstimate(prev => ({ ...prev, date: e.target.value }))}
+                placeholder="例: 202501"
+                maxLength={6}
+                className={sideInp}
+              />
+            </div>
+          </div>
+
+          {/* 新単価 KPI section */}
+          <div className="p-2 space-y-1.5" style={{ borderTop: '3px solid #1E3A5F' }}>
+            <div className="text-[8px] font-black uppercase tracking-widest px-1 pb-0.5" style={{ color: '#1E3A5F' }}>新単価</div>
+
+            <div className="flex justify-between items-baseline">
+              <span className="text-[9px] text-[#6B6057]">㉗ 仕入実費</span>
+              <span className="font-mono font-black text-xs text-[#18130F]">{fmtYen(newPurchase)}</span>
+            </div>
+
+            <div>
+              <label className="block text-[9px] font-bold text-[#6B6057] mb-0.5">㉘ 目標売値</label>
+              <div className="relative">
+                <span className="absolute left-2 top-1 text-[9px] text-[#9C9490]">¥</span>
+                <input
+                  type="number"
+                  value={newEstimate.adjustments.targetUnitPrice || ''}
+                  onChange={(e) => updateNewAdj('targetUnitPrice', e.target.value)}
+                  placeholder="目標売値"
+                  className={`${sideInp} pl-5`}
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-between items-baseline">
+              <span className="text-[9px] text-[#6B6057]">㉙ 利益率（外掛け）</span>
+              <span className={`font-mono font-black text-xs ${profitColorCls(newMarkup)}`}>{fmtPct(newMarkup)}</span>
+            </div>
+
+            <div className="flex justify-between items-baseline">
+              <span className="text-[9px] text-[#6B6057]">㉚ 利益率（内掛け）</span>
+              <span className={`font-mono font-black text-xs ${profitColorCls(newMargin)}`}>{fmtPct(newMargin)}</span>
+            </div>
+
+            <div className="flex justify-between items-baseline">
+              <span className="text-[9px] text-[#6B6057]">㉛ 粗利益/個</span>
+              <span className={`font-mono font-black text-xs ${profitColorCls(newGrossPerUnit)}`}>
+                {newGrossPerUnit !== null ? fmtYen(newGrossPerUnit) : '—'}
+              </span>
+            </div>
+
+            <div>
+              <label className="block text-[9px] font-bold text-[#6B6057] mb-0.5">㉜ 下限利益率 (%)</label>
+              <input
+                type="number"
+                value={newEstimate.adjustments.minProfitRate ?? ''}
+                onChange={(e) => updateNewAdj('minProfitRate', e.target.value)}
+                placeholder="例: 15"
+                className={sideInp}
+              />
+            </div>
+          </div>
+
+        </aside>
+
+        {/* ── RIGHT PANE ── */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+
+          {/* Sticky calculation header */}
+          <div className="flex-none bg-[#18130F] text-white px-3 py-2 flex gap-4 flex-wrap border-b border-[#2D2219]">
+
+            {/* 旧 column */}
+            <div className="flex flex-col gap-0.5 min-w-0">
+              <div className="text-[8px] font-black text-[#B5451B] uppercase tracking-widest mb-0.5">旧</div>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-[9px] text-[#6B6057] w-20 shrink-0">仕入実費(㉑)</span>
+                <span className="font-mono font-black text-xs text-[#9C9490]">{fmtYen(oldPurchase)}</span>
+              </div>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-[9px] text-[#6B6057] w-20 shrink-0">現行売値(㉒)</span>
+                <span className="font-mono font-black text-xs text-white">{oldSell > 0 ? fmtYen(oldSell) : '—'}</span>
+              </div>
+              {oldSell > 0 && oldPurchase > 0 && (
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-[9px] text-[#6B6057] w-20 shrink-0">差額</span>
+                  <span className={`font-mono font-black text-xs ${profitColorCls(oldGrossPerUnit)}`}>{fmtYen(oldSell - oldPurchase)}</span>
+                </div>
+              )}
+              {oldMarkup !== null && (
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-[9px] text-[#6B6057] w-20 shrink-0">利益率外(㉓)</span>
+                  <span className={`font-mono text-[10px] ${profitColorCls(oldMarkup)}`}>{fmtPct(oldMarkup)}</span>
+                </div>
+              )}
+              {oldMargin !== null && (
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-[9px] text-[#6B6057] w-20 shrink-0">利益率内(㉔)</span>
+                  <span className={`font-mono text-[10px] ${profitColorCls(oldMargin)}`}>{fmtPct(oldMargin)}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="w-px bg-[#2D2219] self-stretch mx-1 hidden sm:block" />
+
+            {/* 新 column */}
+            <div className="flex flex-col gap-0.5 min-w-0">
+              <div className="text-[8px] font-black text-[#93B4D9] uppercase tracking-widest mb-0.5">新</div>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-[9px] text-[#6B6057] w-20 shrink-0">仕入実費(㉗)</span>
+                <span className="font-mono font-black text-xs text-[#9C9490]">{fmtYen(newPurchase)}</span>
+              </div>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-[9px] text-[#6B6057] w-20 shrink-0">目標売値(㉘)</span>
+                <span className="font-mono font-black text-xs text-white">{newSell > 0 ? fmtYen(newSell) : '—'}</span>
+              </div>
+              {newSell > 0 && newPurchase > 0 && (
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-[9px] text-[#6B6057] w-20 shrink-0">差額</span>
+                  <span className={`font-mono font-black text-xs ${profitColorCls(newGrossPerUnit)}`}>{fmtYen(newSell - newPurchase)}</span>
+                </div>
+              )}
+              {newMarkup !== null && (
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-[9px] text-[#6B6057] w-20 shrink-0">利益率外(㉙)</span>
+                  <span className={`font-mono text-[10px] ${profitColorCls(newMarkup)}`}>{fmtPct(newMarkup)}</span>
+                </div>
+              )}
+              {newMargin !== null && (
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-[9px] text-[#6B6057] w-20 shrink-0">利益率内(㉚)</span>
+                  <span className={`font-mono text-[10px] ${profitColorCls(newMargin)}`}>{fmtPct(newMargin)}</span>
+                </div>
+              )}
+              {purchaseRatio !== null && (
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-[9px] text-[#6B6057] w-20 shrink-0">新旧仕入比(㉗/㉑)</span>
+                  <span className={`font-mono text-[10px] ${purchaseDiff > 0.01 ? 'text-rose-400' : purchaseDiff < -0.01 ? 'text-emerald-400' : 'text-[#6B6057]'}`}>
+                    {purchaseRatio.toFixed(2)}%
+                  </span>
+                </div>
+              )}
+              {sellRatio !== null && (
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-[9px] text-[#6B6057] w-20 shrink-0">新旧売価比(㉘/㉒)</span>
+                  <span className={`font-mono text-[10px] ${sellDiff > 0.01 ? 'text-rose-400' : sellDiff < -0.01 ? 'text-emerald-400' : 'text-[#6B6057]'}`}>
+                    {sellRatio.toFixed(2)}%
+                  </span>
+                </div>
+              )}
+            </div>
+
+          </div>
+
+          {/* Scrollable main area */}
+          <main className="flex-1 overflow-y-auto p-3 sm:p-5">
+            {activeView === 'library' ? (
+              <ScenarioLibrary
+                scenarios={customScenarios}
+                onLoad={handleScenarioLoad}
+                onBack={() => setActiveView('workspace')}
+                isLoggedIn={!!user}
+                onNewSheet={handleCreateNewSheet}
+              />
+            ) : (
+              <section>
+                {activeSheetTab === 'workspace' && (
+                  <ExcelGrid
+                    title="【新旧見積対比・調整シミュレーター】"
+                    oldEstimate={oldEstimate}
+                    onChangeOld={setOldEstimate}
+                    newEstimate={newEstimate}
+                    onChangeNew={setNewEstimate}
+                    historyScenarios={customScenarios.filter(
+                      (s) => s.newEstimate.partNumber.trim() !== '' &&
+                             s.newEstimate.partNumber === newEstimate.partNumber &&
+                             s.id !== activeScenarioId
+                    )}
+                    onLoadHistory={handleScenarioLoad}
+                  />
+                )}
+
+                {activeSheetTab === 'compare' && (
+                  <CompareResults
+                    oldEstimate={oldEstimate}
+                    newEstimate={newEstimate}
+                    comparison={comparisonResult}
+                    isLoading={isComparing}
+                    retryCountdown={aiRetryCountdown}
+                    onRunComparison={triggerComparisonAnalysis}
+                  />
+                )}
+
+                {activeSheetTab === 'print' && (
+                  <PrintSheet
+                    oldEstimate={oldEstimate}
+                    newEstimate={newEstimate}
+                  />
+                )}
+              </section>
+            )}
+          </main>
+
+        </div>
+      </div>
 
       {/* BOTTOM TAB BAR — hidden in library view */}
       {activeView === 'workspace' && (
-        <nav className="bg-white border-t-2 border-[#D6D0C8] sticky bottom-0 z-40 select-none">
-          <div className="max-w-7xl mx-auto px-3 sm:px-6 flex flex-row items-center justify-between gap-2 text-xs">
+        <nav className="bg-white border-t-2 border-[#D6D0C8] flex-none z-40 select-none">
+          <div className="px-3 sm:px-6 flex flex-row items-center justify-between gap-2 text-xs">
 
             <div className="flex items-stretch divide-x divide-[#EEEBE6] flex-1">
 

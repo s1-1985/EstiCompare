@@ -8,3 +8,5 @@ coverage/
 !.env.example
 # Firebase web config — values stored in VITE_ env vars, not committed to git
 firebase-applet-config.json
+# Claude Code internal directory (worktrees, session state)
+.claude/

@@ -150,14 +150,26 @@ const MAX_FIELD_LEN = 500;
 const MAX_PROCESSES = 20;
 
 // ── Helper: safe error response ───────────────────────────────────────────────
+function isDailyQuotaError(error: any): boolean {
+  const msg = String(error?.message ?? error?.errorDetails ?? "").toLowerCase();
+  return msg.includes("per_day") || msg.includes("per day") || msg.includes("daily") || msg.includes("resource_exhausted");
+}
+
 function sendApiError(res: any, error: any, fallback: string) {
-  console.error(fallback, error);
+  console.error(fallback, "status:", error?.status, "message:", error?.message);
   const isGeminiQuota = error?.status === 429;
   const isGeminiInput = error?.status === 400 && typeof error?.message === "string";
   if (isGeminiQuota) {
-    // Client handles countdown retry — tell it how long to wait (62s for safety margin)
+    if (isDailyQuotaError(error)) {
+      // Daily (RPD) limit — retrying won't help until next reset
+      return res.status(429).json({
+        error: "Gemini APIの本日の利用上限に達しました。翌朝9時JST（太平洋時間0時）頃にリセットされます。",
+        retryAfter: 0,
+      });
+    }
+    // Per-minute (RPM) limit — client waits 62s and retries once
     return res.status(429).json({
-      error: "AIのAPIレート制限に達しました。自動的に再試行します...（Gemini無料枠の1日上限に達した場合は翌朝9時JST頃にリセットされます）",
+      error: "AIのAPIレート制限に達しました。自動的に再試行します...",
       retryAfter: 62,
     });
   }
