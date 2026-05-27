@@ -1312,6 +1312,11 @@ export default function App() {
                             placeholder="25" className="w-full pl-1.5 pr-5 py-0.5 text-[11px] font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#B5451B]" />
                           <span className="absolute right-1 top-0.5 text-[8px] text-[#9C9490]">%</span>
                         </div>
+                        {newCalc.requiredSellingPrice > 0 && (
+                          <div className="mt-0.5 text-[9px] font-mono font-bold text-[#1E3A5F]">
+                            → {fmtYen(newCalc.requiredSellingPrice)}
+                          </div>
+                        )}
                       </div>
                       <div>
                         <label className="text-[9px] font-bold text-[#18130F] block leading-tight mb-0.5">下限利益率<span className="text-[8px] text-[#9C9490] block">外掛け・この列</span></label>
