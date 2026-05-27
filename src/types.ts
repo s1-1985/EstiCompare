@@ -45,6 +45,7 @@ export interface LogisticsComputation {
 export interface AdvancedAdjustment {
   targetProfitRate: number;      // 【社内ルール】目標の利益率・外掛け (%) - 例: 25%
   minProfitRate?: number;        // 【社内ルール】下限の利益率・外掛け (%) - 例: 15%
+  maxProfitRate?: number;        // 【旧単価専用】上限の利益率・外掛け (%) - 旧単価でのみ使用
   targetProfitMarginOff: number; // 【客先ルール】客提示用利益率・内掛け (%) - 例: 15%
   targetUnitPrice: number;       // 目標単価・決定売価 (円)
   
