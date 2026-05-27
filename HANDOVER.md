@@ -158,6 +158,7 @@ auditVariance = grandTotalUnitPrice - sellingPrice
 | mainへ直接 | CI/CDパイプライン修正・Geminiモデル更新・AIデモボタン追加 |
 | #45 | 固定ヘッダー2列コンパクト化・帳尻利管費率表示・旧単価上限利益率追加 |
 | #46 | 新旧整合チェック・賃率警告・売値フロア・調整ナビ・客向け内掛け表示 |
+| #47 | リサイズ可能分割ペイン・マイシナリオ/Sheet2/Sheet3 全幅表示 |
 
 ---
 
@@ -236,6 +237,27 @@ auditVariance = grandTotalUnitPrice - sellingPrice
    - `(売値 - primeCost) / 売値 × 100` を両パネルに常時表示
    - 15%以内なら緑（積み上げ充足）、超過で赤（まだ積み上げ不足）
    - 目標架空仕入げへの達成度プログレスバーも追加
+
+---
+
+## 第4セッション（2026-05-27 深夜）で実施した変更（PR #47）
+
+上部固定ヘッダーがデータ入力で画面下まで伸びてしまう問題と、マイシナリオ/Sheet2/Sheet3の表示領域問題を修正。
+
+### 実装内容
+
+1. **リサイズ可能な分割ペイン** — `App.tsx`
+   - 上部固定ヘッダーをデフォルト40%高さに制限（20〜75%の範囲でドラッグ調整可）
+   - `headerHeightPct` state + `isDraggingRef` + `rightPaneRef` で実装
+   - `mousemove`/`mouseup` ウィンドウイベントで高さ計算
+
+2. **パネル内部スクロール**
+   - 旧単価/新単価 各パネルの body に `overflow-y-auto` を追加
+   - ヘッダー面積が固定されたまま、入力内容が増えても内部スクロールで対応
+
+3. **マイシナリオ/Sheet2/Sheet3 で右半分全体を使用**
+   - `showFixedHeader = activeView === 'workspace' && activeSheetTab === 'workspace'` で制御
+   - ワークスペース以外のビューでは固定ヘッダー非表示 → 全高をコンテンツに割当
 
 ---
 
