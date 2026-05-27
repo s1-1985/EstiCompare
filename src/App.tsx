@@ -862,7 +862,7 @@ export default function App() {
             <div className="flex gap-2 sm:gap-3">
 
               {/* 旧単価 panel — 2列グリッドで詰める */}
-              <div className="flex-1 min-w-0 bg-white rounded-lg border border-[#E0C0B0] overflow-hidden shadow-sm flex flex-col max-h-[calc(50vh)]">
+              <div className="flex-1 min-w-0 bg-white rounded-lg border border-[#E0C0B0] overflow-hidden shadow-sm flex flex-col">
                 <div className="bg-[#FEF0EB] px-3 py-1 border-b border-[#E8C8BC] flex items-center gap-1.5 flex-wrap flex-none">
                   <span className="w-2 h-2 rounded-sm bg-[#B5451B] shrink-0" />
                   <span className="text-xs font-black text-[#B5451B] uppercase tracking-wider">旧単価</span>
@@ -881,7 +881,7 @@ export default function App() {
                     <span className="ml-auto text-[10px] text-[#9C9490]">㉑実費: <strong className="font-mono text-[#18130F]">{fmtYen(oldEstimate.adjustments.actualPurchasePrice)}</strong></span>
                   )}
                 </div>
-                <div className="px-3 py-2 overflow-y-auto flex-1">
+                <div className="px-3 py-2 flex-1">
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1">
                     {/* 計算仕入値 */}
                     <div>
@@ -1054,23 +1054,26 @@ export default function App() {
                           : <span className="text-[9px] text-[#9C9490]">目標売値未設定</span>
                       }
                     </div>
-                    {[
-                      { label: '材料費', val: oldCalc.netMaterialCost },
-                      { label: '加工費計', val: oldCalc.totalProcessCost },
-                      { label: '直製造原価', val: oldCalc.primeCost },
-                      { label: `利管費(${(+(oldEstimate.adjustments.sgaRatePercent || 0)).toFixed(1)}%)`, val: oldCalc.sgaCost },
-                      { label: '送料/個', val: oldCalc.shippingCostPerUnit },
-                    ].map(({ label, val }) => (
-                      <div key={label} className="flex justify-between text-[10px]">
-                        <span className="text-[#6B6057]">{label}</span>
-                        <span className="font-mono font-bold text-[#18130F]">¥{val.toFixed(2)}</span>
-                      </div>
-                    ))}
+                    <div className="grid grid-cols-2 gap-x-2">
+                      {[
+                        { label: '材料費', val: oldCalc.netMaterialCost },
+                        { label: '加工費計', val: oldCalc.totalProcessCost },
+                        { label: '直製造原価', val: oldCalc.primeCost },
+                        { label: `利管費(${(+(oldEstimate.adjustments.sgaRatePercent || 0)).toFixed(1)}%)`, val: oldCalc.sgaCost },
+                        { label: '送料/個', val: oldCalc.shippingCostPerUnit },
+                        { label: '', val: null },
+                      ].map(({ label, val }) => label ? (
+                        <div key={label} className="flex justify-between text-[10px]">
+                          <span className="text-[#6B6057]">{label}</span>
+                          <span className="font-mono font-bold text-[#18130F]">¥{val!.toFixed(2)}</span>
+                        </div>
+                      ) : <div key="empty" />)}
+                    </div>
                     <div className="flex items-center justify-between text-[10px] gap-2">
                       <span className="text-[#18130F] font-bold shrink-0">調整</span>
                       <div className="relative w-20">
                         <span className="absolute left-1.5 top-0.5 text-[9px] text-[#9C9490]">¥</span>
-                        <input type="number" value={oldEstimate.adjustments.otherAdjustment ?? ''}
+                        <input type="number" value={oldEstimate.adjustments.otherAdjustment || ''}
                           onChange={(e) => updateAdj(false, 'otherAdjustment', e.target.value)}
                           placeholder="0"
                           className="w-full pl-4 pr-1 py-0.5 text-[10px] font-mono text-right rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#B5451B]" />
@@ -1082,41 +1085,12 @@ export default function App() {
                         ¥{oldCalc.grandTotalUnitPrice.toFixed(2)}
                       </span>
                     </div>
-                    {oldEstimate.adjustments.targetUnitPrice > 0 && oldCalc.grandTotalUnitPrice > 0 && (() => {
-                      const targetSell = oldEstimate.adjustments.targetUnitPrice;
-                      const gap = targetSell - oldCalc.grandTotalUnitPrice;
-                      const isOver = gap < -0.005;
-                      const isExact = Math.abs(gap) < 0.005;
-                      const primeCost = oldCalc.primeCost;
-                      const base = targetSell - oldCalc.shippingCostPerUnit - (oldEstimate.adjustments.otherAdjustment || 0);
-                      const mode = oldEstimate.adjustments.sgaCalcMode || 'markup';
-                      const reqSgaMarkup = primeCost > 0.01 && base > primeCost ? (base / primeCost - 1) * 100 : null;
-                      const reqSgaMargin = primeCost > 0.01 && base > 0 ? (1 - primeCost / base) * 100 : null;
-                      return (
-                        <div className={`mt-1 p-1.5 rounded border text-[10px] space-y-1 ${isExact ? 'bg-[#E8F5EC] border-emerald-300' : isOver ? 'bg-rose-50 border-rose-200' : 'bg-amber-50 border-amber-200'}`}>
-                          <div className="flex justify-between"><span className="font-bold">目標売値</span><span className="font-mono font-black">¥{targetSell.toFixed(2)}</span></div>
-                          <div className="flex justify-between"><span className="font-bold">差額</span><span className={`font-mono font-black ${isExact ? 'text-emerald-700' : isOver ? 'text-rose-600' : 'text-amber-700'}`}>{gap >= 0 ? '+' : ''}{gap.toFixed(2)}</span></div>
-                          {!isExact && (
-                            <div className="border-t border-current/20 pt-1">
-                              <div className="text-[9px] text-[#6B6057] font-bold mb-0.5">目標達成の利管費率</div>
-                              {mode === 'markup' && reqSgaMarkup !== null && (
-                                <div className="flex justify-between"><span>外掛けで</span><span className={`font-mono font-black ${reqSgaMarkup < 0 ? 'text-rose-600' : 'text-[#B5451B]'}`}>{reqSgaMarkup.toFixed(2)}%</span></div>
-                              )}
-                              {mode === 'margin' && reqSgaMargin !== null && (
-                                <div className="flex justify-between"><span>内掛けで</span><span className={`font-mono font-black ${reqSgaMargin < 0 ? 'text-rose-600' : 'text-[#1E3A5F]'}`}>{reqSgaMargin.toFixed(2)}%</span></div>
-                              )}
-                            </div>
-                          )}
-                          {isExact && <div className="text-emerald-700 font-black text-center">✓ 目標売値と一致</div>}
-                        </div>
-                      );
-                    })()}
                   </div>
                 </div>
               </div>
 
               {/* 新単価 panel — 2列グリッドで詰める */}
-              <div className="flex-1 min-w-0 bg-white rounded-lg border border-[#A8C4E0] overflow-hidden shadow-sm flex flex-col max-h-[calc(50vh)]">
+              <div className="flex-1 min-w-0 bg-white rounded-lg border border-[#A8C4E0] overflow-hidden shadow-sm flex flex-col">
                 <div className="bg-[#EFF4FD] px-3 py-1 border-b border-[#B8CCE8] flex items-center gap-1.5 flex-wrap flex-none">
                   <span className="w-2 h-2 rounded-sm bg-[#1E3A5F] shrink-0" />
                   <span className="text-xs font-black text-[#1E3A5F] uppercase tracking-wider">新単価</span>
@@ -1135,7 +1109,7 @@ export default function App() {
                     <span className="ml-auto text-[10px] text-[#9C9490]">㉗実費: <strong className="font-mono text-[#18130F]">{fmtYen(newEstimate.adjustments.actualPurchasePrice)}</strong></span>
                   )}
                 </div>
-                <div className="px-3 py-2 overflow-y-auto flex-1">
+                <div className="px-3 py-2 flex-1">
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1">
                     {/* 計算仕入値 */}
                     <div>
@@ -1202,39 +1176,39 @@ export default function App() {
                     )}
                   </div>
 
-                  {/* Section 5: 利益・利管費設定 */}
-                  <div className="mt-2 pt-2 border-t border-[#EEEBE6] space-y-2">
-                    <div className="text-[9px] font-black text-[#6B6057] uppercase tracking-wide">利益・利管費設定</div>
+                  {/* Section 5: 利益・利管費設定 (compact 2-col) */}
+                  <div className="mt-2 pt-2 border-t border-[#EEEBE6]">
+                    <div className="text-[9px] font-black text-[#6B6057] uppercase tracking-wide mb-1.5">利益・利管費設定</div>
 
-                    {/* 目標利益率（共通） */}
-                    <div className="flex items-center justify-between gap-2">
-                      <label className="text-[10px] font-bold text-[#18130F] shrink-0">目標利益率<span className="text-[8px] text-[#9C9490] block">外掛け・両列共通</span></label>
-                      <div className="relative w-28 flex-none">
-                        <input type="number" value={newEstimate.adjustments.targetProfitRate ?? ''}
-                          onChange={(e) => updateAdj(true, 'targetProfitRate', e.target.value)}
-                          placeholder="25" className="w-full pl-1.5 pr-6 py-1 text-xs font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#B5451B]" />
-                        <span className="absolute right-1.5 top-1 text-[8px] text-[#9C9490]">%</span>
+                    {/* Row 1: 目標利益率 | 下限利益率 */}
+                    <div className="grid grid-cols-2 gap-x-2 mb-1.5">
+                      <div>
+                        <label className="text-[9px] font-bold text-[#18130F] block leading-tight mb-0.5">目標利益率<span className="text-[8px] text-[#9C9490] block">外掛け・両列共通</span></label>
+                        <div className="relative">
+                          <input type="number" value={newEstimate.adjustments.targetProfitRate || ''}
+                            onChange={(e) => updateAdj(true, 'targetProfitRate', e.target.value)}
+                            placeholder="25" className="w-full pl-1.5 pr-5 py-0.5 text-[11px] font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#B5451B]" />
+                          <span className="absolute right-1 top-0.5 text-[8px] text-[#9C9490]">%</span>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-bold text-[#18130F] block leading-tight mb-0.5">下限利益率<span className="text-[8px] text-[#9C9490] block">外掛け・この列</span></label>
+                        <div className="relative">
+                          <input type="number" value={newEstimate.adjustments.minProfitRate || ''}
+                            onChange={(e) => updateAdj(true, 'minProfitRate', e.target.value)}
+                            placeholder="25" className="w-full pl-1.5 pr-5 py-0.5 text-[11px] font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#B5451B]" />
+                          <span className="absolute right-1 top-0.5 text-[8px] text-[#9C9490]">%</span>
+                        </div>
                       </div>
                     </div>
 
-                    {/* 下限利益率（この列） */}
-                    <div className="flex items-center justify-between gap-2">
-                      <label className="text-[10px] font-bold text-[#18130F] shrink-0">下限利益率<span className="text-[8px] text-[#9C9490] block">外掛け・この列</span></label>
-                      <div className="relative w-28 flex-none">
-                        <input type="number" value={newEstimate.adjustments.minProfitRate || ''}
-                          onChange={(e) => updateAdj(true, 'minProfitRate', e.target.value)}
-                          placeholder="15" className="w-full pl-1.5 pr-6 py-1 text-xs font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#B5451B]" />
-                        <span className="absolute right-1.5 top-1 text-[8px] text-[#9C9490]">%</span>
-                      </div>
-                    </div>
-
-                    {/* 利管費率 */}
-                    <div className="flex items-center justify-between gap-2">
-                      <label className="text-[10px] font-bold text-[#18130F] shrink-0">利管費率</label>
-                      <div className="flex items-center gap-1 w-28 flex-none">
+                    {/* Row 2: 利管費率 (full width) */}
+                    <div className="mb-1.5">
+                      <label className="text-[9px] font-bold text-[#18130F] block mb-0.5">利管費率</label>
+                      <div className="flex items-center gap-1">
                         <button
                           onClick={() => toggleSgaMode(true)}
-                          className={`shrink-0 text-[9px] font-black px-1 py-0.5 rounded border cursor-pointer transition-all leading-none ${
+                          className={`shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded border cursor-pointer transition-all leading-none ${
                             (newEstimate.adjustments.sgaCalcMode || 'markup') === 'margin'
                               ? 'bg-[#1E3A5F] text-white border-[#1E3A5F]'
                               : 'bg-[#FEF0EB] text-[#B5451B] border-[#F8C9BB]'
@@ -1244,46 +1218,65 @@ export default function App() {
                           <input type="number" value={newEstimate.adjustments.sgaRatePercent || ''}
                             onChange={(e) => updateAdj(true, 'sgaRatePercent', e.target.value)}
                             placeholder="15" step="0.01"
-                            className="w-full pl-1.5 pr-6 py-1 text-xs font-mono font-bold rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#B5451B]" />
-                          <span className="absolute right-1.5 top-1 text-[8px] text-[#9C9490]">%</span>
+                            className="w-full pl-1.5 pr-5 py-0.5 text-[11px] font-mono font-bold rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#B5451B]" />
+                          <span className="absolute right-1 top-0.5 text-[8px] text-[#9C9490]">%</span>
                         </div>
                       </div>
                     </div>
 
-                    {/* 利管費固定額 */}
-                    <div className="flex items-center justify-between gap-2">
-                      <label className="text-[10px] font-bold text-[#18130F] shrink-0">利管費固定額</label>
-                      <div className="relative w-28 flex-none">
-                        <span className="absolute left-1.5 top-1 text-[8px] text-[#9C9490]">¥</span>
-                        <input type="number" value={newEstimate.adjustments.sgaFixedAdjustment ?? ''}
-                          onChange={(e) => updateAdj(true, 'sgaFixedAdjustment', e.target.value)}
-                          placeholder="0" className="w-full pl-4 pr-2 py-1 text-xs font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#B5451B]" />
+                    {/* Row 3: 利管費固定額 | 客向内掛け率 */}
+                    <div className="grid grid-cols-2 gap-x-2 mb-1.5">
+                      <div>
+                        <label className="text-[9px] font-bold text-[#18130F] block mb-0.5">利管費固定額</label>
+                        <div className="relative">
+                          <span className="absolute left-1 top-0.5 text-[8px] text-[#9C9490]">¥</span>
+                          <input type="number" value={newEstimate.adjustments.sgaFixedAdjustment || ''}
+                            onChange={(e) => updateAdj(true, 'sgaFixedAdjustment', e.target.value)}
+                            placeholder="" className="w-full pl-3.5 pr-1 py-0.5 text-[11px] font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#B5451B]" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-bold text-[#18130F] block leading-tight mb-0.5">客向内掛け率<span className="text-[8px] text-[#9C9490] block">架空仕入原価算出</span></label>
+                        <div className="relative">
+                          <input type="number" value={newEstimate.adjustments.targetProfitMarginOff || ''}
+                            onChange={(e) => updateAdj(true, 'targetProfitMarginOff', e.target.value)}
+                            placeholder="15" className="w-full pl-1.5 pr-5 py-0.5 text-[11px] font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#B5451B]" />
+                          <span className="absolute right-1 top-0.5 text-[8px] text-[#9C9490]">%</span>
+                        </div>
                       </div>
                     </div>
 
-                    {/* 客向内掛け率 */}
-                    <div className="flex items-center justify-between gap-2">
-                      <label className="text-[10px] font-bold text-[#18130F] shrink-0">客向内掛け率<span className="text-[8px] text-[#9C9490] block">架空仕入原価算出</span></label>
-                      <div className="relative w-28 flex-none">
-                        <input type="number" value={newEstimate.adjustments.targetProfitMarginOff ?? ''}
-                          onChange={(e) => updateAdj(true, 'targetProfitMarginOff', e.target.value)}
-                          placeholder="15" className="w-full pl-1.5 pr-6 py-1 text-xs font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#B5451B]" />
-                        <span className="absolute right-1.5 top-1 text-[8px] text-[#9C9490]">%</span>
+                    {/* 帳尻内掛け率 */}
+                    {newReconcileMargin !== null && (
+                      <div className={`mb-1.5 px-2 py-1 rounded border flex items-center justify-between ${
+                        newEstimate.adjustments.targetProfitMarginOff > 0 && Math.abs(newReconcileMargin - (newEstimate.adjustments.targetProfitMarginOff || 0)) < 0.1
+                          ? 'bg-emerald-50 border-emerald-300'
+                          : 'bg-amber-50 border-amber-200'
+                      }`}>
+                        <div>
+                          <div className="text-[8px] font-black text-amber-800 leading-tight">帳尻利管費率(内掛け)</div>
+                          <div className="text-[8px] text-[#6B6057]">材工費→売値</div>
+                        </div>
+                        <span className={`font-mono font-black text-sm ${
+                          newEstimate.adjustments.targetProfitMarginOff > 0 && Math.abs(newReconcileMargin - (newEstimate.adjustments.targetProfitMarginOff || 0)) < 0.1
+                            ? 'text-emerald-700' : 'text-amber-700'
+                        }`}>{newReconcileMargin.toFixed(2)}%</span>
                       </div>
+                    )}
+
+                    {/* Buttons */}
+                    <div className="grid grid-cols-2 gap-1">
+                      <button onClick={() => handleFitToSellPrice(true)}
+                        className="font-black text-[9px] py-1 rounded border flex items-center justify-center gap-0.5 cursor-pointer transition-all bg-[#EFF4FD] text-[#1E3A5F] border-[#B8CCE8] hover:opacity-80">
+                        <Settings2 className="w-2.5 h-2.5" />
+                        売値に合わせて
+                      </button>
+                      <button onClick={() => handleAutoReconcile(true)}
+                        className="bg-[#18130F] hover:bg-[#B5451B] text-white font-black text-[9px] py-1 rounded border border-[#2A2018] flex items-center justify-center gap-0.5 cursor-pointer transition-all">
+                        <Zap className="w-2.5 h-2.5 text-[#F8C9BB]" />
+                        一発自動整合
+                      </button>
                     </div>
-
-                    {/* 売値に合わせて利管費率を逆算 */}
-                    <button onClick={() => handleFitToSellPrice(true)}
-                      className="w-full font-black text-[10px] py-1 rounded border flex items-center justify-center gap-1 cursor-pointer transition-all bg-[#EFF4FD] text-[#1E3A5F] border-[#B8CCE8] hover:opacity-80">
-                      <Settings2 className="w-3 h-3" />
-                      売値に合わせて利益率を設定
-                    </button>
-
-                    <button onClick={() => handleAutoReconcile(true)}
-                      className="w-full bg-[#18130F] hover:bg-[#B5451B] text-white font-black text-[10px] py-1.5 rounded border border-[#2A2018] flex items-center justify-center gap-1.5 cursor-pointer transition-all">
-                      <Zap className="w-3 h-3 text-[#F8C9BB]" />
-                      一発自動整合
-                    </button>
                   </div>
 
                   {/* ProfitGauge */}
@@ -1308,23 +1301,26 @@ export default function App() {
                           : <span className="text-[9px] text-[#9C9490]">目標売値未設定</span>
                       }
                     </div>
-                    {[
-                      { label: '材料費', val: newCalc.netMaterialCost },
-                      { label: '加工費計', val: newCalc.totalProcessCost },
-                      { label: '直製造原価', val: newCalc.primeCost },
-                      { label: `利管費(${(+(newEstimate.adjustments.sgaRatePercent || 0)).toFixed(1)}%)`, val: newCalc.sgaCost },
-                      { label: '送料/個', val: newCalc.shippingCostPerUnit },
-                    ].map(({ label, val }) => (
-                      <div key={label} className="flex justify-between text-[10px]">
-                        <span className="text-[#6B6057]">{label}</span>
-                        <span className="font-mono font-bold text-[#18130F]">¥{val.toFixed(2)}</span>
-                      </div>
-                    ))}
+                    <div className="grid grid-cols-2 gap-x-2">
+                      {[
+                        { label: '材料費', val: newCalc.netMaterialCost },
+                        { label: '加工費計', val: newCalc.totalProcessCost },
+                        { label: '直製造原価', val: newCalc.primeCost },
+                        { label: `利管費(${(+(newEstimate.adjustments.sgaRatePercent || 0)).toFixed(1)}%)`, val: newCalc.sgaCost },
+                        { label: '送料/個', val: newCalc.shippingCostPerUnit },
+                        { label: '', val: null },
+                      ].map(({ label, val }) => label ? (
+                        <div key={label} className="flex justify-between text-[10px]">
+                          <span className="text-[#6B6057]">{label}</span>
+                          <span className="font-mono font-bold text-[#18130F]">¥{val!.toFixed(2)}</span>
+                        </div>
+                      ) : <div key="empty" />)}
+                    </div>
                     <div className="flex items-center justify-between text-[10px] gap-2">
                       <span className="text-[#18130F] font-bold shrink-0">調整</span>
                       <div className="relative w-20">
                         <span className="absolute left-1.5 top-0.5 text-[9px] text-[#9C9490]">¥</span>
-                        <input type="number" value={newEstimate.adjustments.otherAdjustment ?? ''}
+                        <input type="number" value={newEstimate.adjustments.otherAdjustment || ''}
                           onChange={(e) => updateAdj(true, 'otherAdjustment', e.target.value)}
                           placeholder="0"
                           className="w-full pl-4 pr-1 py-0.5 text-[10px] font-mono text-right rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#B5451B]" />
@@ -1336,35 +1332,6 @@ export default function App() {
                         ¥{newCalc.grandTotalUnitPrice.toFixed(2)}
                       </span>
                     </div>
-                    {newEstimate.adjustments.targetUnitPrice > 0 && newCalc.grandTotalUnitPrice > 0 && (() => {
-                      const targetSell = newEstimate.adjustments.targetUnitPrice;
-                      const gap = targetSell - newCalc.grandTotalUnitPrice;
-                      const isOver = gap < -0.005;
-                      const isExact = Math.abs(gap) < 0.005;
-                      const primeCost = newCalc.primeCost;
-                      const base = targetSell - newCalc.shippingCostPerUnit - (newEstimate.adjustments.otherAdjustment || 0);
-                      const mode = newEstimate.adjustments.sgaCalcMode || 'markup';
-                      const reqSgaMarkup = primeCost > 0.01 && base > primeCost ? (base / primeCost - 1) * 100 : null;
-                      const reqSgaMargin = primeCost > 0.01 && base > 0 ? (1 - primeCost / base) * 100 : null;
-                      return (
-                        <div className={`mt-1 p-1.5 rounded border text-[10px] space-y-1 ${isExact ? 'bg-[#E8F5EC] border-emerald-300' : isOver ? 'bg-rose-50 border-rose-200' : 'bg-amber-50 border-amber-200'}`}>
-                          <div className="flex justify-between"><span className="font-bold">目標売値</span><span className="font-mono font-black">¥{targetSell.toFixed(2)}</span></div>
-                          <div className="flex justify-between"><span className="font-bold">差額</span><span className={`font-mono font-black ${isExact ? 'text-emerald-700' : isOver ? 'text-rose-600' : 'text-amber-700'}`}>{gap >= 0 ? '+' : ''}{gap.toFixed(2)}</span></div>
-                          {!isExact && (
-                            <div className="border-t border-current/20 pt-1">
-                              <div className="text-[9px] text-[#6B6057] font-bold mb-0.5">目標達成の利管費率</div>
-                              {mode === 'markup' && reqSgaMarkup !== null && (
-                                <div className="flex justify-between"><span>外掛けで</span><span className={`font-mono font-black ${reqSgaMarkup < 0 ? 'text-rose-600' : 'text-[#B5451B]'}`}>{reqSgaMarkup.toFixed(2)}%</span></div>
-                              )}
-                              {mode === 'margin' && reqSgaMargin !== null && (
-                                <div className="flex justify-between"><span>内掛けで</span><span className={`font-mono font-black ${reqSgaMargin < 0 ? 'text-rose-600' : 'text-[#1E3A5F]'}`}>{reqSgaMargin.toFixed(2)}%</span></div>
-                              )}
-                            </div>
-                          )}
-                          {isExact && <div className="text-emerald-700 font-black text-center">✓ 目標売値と一致</div>}
-                        </div>
-                      );
-                    })()}
                   </div>
                 </div>
               </div>
