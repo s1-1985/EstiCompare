@@ -584,6 +584,13 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                 {est.processes.map((proc, i) => {
                   const mode = getCalcMode(proc);
                   const costPerUnit = calc.processCosts[i] ?? 0;
+                  // Cross-column reference (for new column only)
+                  const oldProc = isNew ? oldEstimate.processes.find(p => p.index === proc.index) : null;
+                  const hasBothNames = isNew && oldProc && proc.processName.trim() && oldProc.processName.trim();
+                  const yieldMismatch = hasBothNames && Math.abs((proc.yieldPerHour || 0) - (oldProc!.yieldPerHour || 0)) > 0.001;
+                  const hoursMismatch = hasBothNames && Math.abs((proc.totalHours || 0) - (oldProc!.totalHours || 0)) > 0.001;
+                  const rateRatio = hasBothNames && (oldProc!.hourlyRate || 0) > 0 && (proc.hourlyRate || 0) > 0
+                    ? (proc.hourlyRate || 0) / (oldProc!.hourlyRate || 0) : null;
                   return (
                     <React.Fragment key={proc.index}>
                     <tr className="hover:bg-[#FAFAF8]">
@@ -612,6 +619,11 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                               placeholder="0"
                               className={`no-spin w-full pl-1.5 pr-7 py-1 text-xs font-mono rounded border outline-none focus:ring-1 ${proc.processName && !proc.yieldPerHour ? 'border-[#F8C9BB] bg-[#FEF0EB]' : 'border-[#D6D0C8] bg-white'}`} />
                             <span className="absolute right-0.5 top-1 text-[8px] text-[#9C9490]">個/h</span>
+                          </div>
+                        )}
+                        {isNew && oldProc && mode === 'standard' && (
+                          <div className={`text-[8px] mt-0.5 font-mono ${yieldMismatch ? 'text-rose-600 font-black' : 'text-[#9C9490]'}`}>
+                            旧:{oldProc.yieldPerHour || '—'}{yieldMismatch && ' ⚠ 不一致'}
                           </div>
                         )}
                         {mode === 'kg' && (
@@ -654,6 +666,11 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                         ) : (
                           <div className="flex items-center justify-center h-7 text-[9px] text-[#D6D0C8] bg-[#F7F6F2] rounded border border-[#EEEBE6]">—</div>
                         )}
+                        {isNew && oldProc && mode === 'standard' && (
+                          <div className={`text-[8px] mt-0.5 font-mono ${hoursMismatch ? 'text-rose-600 font-black' : 'text-[#9C9490]'}`}>
+                            旧:{oldProc.totalHours || '—'}{hoursMismatch && ' ⚠ 不一致'}
+                          </div>
+                        )}
                       </td>
                       <td className="py-1 px-1">
                         {mode === 'standard' ? (
@@ -666,6 +683,16 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                           </div>
                         ) : (
                           <div className="flex items-center justify-center h-7 text-[9px] text-[#D6D0C8] bg-[#F7F6F2] rounded border border-[#EEEBE6]">—</div>
+                        )}
+                        {isNew && oldProc && mode === 'standard' && (oldProc.hourlyRate || 0) > 0 && (
+                          <div className="text-[8px] mt-0.5 font-mono flex items-center gap-1">
+                            <span className="text-[#9C9490]">旧:{oldProc.hourlyRate?.toLocaleString()}</span>
+                            {rateRatio !== null && rateRatio > 1.5 && (
+                              <span className={`px-0.5 rounded font-black ${rateRatio > 3 ? 'bg-rose-100 text-rose-700' : rateRatio > 2 ? 'bg-amber-100 text-amber-700' : 'bg-yellow-50 text-yellow-700'}`}>
+                                ×{rateRatio.toFixed(1)}{rateRatio > 3 ? ' ⚠' : ''}
+                              </span>
+                            )}
+                          </div>
                         )}
                       </td>
                       <td className="py-1 px-1">
