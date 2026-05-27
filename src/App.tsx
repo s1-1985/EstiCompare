@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { DetailedEstimate, ComparisonResult, Scenario } from './types';
 import { createEmptyEstimate } from './data/samples';
 import { ExcelGrid, ProfitGauge } from './components/ExcelGrid';
@@ -49,6 +49,9 @@ export default function App() {
   const [aiRetryCountdown, setAiRetryCountdown] = useState<number | null>(null);
   const [aiTestStatus, setAiTestStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
   const [aiTestMsg, setAiTestMsg] = useState('');
+  const [headerHeightPct, setHeaderHeightPct] = useState(40);
+  const isDraggingRef = useRef(false);
+  const rightPaneRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const unsub = auth.onAuthStateChanged((u) => {
@@ -70,6 +73,22 @@ export default function App() {
     );
     return unsub;
   }, [user]);
+
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current || !rightPaneRef.current) return;
+      const rect = rightPaneRef.current.getBoundingClientRect();
+      const pct = ((e.clientY - rect.top) / rect.height) * 100;
+      setHeaderHeightPct(Math.min(75, Math.max(20, pct)));
+    };
+    const onMouseUp = () => { isDraggingRef.current = false; };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []);
 
   const handleScenarioLoad = (id: string) => {
     const scen = customScenarios.find((s) => s.id === id);
@@ -451,6 +470,8 @@ export default function App() {
     ? Math.min(100, (oldCalc.primeCost + oldCalc.sgaCost) / oldCalc.suggestedPurchasePriceForClient * 100) : null;
   const newFictionalProgress = newCalc.suggestedPurchasePriceForClient > 0
     ? Math.min(100, (newCalc.primeCost + newCalc.sgaCost) / newCalc.suggestedPurchasePriceForClient * 100) : null;
+
+  const showFixedHeader = activeView === 'workspace' && activeSheetTab === 'workspace';
 
   // ─── Format helpers ───────────────────────────────────────────────────────────
 
@@ -873,11 +894,12 @@ export default function App() {
         </aside>
 
         {/* ── RIGHT PANE ── */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div ref={rightPaneRef} className="flex-1 flex flex-col overflow-hidden">
 
-          {/* ── Sticky calculation header ── */}
-          <div className="flex-none bg-[#F0EDE8] border-b-2 border-[#C8C2B8] px-3 py-3">
-            <div className="flex gap-2 sm:gap-3">
+          {/* ── Resizable calculation header (workspace only) ── */}
+          {showFixedHeader && (
+          <div className="flex-none overflow-hidden bg-[#F0EDE8]" style={{ height: `${headerHeightPct}%` }}>
+            <div className="flex gap-2 sm:gap-3 h-full px-3 py-2">
 
               {/* 旧単価 panel — 2列グリッドで詰める */}
               <div className="flex-1 min-w-0 bg-white rounded-lg border border-[#E0C0B0] overflow-hidden shadow-sm flex flex-col">
@@ -899,7 +921,7 @@ export default function App() {
                     <span className="ml-auto text-[10px] text-[#9C9490]">㉑実費: <strong className="font-mono text-[#18130F]">{fmtYen(oldEstimate.adjustments.actualPurchasePrice)}</strong></span>
                   )}
                 </div>
-                <div className="px-3 py-2 flex-1">
+                <div className="px-3 py-2 flex-1 overflow-y-auto">
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1">
                     {/* 計算仕入値 */}
                     <div>
@@ -1160,7 +1182,7 @@ export default function App() {
                     <span className="ml-auto text-[10px] text-[#9C9490]">㉗実費: <strong className="font-mono text-[#18130F]">{fmtYen(newEstimate.adjustments.actualPurchasePrice)}</strong></span>
                   )}
                 </div>
-                <div className="px-3 py-2 flex-1">
+                <div className="px-3 py-2 flex-1 overflow-y-auto">
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1">
                     {/* 計算仕入値 */}
                     <div>
@@ -1465,6 +1487,18 @@ export default function App() {
 
             </div>
           </div>
+          )}
+
+          {/* ── Drag handle (workspace only) ── */}
+          {showFixedHeader && (
+            <div
+              className="flex-none h-3 bg-[#D6D0C8] hover:bg-[#B5451B]/30 cursor-ns-resize relative flex items-center justify-center group transition-colors select-none z-10 border-t border-b border-[#C8C2B8]"
+              onMouseDown={(e) => { isDraggingRef.current = true; e.preventDefault(); }}
+              title="ドラッグして上部エリアの高さを調整"
+            >
+              <div className="w-12 h-1 rounded-full bg-[#9C9490] group-hover:bg-[#B5451B] transition-colors" />
+            </div>
+          )}
 
           {/* Scrollable main area */}
           <main className="flex-1 overflow-y-auto p-3 sm:p-5">
