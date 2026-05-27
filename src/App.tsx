@@ -1364,6 +1364,33 @@ export default function App() {
                       </div>
                     )}
 
+                    {/* 調整ナビ: 帳尻合わせの優先順位 */}
+                    {newCalc.auditVariance !== 0 && newSell > 0 && newCalc.primeCost > 0 && (
+                      <div className="mb-1.5 px-2 py-1.5 rounded border border-[#C8C2B8] bg-[#F7F6F2] text-[9px]">
+                        <div className="font-black text-[#6B6057] mb-1">調整優先順位</div>
+                        <div className="space-y-0.5">
+                          <div className={`flex items-start gap-1 ${Math.abs(newCalc.auditVariance) < 1 ? 'text-emerald-700' : 'text-[#18130F]'}`}>
+                            <span className="font-black shrink-0">①</span>
+                            <span>工程の出来高・段取は旧単価と同一か確認</span>
+                          </div>
+                          <div className="flex items-start gap-1 text-[#18130F]">
+                            <span className="font-black shrink-0">②</span>
+                            <span>材料建値・賃率で積み上げを調整</span>
+                          </div>
+                          <div className={`flex items-start gap-1 ${newReconcileMargin !== null ? 'text-amber-700 font-bold' : 'text-[#18130F]'}`}>
+                            <span className="font-black shrink-0">③</span>
+                            <span>利管費率を{newReconcileMargin !== null ? ` ${newReconcileMargin.toFixed(2)}% (内掛け)` : '帳尻率'}に設定</span>
+                          </div>
+                          {newSellFloorGap !== null && newSellFloorGap < 0 && (
+                            <div className="flex items-start gap-1 text-rose-600 font-bold">
+                              <span className="font-black shrink-0">④</span>
+                              <span>目標売値が外掛25%フロア(¥{newSellFloor?.toFixed(0)})を下回っています</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Buttons */}
                     <div className="grid grid-cols-2 gap-1">
                       <button onClick={() => handleFitToSellPrice(true)}
