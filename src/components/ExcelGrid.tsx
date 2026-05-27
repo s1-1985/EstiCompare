@@ -5,7 +5,7 @@ import { apiPost } from '../utils/apiClient';
 import {
   Settings2, AlertTriangle,
   Sparkles, TrendingUp, Coins,
-  History, Truck, Copy, Package, ArrowLeftRight,
+  History, Truck, Copy, Package,
 } from 'lucide-react';
 
 // ─── Visual sub-components ───────────────────────────────────────────────────
@@ -824,154 +824,8 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     );
   };
 
-  // ─── Waterfall Diff ───────────────────────────────────────────────────────────
-  const renderDiffBar = () => {
-    if (oldCalc.grandTotalUnitPrice <= 0 && newCalc.grandTotalUnitPrice <= 0) return null;
-
-    const dUnit = newCalc.grandTotalUnitPrice - oldCalc.grandTotalUnitPrice;
-    const pctUnit = oldCalc.grandTotalUnitPrice > 0 ? (dUnit / oldCalc.grandTotalUnitPrice * 100) : null;
-
-    const components = [
-      { label: '材料費/個', o: oldCalc.netMaterialCost, n: newCalc.netMaterialCost, dot: '#B5451B' },
-      { label: '加工費合計', o: oldCalc.totalProcessCost, n: newCalc.totalProcessCost, dot: '#1E3A5F' },
-      { label: '利管費', o: oldCalc.sgaCost, n: newCalc.sgaCost, dot: '#6B3FA0' },
-      { label: '送料/個', o: oldCalc.shippingCostPerUnit, n: newCalc.shippingCostPerUnit, dot: '#1A6B3A' },
-    ].filter(c => c.o > 0 || c.n > 0);
-
-    const maxAbsDelta = Math.max(...components.map(c => Math.abs(c.n - c.o)), 0.01);
-
-    const DiffChip = ({ d, base }: { d: number; base: number }) => {
-      const p = base > 0.01 ? (d / base * 100) : null;
-      const isUp = d > 0.01; const isDn = d < -0.01;
-      const cls = isUp
-        ? 'text-rose-400 bg-rose-900/30 border-rose-700/50'
-        : isDn ? 'text-emerald-400 bg-emerald-900/30 border-emerald-700/50'
-        : 'text-[#6B6057] bg-[#1A1510] border-[#3D3228]';
-      return (
-        <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${cls} whitespace-nowrap`}>
-          {d > 0 ? '+' : ''}{d.toFixed(2)}{p !== null ? ` (${p > 0 ? '+' : ''}${p.toFixed(2)}%)` : ''}
-        </span>
-      );
-    };
-
-    return (
-      <div className="bg-[#18130F] rounded-lg overflow-hidden border border-[#2D2219]">
-
-        {/* ─ Header */}
-        <div className="px-4 py-3.5 border-b border-[#2D2219] flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-2">
-            <ArrowLeftRight className="w-4 h-4 text-[#F8C9BB]" />
-            <span className="text-sm font-black text-white tracking-wide">コスト変動ウォーターフォール</span>
-          </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="text-center">
-              <div className="text-[8px] text-[#6B6057] mb-0.5 font-bold uppercase tracking-wider">旧単価</div>
-              <div className="text-lg font-black font-mono text-[#9C9490]">
-                ¥{Math.round(oldCalc.grandTotalUnitPrice).toLocaleString()}
-              </div>
-            </div>
-            <div className="text-[#3D3228] text-xl font-thin select-none">→</div>
-            <div className="text-center">
-              <div className="text-[8px] text-[#B5451B] mb-0.5 font-bold uppercase tracking-wider">新単価</div>
-              <div className="text-2xl font-black font-mono text-white">
-                ¥{Math.round(newCalc.grandTotalUnitPrice).toLocaleString()}
-              </div>
-            </div>
-            <div className={`text-lg font-black font-mono ${dUnit > 0.01 ? 'text-rose-400' : dUnit < -0.01 ? 'text-emerald-400' : 'text-[#6B6057]'}`}>
-              {dUnit > 0 ? '+' : ''}{dUnit.toFixed(2)}
-              {pctUnit !== null && (
-                <span className="text-[11px] ml-1">({pctUnit > 0 ? '+' : ''}{pctUnit.toFixed(2)}%)</span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* ─ Waterfall rows */}
-        <div className="p-4 space-y-2">
-          <div className="text-[9px] font-black text-[#6B6057] uppercase tracking-wider mb-3">コスト内訳の変動</div>
-          {components.map(({ label, o, n, dot }) => {
-            const delta = n - o;
-            const isUp = delta > 0.01;
-            const isDn = delta < -0.01;
-            const noChange = !isUp && !isDn;
-            const barPct = noChange ? 0 : (Math.abs(delta) / maxAbsDelta * 75 + 10);
-            const barColor = isUp ? '#EF4444' : '#22C55E';
-            const textCls = isUp ? 'text-rose-400' : isDn ? 'text-emerald-400' : 'text-[#4D4540]';
-            return (
-              <div key={label} className="flex items-center gap-2.5">
-                <div className="w-2 h-2 rounded-full shrink-0 mt-0.5" style={{ background: dot }} />
-                <span className="text-[9px] text-[#9C9490] w-[4.5rem] shrink-0 leading-tight">{label}</span>
-                <div className="flex-1 h-5 rounded bg-[#1A1510] overflow-hidden flex items-center">
-                  {noChange ? (
-                    <div className="w-full flex items-center justify-center">
-                      <span className="text-[8px] text-[#3D3228] font-mono">変化なし</span>
-                    </div>
-                  ) : (
-                    <div className="h-full rounded transition-all duration-700 flex items-center px-2"
-                      style={{ width: `${barPct.toFixed(1)}%`, background: barColor }}>
-                      <span className="text-[8px] font-black text-white/90 whitespace-nowrap">
-                        {delta > 0 ? '+' : ''}{delta.toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-                </div>
-                <div className="w-28 shrink-0 text-right">
-                  <div className={`text-[9px] font-mono font-bold ${textCls}`}>
-                    {noChange ? '±0' : `${delta > 0 ? '+' : ''}${delta.toFixed(2)}`}
-                    {!noChange && o > 0.01 && (
-                      <span className="text-[7px] ml-1 opacity-70">({((delta / o) * 100).toFixed(0)}%)</span>
-                    )}
-                  </div>
-                  <div className="text-[8px] text-[#4D4540] font-mono">¥{o.toFixed(2)} → ¥{n.toFixed(2)}</div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* ─ Totals row */}
-        <div className="mx-4 mb-3 pt-3 border-t border-[#2D2219] flex items-center justify-between gap-2 flex-wrap">
-          <span className="text-[10px] font-black text-[#9C9490] uppercase tracking-wider">御見積単価 差額</span>
-          <div className="flex items-center gap-2 flex-wrap justify-end">
-            <span className="text-sm font-mono text-[#9C9490]">¥{oldCalc.grandTotalUnitPrice.toFixed(2)}</span>
-            <span className="text-[#3D3228]">→</span>
-            <span className="text-sm font-black font-mono text-white">¥{newCalc.grandTotalUnitPrice.toFixed(2)}</span>
-            <DiffChip d={dUnit} base={oldCalc.grandTotalUnitPrice} />
-          </div>
-        </div>
-
-        {/* ─ Profit comparison */}
-        {(oldCalc.actualProfitRate !== 0 || newCalc.actualProfitRate !== 0) && (
-          <div className="px-4 pb-4 pt-2 border-t border-[#2D2219] flex items-center flex-wrap gap-x-4 gap-y-1.5">
-            <span className="text-[9px] font-black text-[#6B6057] uppercase tracking-wider">実利益率 (内掛け)</span>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-mono text-[#9C9490]">
-                旧 <strong className={oldCalc.actualProfitRate >= 0 ? 'text-[#6B9C8A]' : 'text-rose-500'}>{oldCalc.actualProfitRate.toFixed(2)}%</strong>
-              </span>
-              <span className="text-[#3D3228]">→</span>
-              <span className="text-xs font-mono">
-                新 <strong className={newCalc.actualProfitRate >= 0 ? 'text-emerald-400' : 'text-rose-400'}>{newCalc.actualProfitRate.toFixed(2)}%</strong>
-              </span>
-              {(() => {
-                const d = newCalc.actualProfitRate - oldCalc.actualProfitRate;
-                const isUp = d > 0.05; const isDn = d < -0.05;
-                const cls = isUp
-                  ? 'text-emerald-400 border-emerald-700/40 bg-emerald-900/20'
-                  : isDn ? 'text-rose-400 border-rose-700/40 bg-rose-900/20'
-                  : 'text-[#6B6057] border-[#3D3228]';
-                return (
-                  <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${cls}`}>
-                    {d > 0 ? '+' : ''}{d.toFixed(2)}pp
-                  </span>
-                );
-              })()}
-            </div>
-          </div>
-        )}
-
-      </div>
-    );
-  };
+  // ─── Waterfall removed ───────────────────────────────────────────────────────
+  const renderDiffBar = () => null;
 
   // ─── Main render ──────────────────────────────────────────────────────────────
   return (

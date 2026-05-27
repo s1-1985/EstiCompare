@@ -11,7 +11,7 @@ export interface SampleScenario {
 export const createEmptyEstimate = (): DetailedEstimate => ({
   partNumber: '',
   partName: '',
-  baseLotSize: 1,
+  baseLotSize: 100,
   lotUnit: '個',
   finishedWeightG: 0,
   date: new Date().toISOString().split('T')[0],
