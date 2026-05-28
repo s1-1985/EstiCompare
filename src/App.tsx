@@ -47,8 +47,11 @@ export default function App() {
   const [isComparing, setIsComparing] = useState(false);
   const [aiRetryCountdown, setAiRetryCountdown] = useState<number | null>(null);
   const [headerHeightPct, setHeaderHeightPct] = useState(40);
+  const [sidebarWidthPx, setSidebarWidthPx] = useState(230);
   const isDraggingRef = useRef(false);
+  const isSidebarDragging = useRef(false);
   const rightPaneRef = useRef<HTMLDivElement>(null);
+  const middleAreaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const unsub = auth.onAuthStateChanged((u) => {
@@ -73,12 +76,21 @@ export default function App() {
 
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
-      if (!isDraggingRef.current || !rightPaneRef.current) return;
-      const rect = rightPaneRef.current.getBoundingClientRect();
-      const pct = ((e.clientY - rect.top) / rect.height) * 100;
-      setHeaderHeightPct(Math.min(75, Math.max(20, pct)));
+      if (isDraggingRef.current && rightPaneRef.current) {
+        const rect = rightPaneRef.current.getBoundingClientRect();
+        const pct = ((e.clientY - rect.top) / rect.height) * 100;
+        setHeaderHeightPct(Math.min(75, Math.max(20, pct)));
+      }
+      if (isSidebarDragging.current && middleAreaRef.current) {
+        const containerLeft = middleAreaRef.current.getBoundingClientRect().left;
+        const newWidth = e.clientX - containerLeft;
+        setSidebarWidthPx(Math.min(450, Math.max(150, newWidth)));
+      }
     };
-    const onMouseUp = () => { isDraggingRef.current = false; };
+    const onMouseUp = () => {
+      isDraggingRef.current = false;
+      isSidebarDragging.current = false;
+    };
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
     return () => {
@@ -468,6 +480,35 @@ export default function App() {
   const newFictionalProgress = newCalc.suggestedPurchasePriceForClient > 0
     ? Math.min(100, (newCalc.primeCost + newCalc.sgaCost) / newCalc.suggestedPurchasePriceForClient * 100) : null;
 
+  // 積み上げ単価 = 直製造原価 + 送料 (SGA抜き)
+  const oldStackPrice = oldCalc.primeCost + oldCalc.shippingCostPerUnit;
+  const newStackPrice = newCalc.primeCost + newCalc.shippingCostPerUnit;
+
+  // 実態の利管費率: 実コストベースで計算した利管費率
+  const getActualSgaRate = (sgaCost: number, actualPrimeCost: number, mode: string): number | null => {
+    if (actualPrimeCost <= 0) return null;
+    const base = mode === 'margin' ? (actualPrimeCost + sgaCost) : actualPrimeCost;
+    return base > 0 ? sgaCost / base * 100 : null;
+  };
+  const oldActualSgaRate = getActualSgaRate(oldCalc.sgaCost, oldCalc.actualPrimeCost, oldEstimate.adjustments.sgaCalcMode || 'markup');
+  const newActualSgaRate = getActualSgaRate(newCalc.sgaCost, newCalc.actualPrimeCost, newEstimate.adjustments.sgaCalcMode || 'markup');
+
+  // 架空仕入れをもととした利管費率
+  const oldSellForCalc = oldSell > 0 ? oldSell : oldCalc.grandTotalUnitPrice;
+  const newSellForCalc = newSell > 0 ? newSell : newCalc.grandTotalUnitPrice;
+  const getFictionalSgaRate = (sell: number, sp: number, mode: string): number | null => {
+    if (sp <= 0 || sell <= 0) return null;
+    return mode === 'margin' ? (sell - sp) / sell * 100 : (sell - sp) / sp * 100;
+  };
+  const oldFictionalSgaRate = getFictionalSgaRate(oldSellForCalc, oldCalc.suggestedPurchasePriceForClient, oldEstimate.adjustments.sgaCalcMode || 'markup');
+  const newFictionalSgaRate = getFictionalSgaRate(newSellForCalc, newCalc.suggestedPurchasePriceForClient, newEstimate.adjustments.sgaCalcMode || 'markup');
+
+  // 実態の利益率（外掛け）
+  const oldActualMarkupRate = oldCalc.actualTotalCost > 0 && oldSellForCalc > 0
+    ? (oldSellForCalc - oldCalc.actualTotalCost) / oldCalc.actualTotalCost * 100 : null;
+  const newActualMarkupRate = newCalc.actualTotalCost > 0 && newSellForCalc > 0
+    ? (newSellForCalc - newCalc.actualTotalCost) / newCalc.actualTotalCost * 100 : null;
+
   const showFixedHeader = activeView === 'workspace' && activeSheetTab === 'workspace';
 
   // ─── Format helpers ───────────────────────────────────────────────────────────
@@ -553,10 +594,10 @@ export default function App() {
       </header>
 
       {/* MIDDLE AREA: sidebar + right pane */}
-      <div className="flex-1 flex overflow-hidden">
+      <div ref={middleAreaRef} className="flex-1 flex overflow-hidden">
 
         {/* ── LEFT SIDEBAR ── */}
-        <aside className="w-72 flex-none bg-white border-r border-[#D6D0C8] overflow-y-auto flex flex-col">
+        <aside className="flex-none bg-white overflow-y-auto flex flex-col" style={{ width: sidebarWidthPx }}>
 
           {/* Scenario actions */}
           <div className="border-b border-[#D6D0C8] p-2 space-y-1.5">
@@ -890,6 +931,15 @@ export default function App() {
 
         </aside>
 
+        {/* ── Sidebar resize handle ── */}
+        <div
+          className="flex-none w-2 bg-[#D6D0C8] hover:bg-[#B5451B]/40 cursor-ew-resize flex items-center justify-center group transition-colors select-none z-10"
+          onMouseDown={(e) => { isSidebarDragging.current = true; e.preventDefault(); }}
+          title="ドラッグしてサイドバーの幅を調整"
+        >
+          <div className="h-8 w-0.5 rounded-full bg-[#9C9490] group-hover:bg-[#B5451B] transition-colors" />
+        </div>
+
         {/* ── RIGHT PANE ── */}
         <div ref={rightPaneRef} className="flex-1 flex flex-col overflow-hidden">
 
@@ -918,6 +968,45 @@ export default function App() {
                     <span className="ml-auto text-[10px] text-[#9C9490]">㉑実費: <strong className="font-mono text-[#18130F]">{fmtYen(oldEstimate.adjustments.actualPurchasePrice)}</strong></span>
                   )}
                 </div>
+
+                {/* ── Key metrics strip ── */}
+                <div className="flex-none px-2 py-1.5 bg-[#FEF3EE] border-b border-[#E8C8BC]">
+                  <div className="grid grid-cols-5 gap-x-1.5">
+                    <div>
+                      <div className="text-[7.5px] font-bold text-[#9C9490] leading-none mb-0.5 truncate">見積単価</div>
+                      <div className="font-mono font-black text-[10px] text-[#B5451B] leading-tight">
+                        {oldCalc.grandTotalUnitPrice > 0 ? fmtYen(oldCalc.grandTotalUnitPrice) : '—'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[7.5px] font-bold text-[#9C9490] leading-none mb-0.5 truncate">積み上げ単価</div>
+                      <div className="font-mono font-black text-[10px] text-[#18130F] leading-tight">
+                        {oldStackPrice > 0 ? fmtYen(oldStackPrice) : '—'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[7.5px] font-bold text-[#9C9490] leading-none mb-0.5 truncate">実態利管費率</div>
+                      <div className={`font-mono font-black text-[10px] leading-tight ${oldActualSgaRate !== null ? 'text-amber-700' : 'text-[#C8C2B8]'}`}>
+                        {oldActualSgaRate !== null ? `${oldActualSgaRate.toFixed(1)}%` : '—'}
+                        {oldActualSgaRate !== null && <span className="text-[7px] text-[#9C9490] ml-0.5">{(oldEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? '内掛' : '外掛'}</span>}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[7.5px] font-bold text-[#9C9490] leading-none mb-0.5 truncate">架空利管費率</div>
+                      <div className={`font-mono font-black text-[10px] leading-tight ${oldFictionalSgaRate !== null ? 'text-purple-700' : 'text-[#C8C2B8]'}`}>
+                        {oldFictionalSgaRate !== null ? `${oldFictionalSgaRate.toFixed(1)}%` : '—'}
+                        {oldFictionalSgaRate !== null && <span className="text-[7px] text-[#9C9490] ml-0.5">{(oldEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? '内掛' : '外掛'}</span>}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[7.5px] font-bold text-[#9C9490] leading-none mb-0.5 truncate">実態利益率(外)</div>
+                      <div className={`font-mono font-black text-[10px] leading-tight ${oldActualMarkupRate !== null ? profitColorCls(oldActualMarkupRate) : 'text-[#C8C2B8]'}`}>
+                        {oldActualMarkupRate !== null ? `${oldActualMarkupRate.toFixed(1)}%` : '—'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="px-3 py-2 flex-1 overflow-y-auto">
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1">
                     {/* 積み上げ単価 */}
@@ -1127,6 +1216,45 @@ export default function App() {
                     <span className="ml-auto text-[10px] text-[#9C9490]">㉗実費: <strong className="font-mono text-[#18130F]">{fmtYen(newEstimate.adjustments.actualPurchasePrice)}</strong></span>
                   )}
                 </div>
+
+                {/* ── Key metrics strip ── */}
+                <div className="flex-none px-2 py-1.5 bg-[#EEF3FB] border-b border-[#B8CCE8]">
+                  <div className="grid grid-cols-5 gap-x-1.5">
+                    <div>
+                      <div className="text-[7.5px] font-bold text-[#9C9490] leading-none mb-0.5 truncate">見積単価</div>
+                      <div className="font-mono font-black text-[10px] text-[#1E3A5F] leading-tight">
+                        {newCalc.grandTotalUnitPrice > 0 ? fmtYen(newCalc.grandTotalUnitPrice) : '—'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[7.5px] font-bold text-[#9C9490] leading-none mb-0.5 truncate">積み上げ単価</div>
+                      <div className="font-mono font-black text-[10px] text-[#18130F] leading-tight">
+                        {newStackPrice > 0 ? fmtYen(newStackPrice) : '—'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[7.5px] font-bold text-[#9C9490] leading-none mb-0.5 truncate">実態利管費率</div>
+                      <div className={`font-mono font-black text-[10px] leading-tight ${newActualSgaRate !== null ? 'text-amber-700' : 'text-[#C8C2B8]'}`}>
+                        {newActualSgaRate !== null ? `${newActualSgaRate.toFixed(1)}%` : '—'}
+                        {newActualSgaRate !== null && <span className="text-[7px] text-[#9C9490] ml-0.5">{(newEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? '内掛' : '外掛'}</span>}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[7.5px] font-bold text-[#9C9490] leading-none mb-0.5 truncate">架空利管費率</div>
+                      <div className={`font-mono font-black text-[10px] leading-tight ${newFictionalSgaRate !== null ? 'text-purple-700' : 'text-[#C8C2B8]'}`}>
+                        {newFictionalSgaRate !== null ? `${newFictionalSgaRate.toFixed(1)}%` : '—'}
+                        {newFictionalSgaRate !== null && <span className="text-[7px] text-[#9C9490] ml-0.5">{(newEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? '内掛' : '外掛'}</span>}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[7.5px] font-bold text-[#9C9490] leading-none mb-0.5 truncate">実態利益率(外)</div>
+                      <div className={`font-mono font-black text-[10px] leading-tight ${newActualMarkupRate !== null ? profitColorCls(newActualMarkupRate) : 'text-[#C8C2B8]'}`}>
+                        {newActualMarkupRate !== null ? `${newActualMarkupRate.toFixed(1)}%` : '—'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="px-3 py-2 flex-1 overflow-y-auto">
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1">
                     {/* 積み上げ単価 */}
