@@ -126,6 +126,12 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
   const [isGettingScrapNew, setIsGettingScrapNew] = useState(false);
   const [aiRetryCountdown, setAiRetryCountdown] = useState<number | null>(null);
   const [slideRate, setSlideRate] = useState<string>('');
+  const [aiModal, setAiModal] = useState<{ label: string; status: 'loading' | 'success' | 'error'; message?: string } | null>(null);
+
+  const showAiResult = (label: string, status: 'success' | 'error', message?: string) => {
+    setAiModal({ label, status, message });
+    setTimeout(() => setAiModal(null), status === 'success' ? 2500 : 4000);
+  };
 
   // ─── Handlers ────────────────────────────────────────────────────────────────
 
@@ -133,6 +139,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     const est = isNew ? newEstimate : oldEstimate;
     const setter = isNew ? onChangeNew : onChangeOld;
     const setLoading = isNew ? setIsInferringNew : setIsInferringOld;
+    setAiModal({ label: 'AI工程パラメータ推定中...', status: 'loading' });
     try {
       setLoading(true);
       const response = await apiPost('/api/infer-process-params', {
@@ -140,7 +147,10 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
         partNumber: est.partNumber,
       }, { onRetryCountdown: setAiRetryCountdown });
       const { results } = await response.json();
-      if (!results || !Array.isArray(results)) return;
+      if (!results || !Array.isArray(results)) {
+        showAiResult('AI工程パラメータ推定', 'error', '結果データが取得できませんでした');
+        return;
+      }
       const filtered = est.processes.filter(p => !p.isDirectInput && p.processName.trim());
       const newProcs = [...est.processes];
       results.forEach((res: any, i: number) => {
@@ -152,9 +162,10 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
         }
       });
       setter({ ...est, processes: newProcs });
+      showAiResult('AI工程パラメータ推定', 'success', `${filtered.length}工程を推定・設定しました`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : '通信エラー';
-      alert(`AI自動設定に失敗しました: ${msg}\n※ログインが必要な機能です。`);
+      showAiResult('AI工程パラメータ推定', 'error', `${msg}\n※ログインが必要な機能です`);
     } finally { setLoading(false); }
   };
 
@@ -166,16 +177,19 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     if (!originPrefecture || !destinationPrefecture) { alert('発送元と送付先の都道府県を選択してください。'); return; }
     const boxWeightKg = est.finishedWeightG > 0 && qtyPerBox > 0 ? (est.finishedWeightG * qtyPerBox) / 1000 : 0;
     if (boxWeightKg <= 0) { alert('完成品重量と箱入り数を先に入力してください。'); return; }
+    setAiModal({ label: 'AI送料算出中...', status: 'loading' });
     try {
       setLoading(true);
       const response = await apiPost('/api/calculate-shipping', { weightKg: boxWeightKg, qtyPerBox, originPrefecture, destinationPrefecture }, { onRetryCountdown: setAiRetryCountdown });
       const data = await response.json();
       if (data.estimatedFreightPerBox > 0) {
         setter({ ...est, logistics: { ...est.logistics, freightPerBox: Math.round(data.estimatedFreightPerBox) } });
-        if (data.basis) alert(`AI推定送料: ¥${Math.round(data.estimatedFreightPerBox).toLocaleString()}/箱\n\n根拠: ${data.basis}\n\n※推定値です。実際の送料に合わせて手動で修正してください。`);
+        showAiResult('AI送料算出', 'success', `¥${Math.round(data.estimatedFreightPerBox).toLocaleString()}/箱${data.basis ? `\n${data.basis}` : ''}\n※推定値。実際の送料で修正してください`);
+      } else {
+        showAiResult('AI送料算出', 'error', '送料が算出できませんでした');
       }
     } catch (err) {
-      alert(`送料算出に失敗しました: ${err instanceof Error ? err.message : '通信エラー'}`);
+      showAiResult('AI送料算出', 'error', err instanceof Error ? err.message : '通信エラー');
     } finally { setLoading(false); }
   };
 
@@ -185,16 +199,19 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     const setLoading = isNew ? setIsGettingScrapNew : setIsGettingScrapOld;
     const materialName = est.material.materialName || newEstimate.material.materialName;
     if (!materialName.trim()) { alert('共通諸元で材質・規格を入力してください。'); return; }
+    setAiModal({ label: 'AIスクラップ単価確認中...', status: 'loading' });
     try {
       setLoading(true);
       const response = await apiPost('/api/get-scrap-price', { materialName }, { onRetryCountdown: setAiRetryCountdown });
       const data = await response.json();
       if (data.estimatedScrapPricePerKg > 0) {
         setter({ ...est, material: { ...est.material, scrapPricePerKg: data.estimatedScrapPricePerKg } });
-        if (data.basis) alert(`AI推定スクラップ単価: ¥${data.estimatedScrapPricePerKg.toLocaleString()}/kg\n\n根拠: ${data.basis}\n\n※推定値です。`);
+        showAiResult('AIスクラップ単価', 'success', `¥${data.estimatedScrapPricePerKg.toLocaleString()}/kg${data.basis ? `\n${data.basis}` : ''}\n※推定値`);
+      } else {
+        showAiResult('AIスクラップ単価', 'error', '単価が取得できませんでした');
       }
     } catch (err) {
-      alert(`スクラップ相場確認に失敗しました: ${err instanceof Error ? err.message : '通信エラー'}`);
+      showAiResult('AIスクラップ単価', 'error', err instanceof Error ? err.message : '通信エラー');
     } finally { setLoading(false); }
   };
 
@@ -845,6 +862,52 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
   // ─── Main render ──────────────────────────────────────────────────────────────
   return (
     <div className="space-y-3 pb-16">
+
+      {/* ── AI modal overlay ── */}
+      {aiModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm" style={{ pointerEvents: 'all' }}>
+          <div className="bg-white rounded-xl shadow-2xl border border-[#D6D0C8] px-8 py-7 min-w-[280px] max-w-sm text-center">
+            {aiModal.status === 'loading' ? (
+              <>
+                <div className="flex items-center justify-center gap-3 mb-3">
+                  <div className="w-6 h-6 border-[3px] border-[#B5451B]/30 border-t-[#B5451B] rounded-full animate-spin" />
+                  <span className="font-black text-sm text-[#18130F]">{aiModal.label}</span>
+                </div>
+                {aiRetryCountdown !== null && (
+                  <p className="text-[10px] text-[#9C9490] mt-1">{aiRetryCountdown}秒後に再試行します...</p>
+                )}
+                <p className="text-[10px] text-[#9C9490] mt-2">処理中は他の操作をお待ちください</p>
+              </>
+            ) : aiModal.status === 'success' ? (
+              <>
+                <div className="flex items-center justify-center gap-2 mb-3">
+                  <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
+                    <span className="text-emerald-700 text-lg font-black">✓</span>
+                  </div>
+                  <span className="font-black text-sm text-emerald-700">{aiModal.label} 完了</span>
+                </div>
+                {aiModal.message && <p className="text-xs text-[#6B6057] whitespace-pre-line">{aiModal.message}</p>}
+              </>
+            ) : (
+              <>
+                <div className="flex items-center justify-center gap-2 mb-3">
+                  <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center">
+                    <span className="text-rose-700 text-lg font-black">✗</span>
+                  </div>
+                  <span className="font-black text-sm text-rose-700">{aiModal.label} 失敗</span>
+                </div>
+                {aiModal.message && <p className="text-xs text-[#6B6057] whitespace-pre-line">{aiModal.message}</p>}
+                <button
+                  onClick={() => setAiModal(null)}
+                  className="mt-4 px-5 py-1.5 bg-[#18130F] hover:bg-[#B5451B] text-white text-xs font-bold rounded cursor-pointer transition-colors"
+                >
+                  閉じる
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── 過去履歴 ── */}
       {historyScenarios.length > 0 && (

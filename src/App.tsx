@@ -298,7 +298,9 @@ export default function App() {
     }, 0);
     let draftProcesses = [...target.processes];
     const sgaMode = target.adjustments.sgaCalcMode || 'markup';
-    let finalSgaPercent = target.adjustments.sgaRatePercent ?? 15;
+    const SGA_MIN = 1;
+    const SGA_MAX = 15;
+    let finalSgaPercent = Math.min(SGA_MAX, Math.max(SGA_MIN, target.adjustments.sgaRatePercent ?? 15));
     const materialCost = calc.netMaterialCost;
     const directInputTotal = target.processes.reduce((sum, proc) => {
       if (!proc.processName.trim() || !proc.isDirectInput) return sum;
@@ -324,9 +326,27 @@ export default function App() {
       return sum + (processHoursList[i] * (proc.hourlyRate || 0));
     }, 0);
     if (tempPrimeCost > 0) {
-      finalSgaPercent = sgaMode === 'margin'
-        ? Math.max(0, Math.round((1 - tempPrimeCost / Y) * 10000) / 100)
-        : Math.max(0, Math.round(((Y / tempPrimeCost) - 1) * 10000) / 100);
+      const rawSga = sgaMode === 'margin'
+        ? Math.round((1 - tempPrimeCost / Y) * 10000) / 100
+        : Math.round(((Y / tempPrimeCost) - 1) * 10000) / 100;
+      if (rawSga < SGA_MIN) {
+        // 工程費が高すぎてSGAが取れない → 目標単価を引き上げて最低SGA_MINを確保
+        const requiredY = sgaMode === 'markup'
+          ? tempPrimeCost * (1 + SGA_MIN / 100)
+          : tempPrimeCost / (1 - SGA_MIN / 100);
+        const raisedPrice = Math.ceil(requiredY + (reconciledUnitPrice - Y));
+        reconciledUnitPrice = raisedPrice;
+        updatedAdjustments.targetUnitPrice = raisedPrice;
+        const newY = raisedPrice - (reconciledUnitPrice - requiredY - (reconciledUnitPrice - Y)) - (reconciledUnitPrice - Y);
+        // recalculate Y after price change
+        const adjustedY = raisedPrice - (calc.shippingCostPerUnit) - (target.adjustments.otherAdjustment || 0);
+        finalSgaPercent = sgaMode === 'markup'
+          ? Math.min(SGA_MAX, Math.max(SGA_MIN, Math.round(((adjustedY / tempPrimeCost) - 1) * 10000) / 100))
+          : Math.min(SGA_MAX, Math.max(SGA_MIN, Math.round((1 - tempPrimeCost / adjustedY) * 10000) / 100));
+        void newY;
+      } else {
+        finalSgaPercent = Math.min(SGA_MAX, Math.max(SGA_MIN, rawSga));
+      }
     }
     updatedAdjustments.sgaRatePercent = finalSgaPercent;
     if (isNew) setNewEstimate({ ...target, processes: draftProcesses, adjustments: updatedAdjustments });
@@ -484,24 +504,24 @@ export default function App() {
   const oldStackPrice = oldCalc.primeCost + oldCalc.shippingCostPerUnit;
   const newStackPrice = newCalc.primeCost + newCalc.shippingCostPerUnit;
 
-  // 実態の利管費率: 実コストベースで計算した利管費率
-  const getActualSgaRate = (sgaCost: number, actualPrimeCost: number, mode: string): number | null => {
-    if (actualPrimeCost <= 0) return null;
-    const base = mode === 'margin' ? (actualPrimeCost + sgaCost) : actualPrimeCost;
+  // 実態の利管費率: 実仕入れ原価（actualTotalCost）ベースで計算
+  const getActualSgaRate = (sgaCost: number, actualTotalCost: number, mode: string): number | null => {
+    if (actualTotalCost <= 0) return null;
+    const base = mode === 'margin' ? (actualTotalCost + sgaCost) : actualTotalCost;
     return base > 0 ? sgaCost / base * 100 : null;
   };
-  const oldActualSgaRate = getActualSgaRate(oldCalc.sgaCost, oldCalc.actualPrimeCost, oldEstimate.adjustments.sgaCalcMode || 'markup');
-  const newActualSgaRate = getActualSgaRate(newCalc.sgaCost, newCalc.actualPrimeCost, newEstimate.adjustments.sgaCalcMode || 'markup');
+  const oldActualSgaRate = getActualSgaRate(oldCalc.sgaCost, oldCalc.actualTotalCost, oldEstimate.adjustments.sgaCalcMode || 'markup');
+  const newActualSgaRate = getActualSgaRate(newCalc.sgaCost, newCalc.actualTotalCost, newEstimate.adjustments.sgaCalcMode || 'markup');
 
-  // 架空仕入れをもととした利管費率
+  // 架空仕入れをもととした利管費率（targetProfitMarginOffが設定されている場合のみ表示）
   const oldSellForCalc = oldSell > 0 ? oldSell : oldCalc.grandTotalUnitPrice;
   const newSellForCalc = newSell > 0 ? newSell : newCalc.grandTotalUnitPrice;
-  const getFictionalSgaRate = (sell: number, sp: number, mode: string): number | null => {
-    if (sp <= 0 || sell <= 0) return null;
+  const getFictionalSgaRate = (sell: number, sp: number, mode: string, hasOffset: boolean): number | null => {
+    if (!hasOffset || sp <= 0 || sell <= 0 || Math.abs(sell - sp) < 0.01) return null;
     return mode === 'margin' ? (sell - sp) / sell * 100 : (sell - sp) / sp * 100;
   };
-  const oldFictionalSgaRate = getFictionalSgaRate(oldSellForCalc, oldCalc.suggestedPurchasePriceForClient, oldEstimate.adjustments.sgaCalcMode || 'markup');
-  const newFictionalSgaRate = getFictionalSgaRate(newSellForCalc, newCalc.suggestedPurchasePriceForClient, newEstimate.adjustments.sgaCalcMode || 'markup');
+  const oldFictionalSgaRate = getFictionalSgaRate(oldSellForCalc, oldCalc.suggestedPurchasePriceForClient, oldEstimate.adjustments.sgaCalcMode || 'markup', (oldEstimate.adjustments.targetProfitMarginOff || 0) > 0);
+  const newFictionalSgaRate = getFictionalSgaRate(newSellForCalc, newCalc.suggestedPurchasePriceForClient, newEstimate.adjustments.sgaCalcMode || 'markup', (newEstimate.adjustments.targetProfitMarginOff || 0) > 0);
 
   // 実態の利益率（外掛け）
   const oldActualMarkupRate = oldCalc.actualTotalCost > 0 && oldSellForCalc > 0
@@ -970,37 +990,37 @@ export default function App() {
                 </div>
 
                 {/* ── Key metrics strip ── */}
-                <div className="flex-none px-2 py-1.5 bg-[#FEF3EE] border-b border-[#E8C8BC]">
-                  <div className="grid grid-cols-5 gap-x-1.5">
-                    <div>
-                      <div className="text-[7.5px] font-bold text-[#9C9490] leading-none mb-0.5 truncate">見積単価</div>
-                      <div className="font-mono font-black text-[10px] text-[#B5451B] leading-tight">
-                        {oldCalc.grandTotalUnitPrice > 0 ? fmtYen(oldCalc.grandTotalUnitPrice) : '—'}
+                <div className="flex-none px-3 py-2 bg-[#FEF3EE] border-b-2 border-[#E8C8BC]">
+                  <div className="grid grid-cols-5 gap-x-2">
+                    <div className="border-r border-[#E8C8BC] pr-2">
+                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">見積単価(売値)</div>
+                      <div className="font-mono font-black text-sm text-[#B5451B] leading-tight">
+                        {oldSellForCalc > 0 ? fmtYen(oldSellForCalc) : '—'}
                       </div>
                     </div>
-                    <div>
-                      <div className="text-[7.5px] font-bold text-[#9C9490] leading-none mb-0.5 truncate">積み上げ単価</div>
-                      <div className="font-mono font-black text-[10px] text-[#18130F] leading-tight">
+                    <div className="border-r border-[#E8C8BC] pr-2">
+                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">積み上げ単価</div>
+                      <div className="font-mono font-black text-sm text-[#18130F] leading-tight">
                         {oldStackPrice > 0 ? fmtYen(oldStackPrice) : '—'}
                       </div>
                     </div>
-                    <div>
-                      <div className="text-[7.5px] font-bold text-[#9C9490] leading-none mb-0.5 truncate">実態利管費率</div>
-                      <div className={`font-mono font-black text-[10px] leading-tight ${oldActualSgaRate !== null ? 'text-amber-700' : 'text-[#C8C2B8]'}`}>
+                    <div className="border-r border-[#E8C8BC] pr-2">
+                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">実態利管費率</div>
+                      <div className={`font-mono font-black text-sm leading-tight ${oldActualSgaRate !== null ? 'text-amber-700' : 'text-[#C8C2B8]'}`}>
                         {oldActualSgaRate !== null ? `${oldActualSgaRate.toFixed(1)}%` : '—'}
-                        {oldActualSgaRate !== null && <span className="text-[7px] text-[#9C9490] ml-0.5">{(oldEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? '内掛' : '外掛'}</span>}
                       </div>
+                      {oldActualSgaRate !== null && <div className="text-[8px] text-[#9C9490] mt-0.5">{(oldEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? '内掛け' : '外掛け'}</div>}
                     </div>
-                    <div>
-                      <div className="text-[7.5px] font-bold text-[#9C9490] leading-none mb-0.5 truncate">架空利管費率</div>
-                      <div className={`font-mono font-black text-[10px] leading-tight ${oldFictionalSgaRate !== null ? 'text-purple-700' : 'text-[#C8C2B8]'}`}>
+                    <div className="border-r border-[#E8C8BC] pr-2">
+                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">架空利管費率</div>
+                      <div className={`font-mono font-black text-sm leading-tight ${oldFictionalSgaRate !== null ? 'text-purple-700' : 'text-[#C8C2B8]'}`}>
                         {oldFictionalSgaRate !== null ? `${oldFictionalSgaRate.toFixed(1)}%` : '—'}
-                        {oldFictionalSgaRate !== null && <span className="text-[7px] text-[#9C9490] ml-0.5">{(oldEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? '内掛' : '外掛'}</span>}
                       </div>
+                      {oldFictionalSgaRate !== null && <div className="text-[8px] text-[#9C9490] mt-0.5">{(oldEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? '内掛け' : '外掛け'}</div>}
                     </div>
                     <div>
-                      <div className="text-[7.5px] font-bold text-[#9C9490] leading-none mb-0.5 truncate">実態利益率(外)</div>
-                      <div className={`font-mono font-black text-[10px] leading-tight ${oldActualMarkupRate !== null ? profitColorCls(oldActualMarkupRate) : 'text-[#C8C2B8]'}`}>
+                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">実態利益率(外掛)</div>
+                      <div className={`font-mono font-black text-sm leading-tight ${oldActualMarkupRate !== null ? profitColorCls(oldActualMarkupRate) : 'text-[#C8C2B8]'}`}>
                         {oldActualMarkupRate !== null ? `${oldActualMarkupRate.toFixed(1)}%` : '—'}
                       </div>
                     </div>
@@ -1009,15 +1029,8 @@ export default function App() {
 
                 <div className="px-3 py-2 flex-1 overflow-y-auto">
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                    {/* 積み上げ単価 */}
-                    <div>
-                      <div className="text-[10px] text-[#9C9490] font-bold leading-none mb-0.5">積み上げ単価</div>
-                      <div className="font-mono font-black text-sm text-[#18130F]">
-                        {oldCalc.grandTotalUnitPrice > 0 ? fmtYen(oldCalc.grandTotalUnitPrice) : '—'}
-                      </div>
-                    </div>
                     {/* 現行売値㉒ */}
-                    <div>
+                    <div className="col-span-2">
                       <div className="text-[10px] text-[#9C9490] font-bold leading-none mb-0.5">㉒ 現行売値</div>
                       <div className={`font-mono font-black text-base ${oldSell > 0 ? 'text-[#B5451B]' : 'text-[#C8C2B8]'}`}>
                         {oldSell > 0 ? fmtYen(oldSell) : '未入力'}
@@ -1218,37 +1231,37 @@ export default function App() {
                 </div>
 
                 {/* ── Key metrics strip ── */}
-                <div className="flex-none px-2 py-1.5 bg-[#EEF3FB] border-b border-[#B8CCE8]">
-                  <div className="grid grid-cols-5 gap-x-1.5">
-                    <div>
-                      <div className="text-[7.5px] font-bold text-[#9C9490] leading-none mb-0.5 truncate">見積単価</div>
-                      <div className="font-mono font-black text-[10px] text-[#1E3A5F] leading-tight">
-                        {newCalc.grandTotalUnitPrice > 0 ? fmtYen(newCalc.grandTotalUnitPrice) : '—'}
+                <div className="flex-none px-3 py-2 bg-[#EEF3FB] border-b-2 border-[#B8CCE8]">
+                  <div className="grid grid-cols-5 gap-x-2">
+                    <div className="border-r border-[#B8CCE8] pr-2">
+                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">見積単価(売値)</div>
+                      <div className="font-mono font-black text-sm text-[#1E3A5F] leading-tight">
+                        {newSellForCalc > 0 ? fmtYen(newSellForCalc) : '—'}
                       </div>
                     </div>
-                    <div>
-                      <div className="text-[7.5px] font-bold text-[#9C9490] leading-none mb-0.5 truncate">積み上げ単価</div>
-                      <div className="font-mono font-black text-[10px] text-[#18130F] leading-tight">
+                    <div className="border-r border-[#B8CCE8] pr-2">
+                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">積み上げ単価</div>
+                      <div className="font-mono font-black text-sm text-[#18130F] leading-tight">
                         {newStackPrice > 0 ? fmtYen(newStackPrice) : '—'}
                       </div>
                     </div>
-                    <div>
-                      <div className="text-[7.5px] font-bold text-[#9C9490] leading-none mb-0.5 truncate">実態利管費率</div>
-                      <div className={`font-mono font-black text-[10px] leading-tight ${newActualSgaRate !== null ? 'text-amber-700' : 'text-[#C8C2B8]'}`}>
+                    <div className="border-r border-[#B8CCE8] pr-2">
+                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">実態利管費率</div>
+                      <div className={`font-mono font-black text-sm leading-tight ${newActualSgaRate !== null ? 'text-amber-700' : 'text-[#C8C2B8]'}`}>
                         {newActualSgaRate !== null ? `${newActualSgaRate.toFixed(1)}%` : '—'}
-                        {newActualSgaRate !== null && <span className="text-[7px] text-[#9C9490] ml-0.5">{(newEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? '内掛' : '外掛'}</span>}
                       </div>
+                      {newActualSgaRate !== null && <div className="text-[8px] text-[#9C9490] mt-0.5">{(newEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? '内掛け' : '外掛け'}</div>}
                     </div>
-                    <div>
-                      <div className="text-[7.5px] font-bold text-[#9C9490] leading-none mb-0.5 truncate">架空利管費率</div>
-                      <div className={`font-mono font-black text-[10px] leading-tight ${newFictionalSgaRate !== null ? 'text-purple-700' : 'text-[#C8C2B8]'}`}>
+                    <div className="border-r border-[#B8CCE8] pr-2">
+                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">架空利管費率</div>
+                      <div className={`font-mono font-black text-sm leading-tight ${newFictionalSgaRate !== null ? 'text-purple-700' : 'text-[#C8C2B8]'}`}>
                         {newFictionalSgaRate !== null ? `${newFictionalSgaRate.toFixed(1)}%` : '—'}
-                        {newFictionalSgaRate !== null && <span className="text-[7px] text-[#9C9490] ml-0.5">{(newEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? '内掛' : '外掛'}</span>}
                       </div>
+                      {newFictionalSgaRate !== null && <div className="text-[8px] text-[#9C9490] mt-0.5">{(newEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? '内掛け' : '外掛け'}</div>}
                     </div>
                     <div>
-                      <div className="text-[7.5px] font-bold text-[#9C9490] leading-none mb-0.5 truncate">実態利益率(外)</div>
-                      <div className={`font-mono font-black text-[10px] leading-tight ${newActualMarkupRate !== null ? profitColorCls(newActualMarkupRate) : 'text-[#C8C2B8]'}`}>
+                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">実態利益率(外掛)</div>
+                      <div className={`font-mono font-black text-sm leading-tight ${newActualMarkupRate !== null ? profitColorCls(newActualMarkupRate) : 'text-[#C8C2B8]'}`}>
                         {newActualMarkupRate !== null ? `${newActualMarkupRate.toFixed(1)}%` : '—'}
                       </div>
                     </div>
@@ -1257,15 +1270,8 @@ export default function App() {
 
                 <div className="px-3 py-2 flex-1 overflow-y-auto">
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                    {/* 積み上げ単価 */}
-                    <div>
-                      <div className="text-[10px] text-[#9C9490] font-bold leading-none mb-0.5">積み上げ単価</div>
-                      <div className="font-mono font-black text-sm text-[#18130F]">
-                        {newCalc.grandTotalUnitPrice > 0 ? fmtYen(newCalc.grandTotalUnitPrice) : '—'}
-                      </div>
-                    </div>
                     {/* 目標売値㉘ */}
-                    <div>
+                    <div className="col-span-2">
                       <div className="text-[10px] text-[#9C9490] font-bold leading-none mb-0.5">㉘ 目標売値</div>
                       <div className={`font-mono font-black text-base ${newSell > 0 ? 'text-[#1E3A5F]' : 'text-[#C8C2B8]'}`}>
                         {newSell > 0 ? fmtYen(newSell) : '未入力'}
