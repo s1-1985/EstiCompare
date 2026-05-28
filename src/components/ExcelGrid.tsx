@@ -666,6 +666,11 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                         ) : (
                           <div className="flex items-center justify-center h-7 text-[9px] text-[#D6D0C8] bg-[#F7F6F2] rounded border border-[#EEEBE6]">—</div>
                         )}
+                        {mode === 'standard' && (proc.totalHours || 0) > 0 && (
+                          <div className="text-[8px] mt-0.5 font-mono text-[#9C9490]">
+                            {Math.round((proc.totalHours || 0) * 60)}分
+                          </div>
+                        )}
                         {isNew && oldProc && mode === 'standard' && (
                           <div className={`text-[8px] mt-0.5 font-mono ${hoursMismatch ? 'text-rose-600 font-black' : 'text-[#9C9490]'}`}>
                             旧:{oldProc.totalHours || '—'}{hoursMismatch && ' ⚠ 不一致'}
@@ -683,6 +688,11 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                           </div>
                         ) : (
                           <div className="flex items-center justify-center h-7 text-[9px] text-[#D6D0C8] bg-[#F7F6F2] rounded border border-[#EEEBE6]">—</div>
+                        )}
+                        {mode === 'standard' && (proc.hourlyRate || 0) > 0 && (
+                          <div className="text-[8px] mt-0.5 font-mono text-[#B5451B]">
+                            {((proc.hourlyRate || 0) / 60).toFixed(1)}円/分
+                          </div>
                         )}
                         {isNew && oldProc && mode === 'standard' && (oldProc.hourlyRate || 0) > 0 && (
                           <div className="text-[8px] mt-0.5 font-mono flex items-center gap-1">
@@ -706,6 +716,11 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                           </div>
                         ) : (
                           <div className="flex items-center justify-center h-7 text-[9px] text-[#D6D0C8] bg-[#F7F6F2] rounded border border-[#EEEBE6]">—</div>
+                        )}
+                        {mode === 'standard' && (proc.actualHourlyRate || proc.hourlyRate || 0) > 0 && (
+                          <div className="text-[8px] mt-0.5 font-mono text-[#1E3A5F]">
+                            {(((proc.actualHourlyRate ?? proc.hourlyRate) || 0) / 60).toFixed(1)}円/分
+                          </div>
                         )}
                       </td>
                       <td className="py-1 px-1">
