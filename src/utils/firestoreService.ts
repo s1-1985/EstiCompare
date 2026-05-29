@@ -67,6 +67,21 @@ export async function saveUserScenario(
 }
 
 /**
+ * Saves AI analysis text to an existing scenario document.
+ */
+export async function saveScenarioAnalysis(scenarioId: string, aiAnalysis: string) {
+  const path = `scenarios/${scenarioId}`;
+  try {
+    await updateDoc(doc(db, 'scenarios', scenarioId), {
+      aiAnalysis,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+/**
  * Deletes a scenario document from Firestore.
  */
 export async function deleteUserScenario(scenarioId: string) {
@@ -106,6 +121,7 @@ export function subscribeScenarios(
           newEstimate: data.newEstimate,
           oldEstimate: data.oldEstimate,
           comparisonResult: data.comparisonResult || null,
+          aiAnalysis: data.aiAnalysis || null,
           createdAt: data.createdAt,
           updatedAt: data.updatedAt,
         });
