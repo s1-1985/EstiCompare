@@ -1,5 +1,4 @@
 import { useRef, Fragment } from 'react';
-import * as XLSX from 'xlsx';
 import { Printer, Download } from 'lucide-react';
 import { DetailedEstimate } from '../types';
 import { calculateEstimate, CalculatedSection, rateFromCostSell } from '../utils/calculations';
@@ -300,7 +299,8 @@ export function PrintSheet({ oldEstimate, newEstimate }: PrintSheetProps) {
     window.print();
   };
 
-  const handleExcelDownload = () => {
+  const handleExcelDownload = async () => {
+    const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
 
     function estimateToRows(label: string, est: DetailedEstimate, calc: CalculatedSection): (string | number)[][] {
@@ -311,7 +311,7 @@ export function PrintSheet({ oldEstimate, newEstimate }: PrintSheetProps) {
       rows.push([]);
 
       rows.push(['■ 材料']);
-      rows.push(['材質・寸法', '投入重量(g)', '建値(円/kg)', '実際建値(円/kg)', 'スクラップ重量(g)', 'スクラップ単価(円/kg)', 'スクラップ控除(円)', '材料費/個(円)']);
+      rows.push(['材質・寸法', '投入重量(g)', '建値(円/kg)', '実際建値(円/kg)', 'スクラップ重量(g)', 'スクラップ単価(円/kg)', 'スクラップ控除(円)', '材料費/個(円)', '変動理由']);
       rows.push([
         est.material.materialName,
         est.material.inputWeightG,
@@ -321,11 +321,12 @@ export function PrintSheet({ oldEstimate, newEstimate }: PrintSheetProps) {
         est.material.scrapPricePerKg,
         -calc.scrapValue,
         calc.netMaterialCost,
+        est.material.changeReason || '',
       ]);
       rows.push([]);
 
       rows.push(['■ 加工工程']);
-      rows.push(['No', '工程名', '作業内容', '計算方式', '賃率(円/h)', '出来高(個/h)', '段取時間(h)', 'kg単価(円/kg)', '一式金額(円)', '直接加工費(円)', '加工費/個(円)']);
+      rows.push(['No', '工程名', '作業内容', '計算方式', '賃率(円/h)', '出来高(個/h)', '段取時間(h)', 'kg単価(円/kg)', '一式金額(円)', '直接加工費(円)', '加工費/個(円)', '変動理由']);
       est.processes.filter(p => p.processName.trim()).forEach((proc) => {
         const mode = proc.calcMode || (proc.isDirectInput ? 'direct' : proc.kgPrice > 0 ? 'kg' : 'standard');
         rows.push([
@@ -340,6 +341,7 @@ export function PrintSheet({ oldEstimate, newEstimate }: PrintSheetProps) {
           mode === 'lump' ? (proc.lumpSumPrice ?? '') : '',
           mode === 'direct' ? proc.directProcessingCost : '',
           calc.processCosts[proc.index - 1] ?? 0,
+          proc.changeReason || '',
         ]);
       });
       rows.push([]);
@@ -383,18 +385,18 @@ export function PrintSheet({ oldEstimate, newEstimate }: PrintSheetProps) {
     wsCombined['!cols'] = [
       { wch: 20 }, { wch: 18 }, { wch: 20 }, { wch: 14 },
       { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 12 },
-      { wch: 12 }, { wch: 14 }, { wch: 12 },
+      { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 30 },
     ];
     XLSX.utils.book_append_sheet(wb, wsCombined, '新旧見積書');
 
     // Sheet: old only
     const wsOld = XLSX.utils.aoa_to_sheet(estimateToRows('旧単価', oldEstimate, oldCalc));
-    wsOld['!cols'] = [{ wch: 20 }, { wch: 16 }, { wch: 20 }, { wch: 14 }, { wch: 12 }];
+    wsOld['!cols'] = [{ wch: 20 }, { wch: 16 }, { wch: 20 }, { wch: 14 }, { wch: 12 }, { wch: 30 }];
     XLSX.utils.book_append_sheet(wb, wsOld, '旧単価明細');
 
     // Sheet: new only
     const wsNew = XLSX.utils.aoa_to_sheet(estimateToRows('新単価', newEstimate, newCalc));
-    wsNew['!cols'] = [{ wch: 20 }, { wch: 16 }, { wch: 20 }, { wch: 14 }, { wch: 12 }];
+    wsNew['!cols'] = [{ wch: 20 }, { wch: 16 }, { wch: 20 }, { wch: 14 }, { wch: 12 }, { wch: 30 }];
     XLSX.utils.book_append_sheet(wb, wsNew, '新単価明細');
 
     // Sheet: comparison summary

@@ -57,6 +57,7 @@ export default function App() {
     result?: any;
     error?: string;
   } | null>(null);
+  const [saveToast, setSaveToast] = useState<string | null>(null);
   const [headerHeightPct, setHeaderHeightPct] = useState(40);
   const [sidebarWidthPx, setSidebarWidthPx] = useState(230);
   const isDraggingRef = useRef(false);
@@ -173,7 +174,8 @@ export default function App() {
       if (savedId) {
         setActiveScenarioId(savedId);
         setNewScenarioName(targetName);
-        alert(`見積シナリオ「${targetName}」を正常に保存しました！`);
+        setSaveToast(`「${targetName}」を保存しました`);
+        setTimeout(() => setSaveToast(null), 3000);
       }
     } catch (error: any) {
       console.error(error);
@@ -406,7 +408,8 @@ export default function App() {
     }
     setAiReconcileModal({ isNew, status: 'loading' });
     try {
-      const data = await apiPost('/api/ai-auto-reconcile', { estimate: est, targetSellPrice, isNew });
+      const response = await apiPost('/api/ai-auto-reconcile', { estimate: est, targetSellPrice, isNew });
+      const data = await response.json();
       setAiReconcileModal({ isNew, status: 'result', result: data });
     } catch (e: any) {
       setAiReconcileModal({ isNew, status: 'error', error: e?.message || 'AI補正に失敗しました。' });
@@ -1716,6 +1719,14 @@ export default function App() {
 
         </div>
       </div>
+
+      {/* SAVE TOAST */}
+      {saveToast && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[9999] bg-[#18130F] text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 animate-fadeIn">
+          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+          {saveToast}
+        </div>
+      )}
 
       {/* SAVE MODAL */}
       {saveModal && (
