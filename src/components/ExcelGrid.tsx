@@ -1,23 +1,5 @@
 import React, { useState } from 'react';
-
-// ─── Tooltip component ────────────────────────────────────────────────────────
-const Tooltip = ({ text }: { text: string }) => {
-  const [show, setShow] = React.useState(false);
-  return (
-    <span className="relative inline-block">
-      <span
-        className="cursor-help text-[#9C9490] text-[9px] border border-[#9C9490] rounded-full w-3 h-3 inline-flex items-center justify-center leading-none ml-0.5"
-        onMouseEnter={() => setShow(true)}
-        onMouseLeave={() => setShow(false)}
-      >?</span>
-      {show && (
-        <span className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1 w-56 bg-[#18130F] text-white text-[10px] rounded p-2 shadow-lg whitespace-pre-wrap leading-relaxed pointer-events-none">
-          {text}
-        </span>
-      )}
-    </span>
-  );
-};
+import { Tooltip } from './Tooltip';
 import { DetailedEstimate, ProcessRow, ProcessCalcMode, Scenario } from '../types';
 import { calculateEstimate } from '../utils/calculations';
 import { apiPost } from '../utils/apiClient';

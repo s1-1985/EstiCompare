@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import React from 'react';
 import { DetailedEstimate, ComparisonResult, Scenario } from './types';
 import { createEmptyEstimate } from './data/samples';
 import { ExcelGrid } from './components/ExcelGrid';
 import { CompareResults } from './components/CompareResults';
 import { ScenarioLibrary } from './components/ScenarioLibrary';
 import { PrintSheet } from './components/PrintSheet';
+import { Tooltip } from './components/Tooltip';
 import {
   FileSpreadsheet,
   RotateCcw,
@@ -27,35 +27,6 @@ import { apiPost } from './utils/apiClient';
 import { calculateEstimate, sellFromCost, costFromSell, rateFromCostSell, convertRate } from './utils/calculations';
 
 type ActiveView = 'workspace' | 'library';
-
-// ─── Tooltip component ────────────────────────────────────────────────────────
-const Tooltip = ({ text }: { text: string }) => {
-  const [show, setShow] = React.useState(false);
-  const ref = React.useRef<HTMLSpanElement>(null);
-  React.useEffect(() => {
-    if (!show) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setShow(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [show]);
-  return (
-    <span ref={ref} className="relative inline-block">
-      <span
-        className="cursor-help text-[#9C9490] text-[9px] border border-[#9C9490] rounded-full w-3 h-3 inline-flex items-center justify-center leading-none ml-0.5"
-        onMouseEnter={() => setShow(true)}
-        onMouseLeave={() => setShow(false)}
-        onClick={(e) => { e.stopPropagation(); setShow(v => !v); }}
-      >?</span>
-      {show && (
-        <span className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1 w-56 bg-[#18130F] text-white text-[10px] rounded p-2 shadow-lg whitespace-pre-wrap leading-relaxed pointer-events-none">
-          {text}
-        </span>
-      )}
-    </span>
-  );
-};
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
@@ -1243,7 +1214,7 @@ export default function App() {
                 <div className="flex-none px-3 py-2 bg-[#FEF3EE] border-b-2 border-[#E8C8BC]">
                   <div className="grid grid-cols-5 gap-x-2">
                     <div className="border-r border-[#E8C8BC] pr-2">
-                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">仕入実費<Tooltip text="実際の仕入れ原価。actualPurchasePrice入力時はその値を使用。未入力時は材料費＋加工費＋実際の送料を積み上げた値。" /></div>
+                      <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#9C9490] leading-none truncate">仕入実費</span><Tooltip text="実際の仕入れ原価。actualPurchasePrice入力時はその値を使用。未入力時は材料費＋加工費＋実際の送料を積み上げた値。" /></div>
                       <div className="font-mono font-black text-sm text-[#6B6057] leading-tight">
                         {oldEstimate.adjustments.actualPurchasePrice > 0 ? fmtYen(oldEstimate.adjustments.actualPurchasePrice) : '—'}
                       </div>
@@ -1255,20 +1226,20 @@ export default function App() {
                       </div>
                     </div>
                     <div className="border-r border-[#E8C8BC] pr-2">
-                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">積み上げ単価<Tooltip text="材料費＋加工費（客提示賃率）＋利管費＋送料＋その他調整を積み上げた客提示用の見積単価。" /></div>
+                      <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#9C9490] leading-none truncate">積み上げ単価</span><Tooltip text="材料費＋加工費（客提示賃率）＋利管費＋送料＋その他調整を積み上げた客提示用の見積単価。" /></div>
                       <div className="font-mono font-black text-sm text-[#18130F] leading-tight">
                         {oldCalc.grandTotalUnitPrice > 0 ? fmtYen(oldCalc.grandTotalUnitPrice) : '—'}
                       </div>
                     </div>
                     <div className="border-r border-[#E8C8BC] pr-2">
-                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">架空利管費率<Tooltip text="架空primeCost（原価）と売値−送料（売価）から算出した利管費率。選択中の方式（外掛け=率÷売価／内掛け=率÷原価）で表示。" /></div>
+                      <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#9C9490] leading-none truncate">架空利管費率</span><Tooltip text="架空primeCost（原価）と売値−送料（売価）から算出した利管費率。選択中の方式（外掛け=率÷売価／内掛け=率÷原価）で表示。" /></div>
                       <div className={`font-mono font-black text-sm leading-tight ${oldActualSgaRate !== null ? 'text-amber-700' : 'text-[#C8C2B8]'}`}>
                         {oldActualSgaRate !== null ? `${oldActualSgaRate.toFixed(2)}%` : '—'}
                       </div>
                       {oldActualSgaRate !== null && <div className="text-[8px] text-[#9C9490] mt-0.5">{oldSgaMode === 'markup' ? '外掛け' : '内掛け'}</div>}
                     </div>
                     <div>
-                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">実態利益率<Tooltip text="実際の仕入原価に対して何%の利益を乗せているか（内掛け＝原価基準）。(売値 − 仕入実費) ÷ 仕入実費 × 100" /></div>
+                      <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#9C9490] leading-none truncate">実態利益率</span><Tooltip text="実際の仕入原価に対して何%の利益を乗せているか（内掛け＝原価基準）。(売値 − 仕入実費) ÷ 仕入実費 × 100" /></div>
                       <div className={`font-mono font-black text-sm leading-tight ${oldActualMarkupRate !== null ? profitColorCls(oldActualMarkupRate) : 'text-[#C8C2B8]'}`}>
                         {oldActualMarkupRate !== null ? `${oldActualMarkupRate.toFixed(2)}%` : '—'}
                       </div>
@@ -1456,7 +1427,7 @@ export default function App() {
                 <div className="flex-none px-3 py-2 bg-[#EEF3FB] border-b-2 border-[#B8CCE8]">
                   <div className="grid grid-cols-5 gap-x-2">
                     <div className="border-r border-[#B8CCE8] pr-2">
-                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">仕入実費<Tooltip text="実際の仕入れ原価。actualPurchasePrice入力時はその値を使用。未入力時は材料費＋加工費＋実際の送料を積み上げた値。" /></div>
+                      <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#9C9490] leading-none truncate">仕入実費</span><Tooltip text="実際の仕入れ原価。actualPurchasePrice入力時はその値を使用。未入力時は材料費＋加工費＋実際の送料を積み上げた値。" /></div>
                       <div className="font-mono font-black text-sm text-[#6B6057] leading-tight">
                         {newEstimate.adjustments.actualPurchasePrice > 0 ? fmtYen(newEstimate.adjustments.actualPurchasePrice) : '—'}
                       </div>
@@ -1468,20 +1439,20 @@ export default function App() {
                       </div>
                     </div>
                     <div className="border-r border-[#B8CCE8] pr-2">
-                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">積み上げ単価<Tooltip text="材料費＋加工費（客提示賃率）＋利管費＋送料＋その他調整を積み上げた客提示用の見積単価。" /></div>
+                      <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#9C9490] leading-none truncate">積み上げ単価</span><Tooltip text="材料費＋加工費（客提示賃率）＋利管費＋送料＋その他調整を積み上げた客提示用の見積単価。" /></div>
                       <div className="font-mono font-black text-sm text-[#18130F] leading-tight">
                         {newCalc.grandTotalUnitPrice > 0 ? fmtYen(newCalc.grandTotalUnitPrice) : '—'}
                       </div>
                     </div>
                     <div className="border-r border-[#B8CCE8] pr-2">
-                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">架空利管費率<Tooltip text="架空primeCost（原価）と売値−送料（売価）から算出した利管費率。選択中の方式（外掛け=率÷売価／内掛け=率÷原価）で表示。" /></div>
+                      <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#9C9490] leading-none truncate">架空利管費率</span><Tooltip text="架空primeCost（原価）と売値−送料（売価）から算出した利管費率。選択中の方式（外掛け=率÷売価／内掛け=率÷原価）で表示。" /></div>
                       <div className={`font-mono font-black text-sm leading-tight ${newActualSgaRate !== null ? 'text-amber-700' : 'text-[#C8C2B8]'}`}>
                         {newActualSgaRate !== null ? `${newActualSgaRate.toFixed(2)}%` : '—'}
                       </div>
                       {newActualSgaRate !== null && <div className="text-[8px] text-[#9C9490] mt-0.5">{newSgaMode === 'markup' ? '外掛け' : '内掛け'}</div>}
                     </div>
                     <div>
-                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">実態利益率<Tooltip text="実際の仕入原価に対して何%の利益を乗せているか（内掛け＝原価基準）。(売値 − 仕入実費) ÷ 仕入実費 × 100" /></div>
+                      <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#9C9490] leading-none truncate">実態利益率</span><Tooltip text="実際の仕入原価に対して何%の利益を乗せているか（内掛け＝原価基準）。(売値 − 仕入実費) ÷ 仕入実費 × 100" /></div>
                       <div className={`font-mono font-black text-sm leading-tight ${newActualMarkupRate !== null ? profitColorCls(newActualMarkupRate) : 'text-[#C8C2B8]'}`}>
                         {newActualMarkupRate !== null ? `${newActualMarkupRate.toFixed(2)}%` : '—'}
                       </div>
