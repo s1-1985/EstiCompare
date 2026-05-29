@@ -18,6 +18,7 @@ import {
   Zap,
   Settings2,
   CheckCircle2,
+  AlertTriangle,
 } from 'lucide-react';
 import { auth, loginWithGoogle, logout } from './firebase';
 import { subscribeScenarios, saveUserScenario } from './utils/firestoreService';
