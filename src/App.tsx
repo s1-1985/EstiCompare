@@ -21,6 +21,7 @@ import {
   CheckCircle2,
   AlertTriangle,
 } from 'lucide-react';
+import type { User } from 'firebase/auth';
 import { auth, loginWithGoogle, logout } from './firebase';
 import { subscribeScenarios, saveUserScenario } from './utils/firestoreService';
 import { apiPost } from './utils/apiClient';
@@ -29,7 +30,7 @@ import { calculateEstimate, sellFromCost, costFromSell, rateFromCostSell, conver
 type ActiveView = 'workspace' | 'library';
 
 export default function App() {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [customScenarios, setCustomScenarios] = useState<Scenario[]>([]);
   const [newScenarioName, setNewScenarioName] = useState('');
@@ -100,6 +101,9 @@ export default function App() {
       }
     };
     const onMouseUp = () => {
+      if (isDraggingRef.current || isSidebarDragging.current) {
+        document.body.style.userSelect = '';
+      }
       isDraggingRef.current = false;
       isSidebarDragging.current = false;
     };
@@ -370,6 +374,7 @@ export default function App() {
       if (mode === 'lump') return sum + (lotSize > 0 ? (proc.lumpSumPrice || 0) / lotSize : 0);
       return sum + (processHoursList[i] * (proc.hourlyRate || 0));
     }, 0);
+    let clampedOutOfRange = false; // 賃率丸めの残差をSGAで吸収しきれず辻褄が残るケース
     if (tempPrimeCost > 0) {
       const rawSga = Math.round(rateFromCostSell(tempPrimeCost, Y, sgaMode) * 100) / 100;
       if (rawSga < SGA_MIN) {
@@ -382,9 +387,14 @@ export default function App() {
           const adjustedY = raisedPrice - (calc.shippingCostPerUnit) - (target.adjustments.otherAdjustment || 0);
           finalSgaPercent = Math.min(SGA_MAX, Math.max(SGA_MIN, Math.round(rateFromCostSell(tempPrimeCost, adjustedY, sgaMode) * 100) / 100));
         } else {
-          // 旧単価 or 新単価ロック: 目標単価固定、SGAをSGA_MINに設定
+          // 旧単価 or 新単価ロック: 目標単価固定、SGAをSGA_MINに設定（辻褄は残る）
           finalSgaPercent = SGA_MIN;
+          clampedOutOfRange = true;
         }
+      } else if (rawSga > SGA_MAX) {
+        // SGAが健全上限を超過 → SGA_MAXにクランプ（辻褄は残る）
+        finalSgaPercent = SGA_MAX;
+        clampedOutOfRange = true;
       } else {
         finalSgaPercent = Math.min(SGA_MAX, Math.max(SGA_MIN, rawSga));
       }
@@ -392,6 +402,24 @@ export default function App() {
     updatedAdjustments.sgaRatePercent = finalSgaPercent;
     if (isNew) setNewEstimate({ ...target, processes: draftProcesses, adjustments: updatedAdjustments });
     else setOldEstimate({ ...target, processes: draftProcesses, adjustments: updatedAdjustments });
+
+    // 辻褄が合わない（auditVariance≠0が残る）場合、AGENTS.md §3に従い前提見直しを促す
+    if (clampedOutOfRange) {
+      const finalPrimeCost = tempPrimeCost;
+      const finalSgaCost = sgaMode === 'markup'
+        ? (finalSgaPercent < 100 ? finalPrimeCost * (finalSgaPercent / 100) / (1 - finalSgaPercent / 100) : 0)
+        : finalPrimeCost * (finalSgaPercent / 100);
+      const finalGrand = finalPrimeCost + finalSgaCost + calc.shippingCostPerUnit + (target.adjustments.otherAdjustment || 0);
+      const residual = finalGrand - reconciledUnitPrice;
+      if (Math.abs(residual) >= 1) {
+        alert(
+          `【辻褄を合わせきれませんでした】\n` +
+          `利管費率を健全範囲(${SGA_MIN}〜${SGA_MAX}%)に収めると、積み上げ単価が目標単価から ${residual > 0 ? '+' : ''}${residual.toFixed(2)}円 ずれます。\n\n` +
+          `これは賃率の調整だけでは辻褄が合わないサインです。AGENTS.mdの原則に従い、` +
+          `出来高(個/h)や段取時間(h)など生産前提の見直し（新旧同時）を検討してください。`
+        );
+      }
+    }
   };
 
   // ─── AI自動補正 ────────────────────────────────────────────────────────────────
@@ -420,15 +448,22 @@ export default function App() {
     if (!aiReconcileModal?.result) return;
     const { isNew, result } = aiReconcileModal;
     const est = isNew ? newEstimate : oldEstimate;
-    const updatedProcesses = est.processes.map((proc, i) => {
-      const adj = result.processAdjustments?.find((a: any) => a.index === i);
-      if (!adj) return proc;
+    const adjustments: any[] = Array.isArray(result.processAdjustments) ? result.processAdjustments : [];
+    const updatedProcesses = est.processes.map((proc) => {
+      // 賃率調整は standard モードの工程のみ（kg/一式/直接入力は hourlyRate を使わない）。
+      const mode = proc.calcMode || (proc.isDirectInput ? 'direct' : proc.kgPrice > 0 ? 'kg' : 'standard');
+      if (mode !== 'standard') return proc;
+      // AI には 1始まりの proc.index を含むデータを渡しているため、同じ 1始まり index で照合する。
+      const adj = adjustments.find((a) => a?.index === proc.index);
+      if (!adj || typeof adj.suggestedHourlyRate !== 'number' || adj.suggestedHourlyRate <= 0) return proc;
       return { ...proc, hourlyRate: Math.round(adj.suggestedHourlyRate / 100) * 100 };
     });
+    const suggestedSga = typeof result.suggestedSgaPercent === 'number'
+      ? result.suggestedSgaPercent : est.adjustments.sgaRatePercent;
     const updatedEst = {
       ...est,
       processes: updatedProcesses,
-      adjustments: { ...est.adjustments, sgaRatePercent: result.suggestedSgaPercent },
+      adjustments: { ...est.adjustments, sgaRatePercent: suggestedSga },
     };
     if (isNew) setNewEstimate(updatedEst);
     else setOldEstimate(updatedEst);
@@ -467,7 +502,12 @@ export default function App() {
 
   // 目標利益率（外掛け）→ auto-derive ㉘ sell price only (internal)
   const handleNew29Change = (value: string) => {
-    const markup = parseFloat(value);
+    let markup = parseFloat(value);
+    // 外掛けは率<100%でのみ売価が定義される（100%以上は原価÷0以下で発散）。
+    if (!isNaN(markup) && markup >= 100) {
+      markup = 99.99;
+      alert('目標利益率（外掛け）は100%未満で入力してください。99.99%に補正しました。');
+    }
     const cost = getNewCost();
     if (!isNaN(markup) && cost > 0) {
       const sell = sellFromCost(cost, markup, 'markup'); // 外掛け: 売価 = 原価/(1−率)
@@ -597,15 +637,16 @@ export default function App() {
   const newSellForCalc = newSell > 0 ? newSell : newCalc.grandTotalUnitPrice;
 
   // 実態の利管費率: 原価=架空primeCost、売価=売値−架空送料 として、選択中の方式(外掛け/内掛け)で算出
-  const getActualSgaRate = (sell: number, shippingCost: number, primeCost: number, mode: 'markup' | 'margin'): number | null => {
-    const base = sell - shippingCost;
+  // base は grandTotalUnitPrice と同じ定義（送料・その他調整を除いた売価）にして表示の整合を取る。
+  const getActualSgaRate = (sell: number, shippingCost: number, other: number, primeCost: number, mode: 'markup' | 'margin'): number | null => {
+    const base = sell - shippingCost - other;
     if (base <= 0 || primeCost <= 0) return null;
     return rateFromCostSell(primeCost, base, mode);
   };
   const oldSgaMode = oldEstimate.adjustments.sgaCalcMode || 'markup';
   const newSgaMode = newEstimate.adjustments.sgaCalcMode || 'markup';
-  const oldActualSgaRate = getActualSgaRate(oldSellForCalc, oldCalc.shippingCostPerUnit, oldCalc.primeCost, oldSgaMode);
-  const newActualSgaRate = getActualSgaRate(newSellForCalc, newCalc.shippingCostPerUnit, newCalc.primeCost, newSgaMode);
+  const oldActualSgaRate = getActualSgaRate(oldSellForCalc, oldCalc.shippingCostPerUnit, oldEstimate.adjustments.otherAdjustment || 0, oldCalc.primeCost, oldSgaMode);
+  const newActualSgaRate = getActualSgaRate(newSellForCalc, newCalc.shippingCostPerUnit, newEstimate.adjustments.otherAdjustment || 0, newCalc.primeCost, newSgaMode);
   const getFictionalSgaRate = (sell: number, sp: number, mode: 'markup' | 'margin', hasOffset: boolean): number | null => {
     if (!hasOffset || sp <= 0 || sell <= 0 || Math.abs(sell - sp) < 0.01) return null;
     return rateFromCostSell(sp, sell, mode);
@@ -1181,7 +1222,7 @@ export default function App() {
         {/* ── Sidebar resize handle ── */}
         <div
           className="flex-none w-2 bg-[#D6D0C8] hover:bg-[#B5451B]/40 cursor-ew-resize flex items-center justify-center group transition-colors select-none z-10"
-          onMouseDown={(e) => { isSidebarDragging.current = true; e.preventDefault(); }}
+          onMouseDown={(e) => { isSidebarDragging.current = true; document.body.style.userSelect = 'none'; e.preventDefault(); }}
           title="ドラッグしてサイドバーの幅を調整"
         >
           <div className="h-8 w-0.5 rounded-full bg-[#9C9490] group-hover:bg-[#B5451B] transition-colors" />
@@ -1661,7 +1702,7 @@ export default function App() {
           {showFixedHeader && (
             <div
               className="flex-none h-3 bg-[#D6D0C8] hover:bg-[#B5451B]/30 cursor-ns-resize relative flex items-center justify-center group transition-colors select-none z-10 border-t border-b border-[#C8C2B8]"
-              onMouseDown={(e) => { isDraggingRef.current = true; e.preventDefault(); }}
+              onMouseDown={(e) => { isDraggingRef.current = true; document.body.style.userSelect = 'none'; e.preventDefault(); }}
               title="ドラッグして上部エリアの高さを調整"
             >
               <div className="w-12 h-1 rounded-full bg-[#9C9490] group-hover:bg-[#B5451B] transition-colors" />
@@ -1816,7 +1857,7 @@ export default function App() {
                   {aiReconcileModal.result.processAdjustments?.map((adj: any) => (
                     <div key={adj.index} className="bg-[#F7F6F2] rounded p-2 space-y-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-bold text-[#3A3028]">工程{adj.index + 1}</span>
+                        <span className="text-[10px] font-bold text-[#3A3028]">工程{adj.index}</span>
                         <span className="text-[10px] text-[#9C9490]">{adj.currentHourlyRate?.toLocaleString()}円/h</span>
                         <span className="text-[10px] text-[#9C9490]">→</span>
                         <span className="text-[10px] font-black text-[#1E3A5F]">{adj.suggestedHourlyRate?.toLocaleString()}円/h</span>

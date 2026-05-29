@@ -23,7 +23,8 @@ export function rateFromCostSell(cost: number, sell: number, mode: MarginMode): 
 /** 売価と率から原価を逆算する */
 export function costFromSell(sell: number, ratePercent: number, mode: MarginMode): number {
   const r = ratePercent / 100;
-  return mode === 'markup' ? sell * (1 - r) : sell / (1 + r);
+  if (mode === 'markup') return r < 1 ? sell * (1 - r) : 0; // 外掛け: 率≥100%は逆算不能→0
+  return r > -1 ? sell / (1 + r) : 0;                       // 内掛け: 率≤-100%はゼロ除算/発散→0
 }
 
 /** 率を別方式へ換算する（外→内 / 内→外）。fromは元の方式。 */

@@ -57,7 +57,7 @@ jobs:
             --region $REGION \
             --platform managed \
             --allow-unauthenticated \
-            --set-env-vars GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
+            --set-env-vars GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }},APP_URL=https://esticompare.web.app,NODE_ENV=production \
             --memory 512Mi \
             --cpu 1 \
             --min-instances 0 \
