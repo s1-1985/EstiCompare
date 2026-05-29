@@ -66,7 +66,7 @@ function calcActualCost(proc: ProcessRow, finishedWeightG: number, baseLotSize: 
     case 'direct':
       return (proc.actualDirectProcessingCost ?? proc.directProcessingCost) || 0;
     case 'kg':
-      return (finishedWeightG / 1000) * (proc.kgPrice || 0);
+      return (finishedWeightG / 1000) * ((proc.actualKgPrice ?? proc.kgPrice) || 0);
     case 'lump': {
       const actual = proc.actualLumpSumPrice ?? proc.lumpSumPrice;
       return baseLotSize > 0 ? ((actual || 0) / baseLotSize) : 0;
