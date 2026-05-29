@@ -273,7 +273,7 @@ export default function App() {
     let reconciledUnitPrice = targetUnitPrice;
 
     if (!isNew) {
-      // 旧単価: 目標単価（現行売値）は変更しない
+      // 旧単価: 売値（targetUnitPrice）は絶対固定。架空の賃率を比例調整して帳尻合わせ。
       if (targetUnitPrice <= 0) { alert('先に現行売価を入力してください。'); return; }
       reconciledUnitPrice = targetUnitPrice;
     } else if (locked) {
