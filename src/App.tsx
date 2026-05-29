@@ -59,6 +59,10 @@ export default function App() {
   } | null>(null);
   const [headerHeightPct, setHeaderHeightPct] = useState(40);
   const [sidebarWidthPx, setSidebarWidthPx] = useState(230);
+  // 狭幅(スマホ/タブレット縦)判定。横並び固定レイアウトを縦積みへ切り替えるために使用。
+  const [isNarrow, setIsNarrow] = useState(
+    typeof window !== 'undefined' ? window.innerWidth < 768 : false
+  );
   const isDraggingRef = useRef(false);
   const isSidebarDragging = useRef(false);
   const rightPaneRef = useRef<HTMLDivElement>(null);
@@ -102,11 +106,14 @@ export default function App() {
       isDraggingRef.current = false;
       isSidebarDragging.current = false;
     };
+    const onResize = () => setIsNarrow(window.innerWidth < 768);
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('resize', onResize);
     return () => {
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('resize', onResize);
     };
   }, []);
 
@@ -728,10 +735,13 @@ export default function App() {
       </header>
 
       {/* MIDDLE AREA: sidebar + right pane */}
-      <div ref={middleAreaRef} className="flex-1 flex overflow-hidden">
+      <div ref={middleAreaRef} className="flex-1 flex flex-col md:flex-row overflow-y-auto md:overflow-hidden">
 
         {/* ── LEFT SIDEBAR ── */}
-        <aside className="flex-none bg-white overflow-y-auto flex flex-col" style={{ width: sidebarWidthPx }}>
+        <aside
+          className="flex-none bg-white md:overflow-y-auto flex flex-col w-full md:w-auto border-b md:border-b-0 border-[#D6D0C8]"
+          style={isNarrow ? undefined : { width: sidebarWidthPx }}
+        >
 
           {/* Scenario actions */}
           <div className="border-b border-[#D6D0C8] p-2 space-y-1.5">
@@ -1175,9 +1185,9 @@ export default function App() {
 
         </aside>
 
-        {/* ── Sidebar resize handle ── */}
+        {/* ── Sidebar resize handle (デスクトップのみ) ── */}
         <div
-          className="flex-none w-2 bg-[#D6D0C8] hover:bg-[#B5451B]/40 cursor-ew-resize flex items-center justify-center group transition-colors select-none z-10"
+          className="hidden md:flex flex-none w-2 bg-[#D6D0C8] hover:bg-[#B5451B]/40 cursor-ew-resize items-center justify-center group transition-colors select-none z-10"
           onMouseDown={(e) => { isSidebarDragging.current = true; e.preventDefault(); }}
           title="ドラッグしてサイドバーの幅を調整"
         >
@@ -1185,12 +1195,15 @@ export default function App() {
         </div>
 
         {/* ── RIGHT PANE ── */}
-        <div ref={rightPaneRef} className="flex-1 flex flex-col overflow-hidden">
+        <div ref={rightPaneRef} className="flex-1 flex flex-col md:overflow-hidden">
 
           {/* ── Resizable calculation header (workspace only) ── */}
           {showFixedHeader && (
-          <div className="flex-none overflow-hidden bg-[#F0EDE8]" style={{ height: `${headerHeightPct}%` }}>
-            <div className="flex gap-2 sm:gap-3 h-full px-3 py-2">
+          <div
+            className="flex-none md:overflow-hidden bg-[#F0EDE8]"
+            style={isNarrow ? undefined : { height: `${headerHeightPct}%` }}
+          >
+            <div className="flex flex-col md:flex-row gap-2 sm:gap-3 md:h-full px-3 py-2">
 
               {/* 旧単価 panel — 2列グリッドで詰める */}
               <div className="flex-1 min-w-0 bg-white rounded-lg border border-[#E0C0B0] overflow-hidden shadow-sm flex flex-col">
@@ -1247,7 +1260,7 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="px-3 py-2 flex-1 overflow-y-auto">
+                <div className="px-3 py-2 md:flex-1 md:overflow-y-auto">
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1">
                     {/* 粗利益 */}
                     <div>
@@ -1460,7 +1473,7 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="px-3 py-2 flex-1 overflow-y-auto">
+                <div className="px-3 py-2 md:flex-1 md:overflow-y-auto">
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1">
                     {/* 粗利益 */}
                     <div>
@@ -1654,10 +1667,10 @@ export default function App() {
           </div>
           )}
 
-          {/* ── Drag handle (workspace only) ── */}
+          {/* ── Drag handle (workspace only・デスクトップのみ) ── */}
           {showFixedHeader && (
             <div
-              className="flex-none h-3 bg-[#D6D0C8] hover:bg-[#B5451B]/30 cursor-ns-resize relative flex items-center justify-center group transition-colors select-none z-10 border-t border-b border-[#C8C2B8]"
+              className="hidden md:flex flex-none h-3 bg-[#D6D0C8] hover:bg-[#B5451B]/30 cursor-ns-resize relative items-center justify-center group transition-colors select-none z-10 border-t border-b border-[#C8C2B8]"
               onMouseDown={(e) => { isDraggingRef.current = true; e.preventDefault(); }}
               title="ドラッグして上部エリアの高さを調整"
             >
@@ -1665,8 +1678,8 @@ export default function App() {
             </div>
           )}
 
-          {/* Scrollable main area */}
-          <main className="flex-1 overflow-y-auto p-3 sm:p-5">
+          {/* Scrollable main area (デスクトップは内部スクロール / モバイルは外側でスクロール) */}
+          <main className="md:flex-1 md:overflow-y-auto md:min-h-0 p-3 sm:p-5">
             {activeView === 'library' ? (
               <ScenarioLibrary
                 scenarios={customScenarios}
