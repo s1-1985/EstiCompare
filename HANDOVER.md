@@ -1,7 +1,7 @@
 # EstiCompare — 引継ぎドキュメント
 
-最終更新: 2026-05-29（第8セッション終了時点）
-ブランチ: `main`（全PR済み、PR #57マージ済み）
+最終更新: 2026-05-29（第9セッション終了時点）
+ブランチ: `main`（PR #62まずマージ済み）/ 検証・修正は PR #64（`claude/verify-handover-implementation-CYaQp`）
 
 ---
 
@@ -79,6 +79,7 @@ EstiCompare/
 | `POST /api/infer-process-params` | 工程名から出来高・賃率を推定 |
 | `POST /api/calculate-shipping` | AIで送料試算（ヤマト/佐川目安） |
 | `POST /api/get-scrap-price` | AIでスクラップ相場確認 |
+| `POST /api/ai-auto-reconcile` | AIで賃率・利管費率の自動補正案を生成（PR #59で追加） |
 
 ---
 
@@ -368,11 +369,53 @@ auditVariance = grandTotalUnitPrice - sellingPrice
 
 ---
 
+## 第9セッション（2026-05-29）で実施した変更（PR #64）
+
+handover記載の実装が実際に動くかを、ローカルでサーバーを起動し Playwright（デスクトップ1440×900 / モバイル390×844, touch）で実描画・実操作して徹底検証。発見した不具合を修正した。
+
+### 1. ？ツールチップがモバイルで開かない不具合の修正
+原因は複合的だった：
+- 吹き出し `<span class="absolute bottom-full">` が `truncate`(overflow:hidden) のラベルやスクロール領域の子として描画され、祖先の overflow でクリップされ視認不可（PCのホバー時でさえ）
+- PC・クリック時は `onMouseEnter` で開いた直後に `onClick` のトグルが閉じていた
+- モバイルでは「?」が `truncate` で隠れ、隣接セル(`border-r`)がポインタイベントを奪いタップ不能
+- ExcelGrid 側の Tooltip は onClick 未実装でタッチ端末は完全非対応（Tooltip が App.tsx と ExcelGrid.tsx に重複定義）
+
+**修正**: 共通 `src/components/Tooltip.tsx` を新設して統合。吹き出しを **React Portal で `<body>` 直下に `position: fixed`** で描画（クリップ解消）。ホバー/クリック/タップ全対応、上部では下フリップ・左右クランプ。ハンドラを外側ラッパーに集約し内側を `pointer-events-none` 化。指標ストリップのラベルを flex 化してアイコンが隠れない構造に。
+
+### 2. スマホ表示のレスポンシブ縦積みレイアウト
+従来スマホ幅では 230px固定サイドバー＋右ペインに旧/新2パネルが横並びで、各パネル幅 約75px・ラベルが縦書きになるほど窮屈だった。
+- 768px未満（`md:` ブレークポイント）で サイドバー / 旧・新パネル を縦積み・全幅に変更
+- マウス専用のサイドバー幅/ヘッダー高さリサイズハンドルをモバイルで非表示
+- 中央エリアを外側スクロールに（`flex-col md:flex-row` / `overflow-y-auto md:overflow-hidden`）
+- `isNarrow` state + resize リスナーで inline height style の出し分け
+- **デスクトップ(≥768px)は従来レイアウトのまま回帰なし**を確認
+
+### 3. AI自動補正（`/api/ai-auto-reconcile`）の検証結果 — 実装は完成
+- クライアント `handleAiAutoReconcile` → ログイン必須・目標売価必須チェック → `apiPost` → モーダル表示 → `applyAiReconcileResult` で賃率(100円丸め)+SGA率を反映、まで end-to-end で配線済み
+- サーバーは `gemini-2.5-flash` + `responseSchema`(構造化JSON) で、`processAdjustments[].index/suggestedHourlyRate`・`suggestedSgaPercent`・`summary`・`warnings`・`overallAssessment` を返し、クライアントの読み取りと完全一致
+- 認証・レート制限・入力サイズ上限(40KB)・プロンプトインジェクション対策・DOMAIN_KNOWLEDGE注入あり
+- **本番(GitHub Secrets の `GEMINI_API_KEY` が Cloud Run に注入される構成)で、ログイン済み＋目標売価入力済みなら動作する。ローカルsandboxは鍵が無いためライブ呼び出しは未検証（認証ゲート401・鍵未設定でもサーバー継続は実測済み）**。ユーザー判断で「コード完成しているので本番確認で十分(=A案)」とした。
+
+### その他確認したこと
+- `npm ci` / `lint`(tsc) / `build` すべて成功・JSエラーなし
+- 計算ロジック・固定ヘッダー指標ストリップ・ProfitGauge・セクション5/6・内/外掛けピル・目標単価ロック・自動補正・Sheet1/2/3・マイシナリオ … 実装・描画を確認
+- **`src/data/samples.ts` の `SAMPLE_SCENARIOS` は UI から未参照のデッドコード**（サンプル読み込み機能の復活余地）
+
+---
+
 ## 既知の課題・次セッションの予定
 
+### ★最優先（次セッションのメインテーマ）: ラストワンマイルの端数詰め
+仕様上の制約で、自動補正をかけても積み上げ単価が目標単価にぴったり一致しない（例: 目標100に対し積み上げが 99.95 までしか寄らず `auditVariance` が 0 にならない）。
+- **原因**: 賃率を100円単位に丸めている／利管費(SGA)率を小数点第2位までにしている、など量子化による端数。
+- **やりたいこと**: それ未満の端数まで含めて計算すれば理論上は詰められる。この「最後の0.05円」の辻褄詰めを **AI補正(`/api/ai-auto-reconcile`)に期待**したい。
+  - 検討の方向性: 賃率の丸め単位やSGA率の精度を AI が状況に応じて微調整する／`otherAdjustment`(その他調整) や `sgaFixedAdjustment`(利管費固定調整) を端数吸収に使う案を AI に提案させる、など。
+  - 関連コード: `src/App.tsx` の `handleAutoReconcile`(非AI) と `applyAiReconcileResult`、`server.ts` の `/api/ai-auto-reconcile` プロンプト、`src/utils/calculations.ts` の `auditVariance`。
+  - 開発ルール「賃率は100円単位に丸める」との整合性（端数吸収をどの項目で行うか）を要検討。
+
+### その他
 - Excel出力で `changeReason` がまだ出力されていない
 - バンドルサイズが 1MB 超（XLSX.js が重い）→ 動的インポート検討余地あり
-- その他UIの改善（次回指示予定）
 
 ---
 
