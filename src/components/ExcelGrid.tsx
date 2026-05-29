@@ -1,4 +1,23 @@
 import React, { useState } from 'react';
+
+// ─── Tooltip component ────────────────────────────────────────────────────────
+const Tooltip = ({ text }: { text: string }) => {
+  const [show, setShow] = React.useState(false);
+  return (
+    <span className="relative inline-block">
+      <span
+        className="cursor-help text-[#9C9490] text-[9px] border border-[#9C9490] rounded-full w-3 h-3 inline-flex items-center justify-center leading-none ml-0.5"
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+      >?</span>
+      {show && (
+        <span className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1 w-56 bg-[#18130F] text-white text-[10px] rounded p-2 shadow-lg whitespace-pre-wrap leading-relaxed pointer-events-none">
+          {text}
+        </span>
+      )}
+    </span>
+  );
+};
 import { DetailedEstimate, ProcessRow, ProcessCalcMode, Scenario } from '../types';
 import { calculateEstimate } from '../utils/calculations';
 import { apiPost } from '../utils/apiClient';
@@ -590,11 +609,11 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                   <th className="py-1.5 px-1 text-center w-5">#</th>
                   <th className="py-1.5 px-1.5 text-left" style={{minWidth: 50, maxWidth: 63}}>工程名</th>
                   <th className="py-1.5 px-1 text-center w-10">種別</th>
-                  <th className="py-1.5 px-1 text-right w-28">出来高</th>
-                  <th className="py-1.5 px-1 text-right w-20">段取(h)</th>
-                  <th className="py-1.5 px-1 text-right w-28 text-[#B5451B]">客提示賃率</th>
+                  <th className="py-1.5 px-1 text-right w-28">出来高<Tooltip text="1時間に何個加工できるか。サイクルタイム = 3600÷出来高(秒/個)。" /></th>
+                  <th className="py-1.5 px-1 text-right w-20">段取(h)<Tooltip text="段取時間の合計(h)。1個当たり段取費用 = 段取時間 ÷ ロットサイズ × 賃率。" /></th>
+                  <th className="py-1.5 px-1 text-right w-28 text-[#B5451B]">客提示賃率<Tooltip text="1時間当たりの加工費単価。客提示用（架空）の値。実際賃率と異なる場合は下の「実態賃率」に入力。" /></th>
                   <th className="py-1.5 px-1 text-right w-28 text-[#1E3A5F]">実態賃率</th>
-                  <th className="py-1.5 px-1 text-right w-20">→費用</th>
+                  <th className="py-1.5 px-1 text-right w-20">加工費<Tooltip text="サイクル費用＋段取費用。サイクル費用 = 賃率 ÷ 出来高。段取費用 = 賃率 × 段取時間 ÷ ロットサイズ。" /></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#EEEBE6]">

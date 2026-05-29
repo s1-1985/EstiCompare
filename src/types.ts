@@ -94,6 +94,7 @@ export interface Scenario {
   id: string;
   userId: string;
   name: string;
+  notes?: string;
   newEstimate: DetailedEstimate;
   oldEstimate: DetailedEstimate;
   comparisonResult: ComparisonResult | null;

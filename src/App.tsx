@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
+import React from 'react';
 import { DetailedEstimate, ComparisonResult, Scenario } from './types';
 import { createEmptyEstimate } from './data/samples';
-import { ExcelGrid, ProfitGauge } from './components/ExcelGrid';
+import { ExcelGrid } from './components/ExcelGrid';
 import { CompareResults } from './components/CompareResults';
 import { ScenarioLibrary } from './components/ScenarioLibrary';
 import { PrintSheet } from './components/PrintSheet';
@@ -27,12 +28,34 @@ import { calculateEstimate } from './utils/calculations';
 
 type ActiveView = 'workspace' | 'library';
 
+// ─── Tooltip component ────────────────────────────────────────────────────────
+const Tooltip = ({ text }: { text: string }) => {
+  const [show, setShow] = React.useState(false);
+  return (
+    <span className="relative inline-block">
+      <span
+        className="cursor-help text-[#9C9490] text-[9px] border border-[#9C9490] rounded-full w-3 h-3 inline-flex items-center justify-center leading-none ml-0.5"
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+      >?</span>
+      {show && (
+        <span className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1 w-56 bg-[#18130F] text-white text-[10px] rounded p-2 shadow-lg whitespace-pre-wrap leading-relaxed pointer-events-none">
+          {text}
+        </span>
+      )}
+    </span>
+  );
+};
+
 export default function App() {
   const [user, setUser] = useState<any>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [customScenarios, setCustomScenarios] = useState<Scenario[]>([]);
   const [newScenarioName, setNewScenarioName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [saveModal, setSaveModal] = useState<{ isOverwriting: boolean } | null>(null);
+  const [saveModalName, setSaveModalName] = useState('');
+  const [saveModalNotes, setSaveModalNotes] = useState('');
 
   const [activeView, setActiveView] = useState<ActiveView>('workspace');
   const [activeScenarioId, setActiveScenarioId] = useState('');
@@ -139,29 +162,26 @@ export default function App() {
     setActiveView('workspace');
   };
 
-  const handleSaveScenario = async (isOverwriting: boolean = false) => {
+  const handleSaveScenario = (isOverwriting: boolean = false) => {
     if (!user) {
       alert('クラウド保存を利用するには右上からサインインしてください。');
       return;
     }
+    setSaveModalName(newScenarioName || 'マイカスタム見積シナリオ');
+    setSaveModalNotes('');
+    setSaveModal({ isOverwriting });
+  };
 
-    let targetId = activeScenarioId;
-    let targetName = newScenarioName.trim();
-
-    if (!isOverwriting || !customScenarios.some(s => s.id === activeScenarioId)) {
-      const promptName = prompt(
-        '登録する見積シナリオの名称を入力してください:',
-        newScenarioName || 'マイカスタム見積シナリオ'
-      );
-      if (!promptName || !promptName.trim()) return;
-      targetName = promptName.trim();
-      targetId = '';
-    }
-
+  const handleSaveConfirm = async () => {
+    if (!saveModal) return;
+    const isOverwriting = saveModal.isOverwriting;
+    let targetId = isOverwriting && customScenarios.some(s => s.id === activeScenarioId) ? activeScenarioId : '';
+    const targetName = saveModalName.trim() || 'マイカスタム見積シナリオ';
+    setSaveModal(null);
     setIsSaving(true);
     try {
       const savedId = await saveUserScenario(
-        targetId, targetName, newEstimate, oldEstimate, comparisonResult
+        targetId, targetName, newEstimate, oldEstimate, comparisonResult, saveModalNotes.trim() || undefined
       );
       if (savedId) {
         setActiveScenarioId(savedId);
@@ -527,9 +547,9 @@ export default function App() {
   const newFictionalTarget = newCalc.suggestedPurchasePriceForClient > 0 && (newEstimate.adjustments.targetProfitMarginOff || 0) > 0
     ? newCalc.suggestedPurchasePriceForClient : newSell;
   const oldFictionalProgress = oldFictionalTarget > 0
-    ? Math.min(100, oldCalc.grandTotalUnitPrice / oldFictionalTarget * 100) : null;
+    ? (oldCalc.grandTotalUnitPrice / oldFictionalTarget * 100) : null;
   const newFictionalProgress = newFictionalTarget > 0
-    ? Math.min(100, newCalc.grandTotalUnitPrice / newFictionalTarget * 100) : null;
+    ? (newCalc.grandTotalUnitPrice / newFictionalTarget * 100) : null;
 
   // 積み上げ単価 = 直製造原価 + 送料 (SGA抜き)
   const oldStackPrice = oldCalc.primeCost + oldCalc.shippingCostPerUnit;
@@ -655,16 +675,18 @@ export default function App() {
         </div>
         {sgaWarnActive && (
           <div className="px-3 sm:px-6 py-2 bg-[#B5451B] border-t border-[#D4603A] text-white">
-            <div className="flex items-center gap-2 mb-1">
-              <AlertTriangle className="w-4 h-4 shrink-0 text-[#FFD0C0]" />
-              <span className="font-black text-sm text-[#FFD0C0]">【審議警告】利管費%が不自然な範囲(5%未満/30%超)</span>
-              <span className="ml-auto font-mono font-bold text-sm text-[#FFD0C0] shrink-0">
-                旧={((+(oldEstimate.adjustments.sgaRatePercent || 0)).toFixed(2))}% / 新={((+(newEstimate.adjustments.sgaRatePercent || 0)).toFixed(2))}%
-              </span>
+            <div className="max-w-4xl mx-auto flex flex-col items-center text-center">
+              <div className="flex items-center justify-center gap-2 mb-1 w-full">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-[#FFD0C0]" />
+                <span className="font-black text-sm text-[#FFD0C0]">【審議警告】利管費%が不自然な範囲(5%未満/30%超)</span>
+                <span className="ml-auto font-mono font-bold text-sm text-[#FFD0C0] shrink-0">
+                  旧={((+(oldEstimate.adjustments.sgaRatePercent || 0)).toFixed(2))}% / 新={((+(newEstimate.adjustments.sgaRatePercent || 0)).toFixed(2))}%
+                </span>
+              </div>
+              <p className="text-xs text-white/90 leading-relaxed">
+                賃率だけでなく<strong className="text-white">工程の出来高・段取時間の前提</strong>も見直してください。賃率調整だけで辻褄を合わせようとすると利管費率が不自然な数値になります。
+              </p>
             </div>
-            <p className="text-xs text-white/90 leading-relaxed">
-              賃率だけでなく<strong className="text-white">工程の出来高・段取時間の前提</strong>も見直してください。賃率調整だけで辻褄を合わせようとすると利管費率が不自然な数値になります。
-            </p>
           </div>
         )}
       </header>
@@ -870,6 +892,62 @@ export default function App() {
               />
             </div>
 
+            {/* 利益・利管費設定 for 旧単価 */}
+            <div className="pt-1.5 border-t border-[#F0C0B0]">
+              <div className="text-[9px] font-black text-[#B5451B] uppercase tracking-wide mb-1">利益・利管費設定</div>
+
+              <div className="mb-1.5">
+                <label className="text-[9px] font-bold text-[#18130F] block mb-0.5">利管費率</label>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => toggleSgaMode(false)}
+                    className="shrink-0 flex items-center gap-0.5 cursor-pointer"
+                    title="クリックで内掛け/外掛けを切り替え"
+                  >
+                    <span className={`text-[8px] font-bold transition-colors ${(oldEstimate.adjustments.sgaCalcMode || 'markup') === 'markup' ? 'text-[#B5451B]' : 'text-[#9C9490]'}`}>外</span>
+                    <div className={`relative w-8 h-4 rounded-full border-2 transition-all ${(oldEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? 'bg-[#1E3A5F] border-[#1E3A5F]' : 'bg-[#E8C8BC] border-[#D6A89C]'}`}>
+                      <div className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white shadow transition-all ${(oldEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? 'left-4' : 'left-0.5'}`} />
+                    </div>
+                    <span className={`text-[8px] font-bold transition-colors ${(oldEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? 'text-[#1E3A5F]' : 'text-[#9C9490]'}`}>内</span>
+                  </button>
+                  <div className={`relative flex-1 rounded border ${(oldEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? 'border-blue-300 bg-blue-50' : 'border-orange-300 bg-orange-50'}`}>
+                    <input type="number" value={oldEstimate.adjustments.sgaRatePercent || ''}
+                      onChange={(e) => updateAdj(false, 'sgaRatePercent', e.target.value)}
+                      placeholder="15" step="0.01"
+                      className="w-full pl-1.5 pr-5 py-0.5 text-[11px] font-mono font-bold bg-transparent outline-none focus:ring-1 focus:ring-[#B5451B]/30" />
+                    <span className="absolute right-1 top-0.5 text-[8px] text-[#9C9490]">%</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mb-1">
+                <label className="text-[9px] font-bold text-[#18130F] block mb-0.5">客向け内掛け率 (%)</label>
+                <div className="relative">
+                  <input type="number" value={oldEstimate.adjustments.targetProfitMarginOff || ''}
+                    onChange={(e) => updateOldAdj('targetProfitMarginOff', e.target.value)}
+                    placeholder="例: 15"
+                    className={`${sideInp} pr-5`} />
+                  <span className="absolute right-2 top-1 text-[9px] text-[#9C9490]">%</span>
+                </div>
+              </div>
+
+              <div className="mb-1">
+                <label className="text-[9px] font-bold text-[#18130F] block mb-0.5">利管費固定調整 (¥)</label>
+                <input type="number" value={oldEstimate.adjustments.sgaFixedAdjustment || ''}
+                  onChange={(e) => updateOldAdj('sgaFixedAdjustment', e.target.value)}
+                  placeholder="0"
+                  className={sideInp} />
+              </div>
+
+              <div className="mb-1">
+                <label className="text-[9px] font-bold text-[#18130F] block mb-0.5">その他調整 (¥)</label>
+                <input type="number" value={oldEstimate.adjustments.otherAdjustment || ''}
+                  onChange={(e) => updateOldAdj('otherAdjustment', e.target.value)}
+                  placeholder="0"
+                  className={sideInp} />
+              </div>
+            </div>
+
             <div>
               <label className="block text-xs font-bold text-[#18130F] mb-0.5">設定時期 (yyyymm)</label>
               <input
@@ -907,10 +985,19 @@ export default function App() {
             </div>
 
             <div>
-              <label className="block text-[9px] font-bold text-[#1E3A5F] mb-0.5">
-                目標売値
-                <span className="text-[10px] text-[#9C9490] font-normal ml-1">← 連動</span>
-              </label>
+              <div className="flex items-center gap-1 mb-0.5">
+                <label className="block text-[9px] font-bold text-[#1E3A5F]">
+                  目標売値
+                  <span className="text-[10px] text-[#9C9490] font-normal ml-1">← 連動</span>
+                </label>
+                <button
+                  onClick={() => setNewEstimate(prev => ({ ...prev, adjustments: { ...prev.adjustments, targetPriceLocked: !prev.adjustments.targetPriceLocked } }))}
+                  title={newEstimate.adjustments.targetPriceLocked ? 'ロック中（クリックで解除）' : '解除中（クリックでロック）'}
+                  className={`shrink-0 w-4 h-4 rounded flex items-center justify-center transition-colors cursor-pointer text-[10px] leading-none ${newEstimate.adjustments.targetPriceLocked ? 'bg-[#1E3A5F] text-white' : 'bg-[#D6D0C8] text-[#6B6057]'}`}
+                >
+                  {newEstimate.adjustments.targetPriceLocked ? '🔒' : '🔓'}
+                </button>
+              </div>
               <div className="relative">
                 <span className="absolute left-2 top-1 text-xs text-[#9C9490]">¥</span>
                 <input
@@ -963,6 +1050,51 @@ export default function App() {
                 placeholder="例: 15"
                 className={sideInp}
               />
+            </div>
+
+            {/* 利益・利管費設定 for 新単価 */}
+            <div className="pt-1.5 border-t border-[#C5D8EE]">
+              <div className="text-[9px] font-black text-[#1E3A5F] uppercase tracking-wide mb-1">利益・利管費設定</div>
+
+              <div className="mb-1.5">
+                <label className="text-[9px] font-bold text-[#18130F] block mb-0.5">利管費率</label>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => toggleSgaMode(true)}
+                    className="shrink-0 flex items-center gap-0.5 cursor-pointer"
+                    title="クリックで内掛け/外掛けを切り替え"
+                  >
+                    <span className={`text-[8px] font-bold transition-colors ${(newEstimate.adjustments.sgaCalcMode || 'markup') === 'markup' ? 'text-[#B5451B]' : 'text-[#9C9490]'}`}>外</span>
+                    <div className={`relative w-8 h-4 rounded-full border-2 transition-all ${(newEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? 'bg-[#1E3A5F] border-[#1E3A5F]' : 'bg-[#E8C8BC] border-[#D6A89C]'}`}>
+                      <div className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white shadow transition-all ${(newEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? 'left-4' : 'left-0.5'}`} />
+                    </div>
+                    <span className={`text-[8px] font-bold transition-colors ${(newEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? 'text-[#1E3A5F]' : 'text-[#9C9490]'}`}>内</span>
+                  </button>
+                  <div className={`relative flex-1 rounded border ${(newEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? 'border-blue-300 bg-blue-50' : 'border-orange-300 bg-orange-50'}`}>
+                    <input type="number" value={newEstimate.adjustments.sgaRatePercent || ''}
+                      onChange={(e) => updateAdj(true, 'sgaRatePercent', e.target.value)}
+                      placeholder="15" step="0.01"
+                      className="w-full pl-1.5 pr-5 py-0.5 text-[11px] font-mono font-bold bg-transparent outline-none focus:ring-1 focus:ring-[#1E3A5F]/30" />
+                    <span className="absolute right-1 top-0.5 text-[8px] text-[#9C9490]">%</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mb-1">
+                <label className="text-[9px] font-bold text-[#18130F] block mb-0.5">利管費固定調整 (¥)</label>
+                <input type="number" value={newEstimate.adjustments.sgaFixedAdjustment || ''}
+                  onChange={(e) => updateNewAdj('sgaFixedAdjustment', e.target.value)}
+                  placeholder="0"
+                  className={sideInp} />
+              </div>
+
+              <div className="mb-1">
+                <label className="text-[9px] font-bold text-[#18130F] block mb-0.5">その他調整 (¥)</label>
+                <input type="number" value={newEstimate.adjustments.otherAdjustment || ''}
+                  onChange={(e) => updateNewAdj('otherAdjustment', e.target.value)}
+                  placeholder="0"
+                  className={sideInp} />
+              </div>
             </div>
 
             {/* 得意先用目標利益率 */}
@@ -1046,7 +1178,7 @@ export default function App() {
                 <div className="flex-none px-3 py-2 bg-[#FEF3EE] border-b-2 border-[#E8C8BC]">
                   <div className="grid grid-cols-5 gap-x-2">
                     <div className="border-r border-[#E8C8BC] pr-2">
-                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">仕入実費</div>
+                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">仕入実費<Tooltip text="実際の仕入れ原価。actualPurchasePrice入力時はその値を使用。未入力時は材料費＋加工費＋実際の送料を積み上げた値。" /></div>
                       <div className="font-mono font-black text-sm text-[#6B6057] leading-tight">
                         {oldEstimate.adjustments.actualPurchasePrice > 0 ? fmtYen(oldEstimate.adjustments.actualPurchasePrice) : '—'}
                       </div>
@@ -1058,20 +1190,20 @@ export default function App() {
                       </div>
                     </div>
                     <div className="border-r border-[#E8C8BC] pr-2">
-                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">積み上げ単価</div>
+                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">積み上げ単価<Tooltip text="材料費＋加工費（客提示賃率）＋利管費＋送料＋その他調整を積み上げた客提示用の見積単価。" /></div>
                       <div className="font-mono font-black text-sm text-[#18130F] leading-tight">
                         {oldCalc.grandTotalUnitPrice > 0 ? fmtYen(oldCalc.grandTotalUnitPrice) : '—'}
                       </div>
                     </div>
                     <div className="border-r border-[#E8C8BC] pr-2">
-                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">架空利管費率</div>
+                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">架空利管費率<Tooltip text="客提示用の積み上げ単価に占める利管費の割合（内掛け）。suggestedPurchasePriceForClient算出時に使用する客先提示用の利益率。" /></div>
                       <div className={`font-mono font-black text-sm leading-tight ${oldActualSgaRate !== null ? 'text-amber-700' : 'text-[#C8C2B8]'}`}>
                         {oldActualSgaRate !== null ? `${oldActualSgaRate.toFixed(2)}%` : '—'}
                       </div>
                       {oldActualSgaRate !== null && <div className="text-[8px] text-[#9C9490] mt-0.5">内掛け</div>}
                     </div>
                     <div>
-                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">実態利益率(外掛)</div>
+                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">実態利益率<Tooltip text="実際の仕入原価に対して何%の利益を乗せているか（外掛け）。(売値 - 仕入実費) ÷ 仕入実費 × 100" /></div>
                       <div className={`font-mono font-black text-sm leading-tight ${oldActualMarkupRate !== null ? profitColorCls(oldActualMarkupRate) : 'text-[#C8C2B8]'}`}>
                         {oldActualMarkupRate !== null ? `${oldActualMarkupRate.toFixed(2)}%` : '—'}
                       </div>
@@ -1099,10 +1231,12 @@ export default function App() {
                         <>
                           <div className="flex justify-between text-[9px] mb-0.5">
                             <span className="text-[#9C9490] font-bold">架空仕入げ積み上げ達成</span>
-                            <span className={`font-mono font-black ${oldFictionalProgress >= 100 ? 'text-emerald-700' : 'text-amber-700'}`}>{oldFictionalProgress.toFixed(0)}%</span>
+                            <span className={`font-mono font-black ${oldFictionalProgress > 100 ? 'text-rose-600' : oldFictionalProgress >= 100 ? 'text-emerald-700' : 'text-amber-700'}`}>
+                              {oldFictionalProgress.toFixed(0)}%{oldFictionalProgress > 100 ? ' ⚠ 超過' : ''}
+                            </span>
                           </div>
                           <div className="h-1.5 rounded-full bg-[#F0EDE8] overflow-hidden">
-                            <div className={`h-full rounded-full transition-all duration-700 ${oldFictionalProgress >= 100 ? 'bg-emerald-500' : 'bg-amber-400'}`}
+                            <div className={`h-full rounded-full transition-all duration-700 ${oldFictionalProgress > 100 ? 'bg-rose-500' : oldFictionalProgress >= 100 ? 'bg-emerald-500' : 'bg-amber-400'}`}
                               style={{ width: `${Math.min(100, oldFictionalProgress).toFixed(0)}%` }} />
                           </div>
                           <div className="flex justify-between text-[8px] text-[#9C9490] mt-0.5">
@@ -1172,29 +1306,23 @@ export default function App() {
                     </div>
 
                     {/* Buttons */}
-                    <div className="grid grid-cols-2 gap-1">
+                    <div className="flex gap-1">
                       <button onClick={() => handleFitToSellPrice(false)}
-                        className="font-black text-[9px] py-1 rounded border flex items-center justify-center gap-0.5 cursor-pointer transition-all bg-[#FEF0EB] text-[#B5451B] border-[#F8C9BB] hover:opacity-80">
+                        className="flex-1 font-black text-[9px] py-1 rounded border flex items-center justify-center gap-0.5 cursor-pointer transition-all bg-[#FEF0EB] text-[#B5451B] border-[#F8C9BB] hover:opacity-80">
                         <Settings2 className="w-2.5 h-2.5" />
-                        売値に合わせて
+                        売値に合わせる
                       </button>
                       <button onClick={() => handleAutoReconcile(false)}
-                        className="bg-[#18130F] hover:bg-[#B5451B] text-white font-black text-[9px] py-1 rounded border border-[#2A2018] flex items-center justify-center gap-0.5 cursor-pointer transition-all">
+                        className="flex-1 bg-[#18130F] hover:bg-[#B5451B] text-white font-black text-[9px] py-1 rounded border border-[#2A2018] flex items-center justify-center gap-0.5 cursor-pointer transition-all">
                         <Zap className="w-2.5 h-2.5 text-[#F8C9BB]" />
-                        一発自動整合
+                        自動補正
+                      </button>
+                      <button onClick={() => alert('AI自動補正機能は近日実装予定です')}
+                        className="flex-1 bg-[#3A3028] hover:bg-[#5A4A3A] text-white font-black text-[9px] py-1 rounded border border-[#5A4A3A] flex items-center justify-center gap-0.5 cursor-pointer transition-all">
+                        <Zap className="w-2.5 h-2.5 text-amber-300" />
+                        AI自動補正
                       </button>
                     </div>
-                  </div>
-
-                  {/* ProfitGauge */}
-                  <div className="mt-2 pt-2 border-t border-[#EEEBE6]">
-                    <ProfitGauge
-                      actualRate={oldCalc.actualTotalCost > 0
-                        ? ((oldCalc.adjustedSellingPrice - oldCalc.actualTotalCost) / oldCalc.actualTotalCost * 100)
-                        : 0}
-                      minRate={0}
-                      targetRate={oldEstimate.adjustments.targetProfitRate || 0}
-                    />
                   </div>
 
                   {/* Section 6: 計算結果 */}
@@ -1261,41 +1389,32 @@ export default function App() {
                 <div className="flex-none px-3 py-2 bg-[#EEF3FB] border-b-2 border-[#B8CCE8]">
                   <div className="grid grid-cols-5 gap-x-2">
                     <div className="border-r border-[#B8CCE8] pr-2">
-                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">仕入実費</div>
+                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">仕入実費<Tooltip text="実際の仕入れ原価。actualPurchasePrice入力時はその値を使用。未入力時は材料費＋加工費＋実際の送料を積み上げた値。" /></div>
                       <div className="font-mono font-black text-sm text-[#6B6057] leading-tight">
                         {newEstimate.adjustments.actualPurchasePrice > 0 ? fmtYen(newEstimate.adjustments.actualPurchasePrice) : '—'}
                       </div>
                     </div>
                     <div className="border-r border-[#B8CCE8] pr-2">
-                      <div className="flex items-center gap-1 mb-1">
-                        <div className="text-[9px] font-bold text-[#9C9490] leading-none truncate">目標単価</div>
-                        <button
-                          onClick={() => setNewEstimate(prev => ({ ...prev, adjustments: { ...prev.adjustments, targetPriceLocked: !prev.adjustments.targetPriceLocked } }))}
-                          title={newEstimate.adjustments.targetPriceLocked ? 'ロック中（クリックで解除）' : '解除中（クリックでロック）'}
-                          className={`shrink-0 w-4 h-4 rounded flex items-center justify-center transition-colors cursor-pointer ${newEstimate.adjustments.targetPriceLocked ? 'bg-[#1E3A5F] text-white' : 'bg-[#D6D0C8] text-[#6B6057]'}`}
-                        >
-                          {newEstimate.adjustments.targetPriceLocked ? '🔒' : '🔓'}
-                        </button>
-                      </div>
+                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">目標単価</div>
                       <div className="font-mono font-black text-sm text-[#1E3A5F] leading-tight">
                         {newSell > 0 ? fmtYen(newSell) : '—'}
                       </div>
                     </div>
                     <div className="border-r border-[#B8CCE8] pr-2">
-                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">積み上げ単価</div>
+                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">積み上げ単価<Tooltip text="材料費＋加工費（客提示賃率）＋利管費＋送料＋その他調整を積み上げた客提示用の見積単価。" /></div>
                       <div className="font-mono font-black text-sm text-[#18130F] leading-tight">
                         {newCalc.grandTotalUnitPrice > 0 ? fmtYen(newCalc.grandTotalUnitPrice) : '—'}
                       </div>
                     </div>
                     <div className="border-r border-[#B8CCE8] pr-2">
-                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">架空利管費率</div>
+                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">架空利管費率<Tooltip text="客提示用の積み上げ単価に占める利管費の割合（内掛け）。suggestedPurchasePriceForClient算出時に使用する客先提示用の利益率。" /></div>
                       <div className={`font-mono font-black text-sm leading-tight ${newActualSgaRate !== null ? 'text-amber-700' : 'text-[#C8C2B8]'}`}>
                         {newActualSgaRate !== null ? `${newActualSgaRate.toFixed(2)}%` : '—'}
                       </div>
                       {newActualSgaRate !== null && <div className="text-[8px] text-[#9C9490] mt-0.5">内掛け</div>}
                     </div>
                     <div>
-                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">実態利益率(外掛)</div>
+                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">実態利益率<Tooltip text="実際の仕入原価に対して何%の利益を乗せているか（外掛け）。(売値 - 仕入実費) ÷ 仕入実費 × 100" /></div>
                       <div className={`font-mono font-black text-sm leading-tight ${newActualMarkupRate !== null ? profitColorCls(newActualMarkupRate) : 'text-[#C8C2B8]'}`}>
                         {newActualMarkupRate !== null ? `${newActualMarkupRate.toFixed(2)}%` : '—'}
                       </div>
@@ -1354,10 +1473,12 @@ export default function App() {
                         <>
                           <div className="flex justify-between text-[9px] mb-0.5">
                             <span className="text-[#9C9490] font-bold">架空仕入げ積み上げ達成</span>
-                            <span className={`font-mono font-black ${newFictionalProgress >= 100 ? 'text-emerald-700' : 'text-amber-700'}`}>{newFictionalProgress.toFixed(0)}%</span>
+                            <span className={`font-mono font-black ${newFictionalProgress > 100 ? 'text-rose-600' : newFictionalProgress >= 100 ? 'text-emerald-700' : 'text-amber-700'}`}>
+                              {newFictionalProgress.toFixed(0)}%{newFictionalProgress > 100 ? ' ⚠ 超過' : ''}
+                            </span>
                           </div>
                           <div className="h-1.5 rounded-full bg-[#F0EDE8] overflow-hidden">
-                            <div className={`h-full rounded-full transition-all duration-700 ${newFictionalProgress >= 100 ? 'bg-emerald-500' : 'bg-amber-400'}`}
+                            <div className={`h-full rounded-full transition-all duration-700 ${newFictionalProgress > 100 ? 'bg-rose-500' : newFictionalProgress >= 100 ? 'bg-emerald-500' : 'bg-amber-400'}`}
                               style={{ width: `${Math.min(100, newFictionalProgress).toFixed(0)}%` }} />
                           </div>
                           <div className="flex justify-between text-[8px] text-[#9C9490] mt-0.5">
@@ -1427,57 +1548,24 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* 調整ナビ: 帳尻合わせの優先順位 */}
-                    {newCalc.auditVariance !== 0 && newSell > 0 && newCalc.primeCost > 0 && (
-                      <div className="mb-1.5 px-2 py-1.5 rounded border border-[#C8C2B8] bg-[#F7F6F2] text-[9px]">
-                        <div className="font-black text-[#6B6057] mb-1">調整優先順位</div>
-                        <div className="space-y-0.5">
-                          <div className={`flex items-start gap-1 ${Math.abs(newCalc.auditVariance) < 1 ? 'text-emerald-700' : 'text-[#18130F]'}`}>
-                            <span className="font-black shrink-0">①</span>
-                            <span>工程の出来高・段取は旧単価と同一か確認</span>
-                          </div>
-                          <div className="flex items-start gap-1 text-[#18130F]">
-                            <span className="font-black shrink-0">②</span>
-                            <span>材料建値・賃率で積み上げを調整</span>
-                          </div>
-                          <div className={`flex items-start gap-1 ${newReconcileMargin !== null ? 'text-amber-700 font-bold' : 'text-[#18130F]'}`}>
-                            <span className="font-black shrink-0">③</span>
-                            <span>利管費率を{newReconcileMargin !== null ? ` ${newReconcileMargin.toFixed(2)}% (内掛け)` : '帳尻率'}に設定</span>
-                          </div>
-                          {newSellFloorGap !== null && newSellFloorGap < 0 && (
-                            <div className="flex items-start gap-1 text-rose-600 font-bold">
-                              <span className="font-black shrink-0">④</span>
-                              <span>目標売値が外掛25%フロア(¥{newSellFloor?.toFixed(0)})を下回っています</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
                     {/* Buttons */}
-                    <div className="grid grid-cols-2 gap-1">
+                    <div className="flex gap-1">
                       <button onClick={() => handleFitToSellPrice(true)}
-                        className="font-black text-[9px] py-1 rounded border flex items-center justify-center gap-0.5 cursor-pointer transition-all bg-[#EFF4FD] text-[#1E3A5F] border-[#B8CCE8] hover:opacity-80">
+                        className="flex-1 font-black text-[9px] py-1 rounded border flex items-center justify-center gap-0.5 cursor-pointer transition-all bg-[#EFF4FD] text-[#1E3A5F] border-[#B8CCE8] hover:opacity-80">
                         <Settings2 className="w-2.5 h-2.5" />
-                        売値に合わせて
+                        売値に合わせる
                       </button>
                       <button onClick={() => handleAutoReconcile(true)}
-                        className="bg-[#18130F] hover:bg-[#B5451B] text-white font-black text-[9px] py-1 rounded border border-[#2A2018] flex items-center justify-center gap-0.5 cursor-pointer transition-all">
+                        className="flex-1 bg-[#18130F] hover:bg-[#B5451B] text-white font-black text-[9px] py-1 rounded border border-[#2A2018] flex items-center justify-center gap-0.5 cursor-pointer transition-all">
                         <Zap className="w-2.5 h-2.5 text-[#F8C9BB]" />
-                        一発自動整合
+                        自動補正
+                      </button>
+                      <button onClick={() => alert('AI自動補正機能は近日実装予定です')}
+                        className="flex-1 bg-[#3A3028] hover:bg-[#5A4A3A] text-white font-black text-[9px] py-1 rounded border border-[#5A4A3A] flex items-center justify-center gap-0.5 cursor-pointer transition-all">
+                        <Zap className="w-2.5 h-2.5 text-amber-300" />
+                        AI自動補正
                       </button>
                     </div>
-                  </div>
-
-                  {/* ProfitGauge */}
-                  <div className="mt-2 pt-2 border-t border-[#EEEBE6]">
-                    <ProfitGauge
-                      actualRate={newCalc.actualTotalCost > 0
-                        ? ((newCalc.adjustedSellingPrice - newCalc.actualTotalCost) / newCalc.actualTotalCost * 100)
-                        : 0}
-                      minRate={newEstimate.adjustments.minProfitRate || 0}
-                      targetRate={newEstimate.adjustments.targetProfitRate || 0}
-                    />
                   </div>
 
                   {/* Section 6: 計算結果 */}
@@ -1588,6 +1676,53 @@ export default function App() {
 
         </div>
       </div>
+
+      {/* SAVE MODAL */}
+      {saveModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl border border-[#D6D0C8] px-6 py-5 min-w-[320px] max-w-sm w-full mx-4">
+            <h3 className="text-sm font-black text-[#18130F] mb-3">シナリオ保存</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-[#18130F] mb-1">シナリオ名 <span className="text-[#B5451B]">*</span></label>
+                <input
+                  type="text"
+                  value={saveModalName}
+                  onChange={(e) => setSaveModalName(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded border border-[#D6D0C8] outline-none focus:ring-1 focus:border-[#B5451B]"
+                  placeholder="シナリオ名を入力"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-[#18130F] mb-1">補足説明（任意）</label>
+                <textarea
+                  value={saveModalNotes}
+                  onChange={(e) => setSaveModalNotes(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded border border-[#D6D0C8] outline-none focus:ring-1 focus:border-[#B5451B] resize-none"
+                  placeholder="変更理由・メモなど"
+                  rows={3}
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={() => setSaveModal(null)}
+                className="flex-1 py-2 text-xs font-bold border border-[#D6D0C8] rounded text-[#6B6057] hover:bg-[#F7F6F2] cursor-pointer transition-all"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleSaveConfirm}
+                disabled={!saveModalName.trim()}
+                className="flex-1 py-2 text-xs font-bold bg-[#B5451B] hover:bg-[#8A3215] text-white rounded cursor-pointer transition-all disabled:opacity-50"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* BOTTOM TAB BAR — hidden in library view */}
       {activeView === 'workspace' && (

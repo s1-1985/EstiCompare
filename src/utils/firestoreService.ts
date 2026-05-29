@@ -22,7 +22,8 @@ export async function saveUserScenario(
   name: string,
   newEstimate: Scenario['newEstimate'],
   oldEstimate: Scenario['oldEstimate'],
-  comparisonResult: Scenario['comparisonResult']
+  comparisonResult: Scenario['comparisonResult'],
+  notes?: string
 ) {
   const user = auth.currentUser;
   if (!user) throw new Error('ユーザーがサインインしていません。');
@@ -39,6 +40,7 @@ export async function saveUserScenario(
         id: docId,
         userId: user.uid,
         name,
+        notes: notes || null,
         newEstimate,
         oldEstimate,
         comparisonResult: comparisonResult || null,
@@ -51,6 +53,7 @@ export async function saveUserScenario(
         id: docId,
         userId: user.uid,
         name,
+        notes: notes || null,
         newEstimate,
         oldEstimate,
         comparisonResult: comparisonResult || null,
