@@ -31,12 +31,22 @@ type ActiveView = 'workspace' | 'library';
 // ─── Tooltip component ────────────────────────────────────────────────────────
 const Tooltip = ({ text }: { text: string }) => {
   const [show, setShow] = React.useState(false);
+  const ref = React.useRef<HTMLSpanElement>(null);
+  React.useEffect(() => {
+    if (!show) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setShow(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [show]);
   return (
-    <span className="relative inline-block">
+    <span ref={ref} className="relative inline-block">
       <span
         className="cursor-help text-[#9C9490] text-[9px] border border-[#9C9490] rounded-full w-3 h-3 inline-flex items-center justify-center leading-none ml-0.5"
         onMouseEnter={() => setShow(true)}
         onMouseLeave={() => setShow(false)}
+        onClick={(e) => { e.stopPropagation(); setShow(v => !v); }}
       >?</span>
       {show && (
         <span className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1 w-56 bg-[#18130F] text-white text-[10px] rounded p-2 shadow-lg whitespace-pre-wrap leading-relaxed pointer-events-none">
@@ -309,8 +319,9 @@ export default function App() {
       const minProfitPercent = target.adjustments.minProfitRate || 0;
       const targetProfitPercent = target.adjustments.targetProfitRate || 0;
       const actualTotalCost = calc.actualTotalCost;
-      const minRequiredSellingPrice = actualTotalCost * (1 + minProfitPercent / 100);
-      const targetRequiredSellingPrice = actualTotalCost * (1 + targetProfitPercent / 100);
+      // 目標利益率・下限利益率は外掛け(markup)なので sell = cost / (1 - rate)
+      const minRequiredSellingPrice = minProfitPercent < 100 ? actualTotalCost / (1 - minProfitPercent / 100) : actualTotalCost * 100;
+      const targetRequiredSellingPrice = targetProfitPercent < 100 ? actualTotalCost / (1 - targetProfitPercent / 100) : actualTotalCost * 100;
       if (targetUnitPrice <= 0) {
         reconciledUnitPrice = Math.round(targetRequiredSellingPrice);
       } else if (minProfitPercent > 0 && targetUnitPrice < minRequiredSellingPrice) {
@@ -323,16 +334,27 @@ export default function App() {
     const otherAdj = target.adjustments.otherAdjustment || 0;
     const Y = reconciledUnitPrice - shipping - otherAdj;
     if (Y <= 0) { alert("目標単価が低すぎるため、加工費の自動調整ができません。"); return; }
-    const validProcesses = target.processes.filter(p => p.processName.trim() !== '' && !p.isDirectInput);
-    if (validProcesses.length === 0) { alert("加工費の自動調整対象となる工程が見つかりません。"); return; }
+    const hasAnyProcess = target.processes.some(p => p.processName.trim() !== '');
+    if (!hasAnyProcess) { alert("加工費の自動調整対象となる工程が見つかりません。"); return; }
     const lotSize = target.baseLotSize || 1;
     const processHoursList = target.processes.map(proc => {
-      if (!proc.processName.trim() || proc.isDirectInput) return 0;
+      if (!proc.processName.trim()) return 0;
+      const mode = proc.calcMode || (proc.isDirectInput ? 'direct' : proc.kgPrice > 0 ? 'kg' : 'standard');
+      if (mode !== 'standard') return 0;
       return (proc.yieldPerHour > 0 ? 1 / proc.yieldPerHour : 0) + (lotSize > 0 ? (proc.totalHours || 0) / lotSize : 0);
     });
-    const currentTotalProcessCostTemp = target.processes.reduce((sum, proc, i) => {
-      if (!proc.processName.trim() || proc.isDirectInput) return sum;
+    // 現在の客提示加工費合計（standardは実態賃率で、他はそのまま）
+    const currentStdCostTemp = target.processes.reduce((sum, proc, i) => {
+      const mode = proc.calcMode || (proc.isDirectInput ? 'direct' : proc.kgPrice > 0 ? 'kg' : 'standard');
+      if (!proc.processName.trim() || mode !== 'standard') return sum;
       return sum + (processHoursList[i] * (proc.actualHourlyRate ?? proc.hourlyRate ?? 3000));
+    }, 0);
+    // non-standard（kg/lump/direct）の客提示コスト合計
+    const nonStdClientCostCurrent = calc.processCosts.reduce((sum, cost, i) => {
+      const proc = target.processes[i];
+      if (!proc || !proc.processName.trim()) return sum;
+      const mode = proc.calcMode || (proc.isDirectInput ? 'direct' : proc.kgPrice > 0 ? 'kg' : 'standard');
+      return mode !== 'standard' ? sum + cost : sum;
     }, 0);
     let draftProcesses = [...target.processes];
     const sgaMode = target.adjustments.sgaCalcMode || 'markup';
@@ -340,25 +362,39 @@ export default function App() {
     const SGA_MAX = 15;
     let finalSgaPercent = Math.min(SGA_MAX, Math.max(SGA_MIN, target.adjustments.sgaRatePercent ?? 15));
     const materialCost = calc.netMaterialCost;
-    const directInputTotal = target.processes.reduce((sum, proc) => {
-      if (!proc.processName.trim() || !proc.isDirectInput) return sum;
-      return sum + (proc.directProcessingCost || 0);
-    }, 0);
-    if (currentTotalProcessCostTemp > 0) {
-      const targetPrimeCost = costFromSell(Y, finalSgaPercent, sgaMode);
-      const targetNonDirectProcessCost = Math.max(0, targetPrimeCost - materialCost - directInputTotal);
-      const multiplier = Math.max(0.1, targetNonDirectProcessCost / currentTotalProcessCostTemp);
+    const targetPrimeCost = costFromSell(Y, finalSgaPercent, sgaMode);
+    // non-standardも含めて全体をスケール
+    const totalCurrentClientCost = currentStdCostTemp + nonStdClientCostCurrent;
+    const targetTotalProcessCost = Math.max(0, targetPrimeCost - materialCost);
+    if (totalCurrentClientCost > 0) {
+      const multiplier = Math.max(0.1, targetTotalProcessCost / totalCurrentClientCost);
       draftProcesses = target.processes.map((proc) => {
-        if (!proc.processName.trim() || proc.isDirectInput) return proc;
-        const actRate = proc.actualHourlyRate ?? proc.hourlyRate ?? 3000;
-        let roundedRate = Math.round((actRate * multiplier) / 100) * 100;
-        if (roundedRate < 1000) roundedRate = 1000;
-        return { ...proc, hourlyRate: roundedRate };
+        if (!proc.processName.trim()) return proc;
+        const mode = proc.calcMode || (proc.isDirectInput ? 'direct' : proc.kgPrice > 0 ? 'kg' : 'standard');
+        if (mode === 'standard') {
+          const actRate = proc.actualHourlyRate ?? proc.hourlyRate ?? 3000;
+          let roundedRate = Math.round((actRate * multiplier) / 100) * 100;
+          if (roundedRate < 1000) roundedRate = 1000;
+          return { ...proc, hourlyRate: roundedRate };
+        } else if (mode === 'direct') {
+          const actual = proc.actualDirectProcessingCost ?? proc.directProcessingCost;
+          return { ...proc, directProcessingCost: parseFloat(((actual || 0) * multiplier).toFixed(2)) };
+        } else if (mode === 'kg') {
+          const actual = proc.actualKgPrice ?? proc.kgPrice;
+          return { ...proc, kgPrice: parseFloat(((actual || 0) * multiplier).toFixed(2)) };
+        } else if (mode === 'lump') {
+          const actual = proc.actualLumpSumPrice ?? proc.lumpSumPrice;
+          return { ...proc, lumpSumPrice: parseFloat(((actual || 0) * multiplier).toFixed(2)) };
+        }
+        return proc;
       });
     }
     const tempPrimeCost = materialCost + draftProcesses.reduce((sum, proc, i) => {
       if (!proc.processName.trim()) return sum;
-      if (proc.isDirectInput) return sum + (proc.directProcessingCost || 0);
+      const mode = proc.calcMode || (proc.isDirectInput ? 'direct' : proc.kgPrice > 0 ? 'kg' : 'standard');
+      if (mode === 'direct') return sum + (proc.directProcessingCost || 0);
+      if (mode === 'kg') return sum + (target.finishedWeightG > 0 ? (target.finishedWeightG / 1000) * (proc.kgPrice || 0) : 0);
+      if (mode === 'lump') return sum + (lotSize > 0 ? (proc.lumpSumPrice || 0) / lotSize : 0);
       return sum + (processHoursList[i] * (proc.hourlyRate || 0));
     }, 0);
     if (tempPrimeCost > 0) {
@@ -430,7 +466,7 @@ export default function App() {
   const getNewCost = () =>
     newEstimate.adjustments.actualPurchasePrice > 0
       ? newEstimate.adjustments.actualPurchasePrice
-      : newCalc.grandTotalUnitPrice;
+      : newCalc.actualTotalCost;
 
   // 目標売値 → auto-derive ㉙ markup only (internal)
   const handleNew28Change = (value: string) => {
@@ -500,10 +536,10 @@ export default function App() {
   // 仕入実費: use actualPurchasePrice if entered, else fall back to calculated grandTotal
   const oldPurchase = oldEstimate.adjustments.actualPurchasePrice > 0
     ? oldEstimate.adjustments.actualPurchasePrice
-    : oldCalc.grandTotalUnitPrice;
+    : oldCalc.actualTotalCost;
   const newPurchase = newEstimate.adjustments.actualPurchasePrice > 0
     ? newEstimate.adjustments.actualPurchasePrice
-    : newCalc.grandTotalUnitPrice;
+    : newCalc.actualTotalCost;
 
   const oldSell = oldEstimate.adjustments.targetUnitPrice || 0;
   const oldMarkup = (oldSell > 0 && oldPurchase > 0) ? rateFromCostSell(oldPurchase, oldSell, 'markup') : null; // 外掛け

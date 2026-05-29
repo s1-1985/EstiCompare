@@ -19,6 +19,7 @@ export interface ProcessRow {
   actualYieldPerHour?: number;  // 実際の出来高 (個/h)
   actualDirectProcessingCost?: number; // 実際の直接加工費 (円)
   actualLumpSumPrice?: number;  // 実際の一式金額 (円/lot)
+  actualKgPrice?: number;       // 実際のkg単価 (円/kg)
   changeReason?: string;        // 変動理由メモ（客先説明用）
 }
 

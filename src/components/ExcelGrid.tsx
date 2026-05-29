@@ -235,7 +235,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
   };
 
   const updateProcessMeta = (isNew: boolean, index: number, key: keyof ProcessRow, value: any) => {
-    const numericKeys = ['totalHours','yieldPerHour','actualHourlyRate','directProcessingCost','lumpSumPrice','kgPrice'];
+    const numericKeys = ['totalHours','yieldPerHour','actualHourlyRate','directProcessingCost','actualDirectProcessingCost','lumpSumPrice','actualLumpSumPrice','kgPrice','actualKgPrice'];
     const est = isNew ? newEstimate : oldEstimate;
     const setter = isNew ? onChangeNew : onChangeOld;
     setter({
@@ -263,10 +263,18 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
   };
 
   const copyFullColumn = (fromNew: boolean) => {
+    // 全内訳転記: material/processes/logistics/SGA設定はコピーするが、
+    // 目標単価・仕入実費・ロック状態はコピー先の値を維持する
+    const keepAdj = (dest: typeof oldEstimate['adjustments'], src: typeof oldEstimate['adjustments']) => ({
+      ...src,
+      targetUnitPrice: dest.targetUnitPrice,
+      actualPurchasePrice: dest.actualPurchasePrice,
+      targetPriceLocked: dest.targetPriceLocked,
+    });
     if (fromNew) {
-      onChangeOld({ ...oldEstimate, material: { ...newEstimate.material }, processes: newEstimate.processes.map(p => ({ ...p })), logistics: { ...newEstimate.logistics }, adjustments: { ...newEstimate.adjustments } });
+      onChangeOld({ ...oldEstimate, material: { ...newEstimate.material }, processes: newEstimate.processes.map(p => ({ ...p })), logistics: { ...newEstimate.logistics }, adjustments: keepAdj(oldEstimate.adjustments, newEstimate.adjustments) });
     } else {
-      onChangeNew({ ...newEstimate, material: { ...oldEstimate.material }, processes: oldEstimate.processes.map(p => ({ ...p })), logistics: { ...oldEstimate.logistics }, adjustments: { ...oldEstimate.adjustments } });
+      onChangeNew({ ...newEstimate, material: { ...oldEstimate.material }, processes: oldEstimate.processes.map(p => ({ ...p })), logistics: { ...oldEstimate.logistics }, adjustments: keepAdj(newEstimate.adjustments, oldEstimate.adjustments) });
     }
   };
 
@@ -359,7 +367,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     : 'bg-white border-[#D6D0C8] focus:border-[#B5451B] focus:ring-[#B5451B]/15';
   const inp = 'w-full px-2.5 py-1.5 text-xs font-mono rounded border outline-none focus:ring-1 transition-all';
 
-  const modeLabel: Record<string, string> = { standard: '加工費', kg: 'kg単価', lump: '一式', direct: '外注費' };
+  const modeLabel: Record<string, string> = { standard: '加工費', kg: 'kg単価', lump: '一式', direct: '直数字' };
   const modeBtnStyle: Record<string, string> = {
     standard: 'bg-[#F0EDE8] text-[#6B6057] border-[#D6D0C8]',
     kg:       'bg-[#EFF4FD] text-[#1E3A5F] border-[#93B4D9]',
@@ -663,30 +671,39 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                           </div>
                         )}
                         {mode === 'kg' && (
-                          <div className="relative">
-                            <input type="number" value={proc.kgPrice || ''}
-                              onChange={(e) => updateProcessMeta(isNew, proc.index, 'kgPrice', e.target.value)}
-                              placeholder="0"
-                              className="w-full pl-1.5 pr-9 py-1 text-xs font-mono text-[#1E3A5F] rounded border border-[#93B4D9] bg-white outline-none focus:ring-1" />
-                            <span className="absolute right-0.5 top-1 text-[8px] text-[#1E3A5F]">円/kg</span>
+                          <div>
+                            <div className="text-[8px] text-[#B5451B] font-bold mb-0.5">客提示</div>
+                            <div className="relative">
+                              <input type="number" value={proc.kgPrice || ''}
+                                onChange={(e) => updateProcessMeta(isNew, proc.index, 'kgPrice', e.target.value)}
+                                placeholder="0"
+                                className="w-full pl-1.5 pr-9 py-1 text-xs font-mono text-[#1E3A5F] font-bold rounded border border-[#93B4D9] bg-white outline-none focus:ring-1" />
+                              <span className="absolute right-0.5 top-1 text-[8px] text-[#1E3A5F]">円/kg</span>
+                            </div>
                           </div>
                         )}
                         {mode === 'lump' && (
-                          <div className="relative">
-                            <input type="number" value={proc.lumpSumPrice || ''}
-                              onChange={(e) => updateProcessMeta(isNew, proc.index, 'lumpSumPrice', e.target.value)}
-                              placeholder="0"
-                              className="w-full pl-1.5 pr-9 py-1 text-xs font-mono text-purple-800 rounded border border-purple-300 bg-white outline-none focus:ring-1" />
-                            <span className="absolute right-0.5 top-1 text-[8px] text-purple-600">円/lot</span>
+                          <div>
+                            <div className="text-[8px] text-[#B5451B] font-bold mb-0.5">客提示</div>
+                            <div className="relative">
+                              <input type="number" value={proc.lumpSumPrice || ''}
+                                onChange={(e) => updateProcessMeta(isNew, proc.index, 'lumpSumPrice', e.target.value)}
+                                placeholder="0"
+                                className="w-full pl-1.5 pr-9 py-1 text-xs font-mono text-purple-800 font-bold rounded border border-purple-300 bg-white outline-none focus:ring-1" />
+                              <span className="absolute right-0.5 top-1 text-[8px] text-purple-600">円/lot</span>
+                            </div>
                           </div>
                         )}
                         {mode === 'direct' && (
-                          <div className="relative">
-                            <input type="number" value={proc.directProcessingCost || ''}
-                              onChange={(e) => updateProcessMeta(isNew, proc.index, 'directProcessingCost', e.target.value)}
-                              placeholder="0"
-                              className="w-full pl-1.5 pr-7 py-1 text-xs font-mono text-[#B5451B] font-bold rounded border border-[#F8C9BB] bg-white outline-none focus:ring-1" />
-                            <span className="absolute right-0.5 top-1 text-[8px] text-[#B5451B]">円/個</span>
+                          <div>
+                            <div className="text-[8px] text-[#B5451B] font-bold mb-0.5">客提示</div>
+                            <div className="relative">
+                              <input type="number" value={proc.directProcessingCost || ''}
+                                onChange={(e) => updateProcessMeta(isNew, proc.index, 'directProcessingCost', e.target.value)}
+                                placeholder="0"
+                                className="w-full pl-1.5 pr-7 py-1 text-xs font-mono text-[#B5451B] font-bold rounded border border-[#F8C9BB] bg-white outline-none focus:ring-1" />
+                              <span className="absolute right-0.5 top-1 text-[8px] text-[#B5451B]">円/個</span>
+                            </div>
                           </div>
                         )}
                       </td>
@@ -750,9 +767,37 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                               className="no-spin w-full pl-1.5 pr-7 py-1 text-xs font-mono text-[#1E3A5F] rounded border border-[#C5D8EE] bg-[#EFF4FD]/30 outline-none focus:ring-1" />
                             <span className="absolute right-0.5 top-1 text-[8px] text-[#1E3A5F]">円/h</span>
                           </div>
-                        ) : (
-                          <div className="flex items-center justify-center h-7 text-[9px] text-[#D6D0C8] bg-[#F7F6F2] rounded border border-[#EEEBE6]">—</div>
-                        )}
+                        ) : mode === 'kg' ? (
+                          <div className="space-y-0.5">
+                            <div className="relative">
+                              <input type="number" value={proc.actualKgPrice ?? ''}
+                                onChange={(e) => updateProcessMeta(isNew, proc.index, 'actualKgPrice', e.target.value)}
+                                placeholder="実態"
+                                className="w-full pl-1.5 pr-9 py-1 text-xs font-mono text-[#1E3A5F] rounded border border-[#C5D8EE] bg-[#EFF4FD]/30 outline-none focus:ring-1" />
+                              <span className="absolute right-0.5 top-1 text-[8px] text-[#1E3A5F]">実/kg</span>
+                            </div>
+                          </div>
+                        ) : mode === 'lump' ? (
+                          <div className="space-y-0.5">
+                            <div className="relative">
+                              <input type="number" value={proc.actualLumpSumPrice ?? ''}
+                                onChange={(e) => updateProcessMeta(isNew, proc.index, 'actualLumpSumPrice', e.target.value)}
+                                placeholder="実態"
+                                className="w-full pl-1.5 pr-9 py-1 text-xs font-mono text-[#1E3A5F] rounded border border-[#C5D8EE] bg-[#EFF4FD]/30 outline-none focus:ring-1" />
+                              <span className="absolute right-0.5 top-1 text-[8px] text-[#1E3A5F]">実/lot</span>
+                            </div>
+                          </div>
+                        ) : mode === 'direct' ? (
+                          <div className="space-y-0.5">
+                            <div className="relative">
+                              <input type="number" value={proc.actualDirectProcessingCost ?? ''}
+                                onChange={(e) => updateProcessMeta(isNew, proc.index, 'actualDirectProcessingCost', e.target.value)}
+                                placeholder="実態"
+                                className="w-full pl-1.5 pr-7 py-1 text-xs font-mono text-[#1E3A5F] rounded border border-[#C5D8EE] bg-[#EFF4FD]/30 outline-none focus:ring-1" />
+                              <span className="absolute right-0.5 top-1 text-[8px] text-[#1E3A5F]">実/個</span>
+                            </div>
+                          </div>
+                        ) : null}
                         {mode === 'standard' && (proc.actualHourlyRate || proc.hourlyRate || 0) > 0 && (
                           <div className="text-[8px] mt-0.5 font-mono text-[#1E3A5F]">
                             {(((proc.actualHourlyRate ?? proc.hourlyRate) || 0) / 60).toFixed(1)}円/分
