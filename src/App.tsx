@@ -70,6 +70,12 @@ export default function App() {
   const [comparisonResult, setComparisonResult] = useState<ComparisonResult | null>(null);
   const [isComparing, setIsComparing] = useState(false);
   const [aiRetryCountdown, setAiRetryCountdown] = useState<number | null>(null);
+  const [aiReconcileModal, setAiReconcileModal] = useState<{
+    isNew: boolean;
+    status: 'loading' | 'result' | 'error';
+    result?: any;
+    error?: string;
+  } | null>(null);
   const [headerHeightPct, setHeaderHeightPct] = useState(40);
   const [sidebarWidthPx, setSidebarWidthPx] = useState(230);
   const isDraggingRef = useRef(false);
@@ -387,6 +393,46 @@ export default function App() {
     updatedAdjustments.sgaRatePercent = finalSgaPercent;
     if (isNew) setNewEstimate({ ...target, processes: draftProcesses, adjustments: updatedAdjustments });
     else setOldEstimate({ ...target, processes: draftProcesses, adjustments: updatedAdjustments });
+  };
+
+  // ─── AI自動補正 ────────────────────────────────────────────────────────────────
+  const handleAiAutoReconcile = async (isNew: boolean) => {
+    const est = isNew ? newEstimate : oldEstimate;
+    const targetSellPrice = est.adjustments.targetUnitPrice;
+    if (!targetSellPrice || targetSellPrice <= 0) {
+      alert('先に目標売価を入力してください。');
+      return;
+    }
+    if (!user) {
+      alert('AI機能はログインが必要です。');
+      return;
+    }
+    setAiReconcileModal({ isNew, status: 'loading' });
+    try {
+      const data = await apiPost('/api/ai-auto-reconcile', { estimate: est, targetSellPrice, isNew });
+      setAiReconcileModal({ isNew, status: 'result', result: data });
+    } catch (e: any) {
+      setAiReconcileModal({ isNew, status: 'error', error: e?.message || 'AI補正に失敗しました。' });
+    }
+  };
+
+  const applyAiReconcileResult = () => {
+    if (!aiReconcileModal?.result) return;
+    const { isNew, result } = aiReconcileModal;
+    const est = isNew ? newEstimate : oldEstimate;
+    const updatedProcesses = est.processes.map((proc, i) => {
+      const adj = result.processAdjustments?.find((a: any) => a.index === i);
+      if (!adj) return proc;
+      return { ...proc, hourlyRate: Math.round(adj.suggestedHourlyRate / 100) * 100 };
+    });
+    const updatedEst = {
+      ...est,
+      processes: updatedProcesses,
+      adjustments: { ...est.adjustments, sgaRatePercent: result.suggestedSgaPercent },
+    };
+    if (isNew) setNewEstimate(updatedEst);
+    else setOldEstimate(updatedEst);
+    setAiReconcileModal(null);
   };
 
   // ─── 3-way linkage for ㉘/㉙/㉚ ───────────────────────────────────────────────
@@ -1317,7 +1363,7 @@ export default function App() {
                         <Zap className="w-2.5 h-2.5 text-[#F8C9BB]" />
                         自動補正
                       </button>
-                      <button onClick={() => alert('AI自動補正機能は近日実装予定です')}
+                      <button onClick={() => handleAiAutoReconcile(false)}
                         className="flex-1 bg-[#3A3028] hover:bg-[#5A4A3A] text-white font-black text-[9px] py-1 rounded border border-[#5A4A3A] flex items-center justify-center gap-0.5 cursor-pointer transition-all">
                         <Zap className="w-2.5 h-2.5 text-amber-300" />
                         AI自動補正
@@ -1560,7 +1606,7 @@ export default function App() {
                         <Zap className="w-2.5 h-2.5 text-[#F8C9BB]" />
                         自動補正
                       </button>
-                      <button onClick={() => alert('AI自動補正機能は近日実装予定です')}
+                      <button onClick={() => handleAiAutoReconcile(true)}
                         className="flex-1 bg-[#3A3028] hover:bg-[#5A4A3A] text-white font-black text-[9px] py-1 rounded border border-[#5A4A3A] flex items-center justify-center gap-0.5 cursor-pointer transition-all">
                         <Zap className="w-2.5 h-2.5 text-amber-300" />
                         AI自動補正
@@ -1720,6 +1766,72 @@ export default function App() {
                 保存
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI自動補正モーダル */}
+      {aiReconcileModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl border border-[#D6D0C8] px-6 py-5 max-w-lg w-full mx-4 max-h-[80vh] overflow-y-auto">
+            {aiReconcileModal.status === 'loading' && (
+              <div className="flex flex-col items-center gap-3 py-8">
+                <div className="w-8 h-8 border-4 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                <p className="text-sm font-bold text-[#18130F]">AIが見積を分析中...</p>
+                <p className="text-xs text-[#6B6057]">Geminiが業界標準と比較して補正案を生成しています</p>
+              </div>
+            )}
+            {aiReconcileModal.status === 'error' && (
+              <div className="space-y-3">
+                <h3 className="text-sm font-black text-[#B5451B]">AI補正エラー</h3>
+                <p className="text-xs text-[#6B6057]">{aiReconcileModal.error}</p>
+                <button onClick={() => setAiReconcileModal(null)} className="w-full py-2 text-xs font-bold bg-[#18130F] text-white rounded cursor-pointer">閉じる</button>
+              </div>
+            )}
+            {aiReconcileModal.status === 'result' && aiReconcileModal.result && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-amber-500" />
+                  <h3 className="text-sm font-black text-[#18130F]">AI自動補正 — 提案内容</h3>
+                  <span className="ml-auto text-[10px] text-[#9C9490]">{aiReconcileModal.isNew ? '新単価' : '旧単価'}</span>
+                </div>
+                <p className="text-xs text-[#3A3028] bg-amber-50 rounded p-2 border border-amber-200">{aiReconcileModal.result.summary}</p>
+                {aiReconcileModal.result.warnings?.length > 0 && (
+                  <div className="space-y-1">
+                    {aiReconcileModal.result.warnings.map((w: string, i: number) => (
+                      <div key={i} className="flex items-start gap-1.5 text-xs text-[#B5451B] bg-red-50 rounded p-1.5 border border-red-200">
+                        <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
+                        {w}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <p className="text-[10px] font-bold text-[#6B6057] uppercase tracking-wide">工程別賃率補正案</p>
+                  {aiReconcileModal.result.processAdjustments?.map((adj: any) => (
+                    <div key={adj.index} className="bg-[#F7F6F2] rounded p-2 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-[#3A3028]">工程{adj.index + 1}</span>
+                        <span className="text-[10px] text-[#9C9490]">{adj.currentHourlyRate?.toLocaleString()}円/h</span>
+                        <span className="text-[10px] text-[#9C9490]">→</span>
+                        <span className="text-[10px] font-black text-[#1E3A5F]">{adj.suggestedHourlyRate?.toLocaleString()}円/h</span>
+                      </div>
+                      <p className="text-[9px] text-[#6B6057]">{adj.industryAssessment}</p>
+                      {adj.adjustmentReason && <p className="text-[9px] text-[#3A3028]">{adj.adjustmentReason}</p>}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2 bg-blue-50 rounded p-2 border border-blue-200">
+                  <span className="text-xs font-bold text-[#1E3A5F]">推奨SGA率:</span>
+                  <span className="text-sm font-black text-[#1E3A5F]">{aiReconcileModal.result.suggestedSgaPercent?.toFixed(2)}%</span>
+                </div>
+                <p className="text-[10px] text-[#6B6057]">{aiReconcileModal.result.overallAssessment}</p>
+                <div className="flex gap-2 pt-2">
+                  <button onClick={() => setAiReconcileModal(null)} className="flex-1 py-2 text-xs font-bold border border-[#D6D0C8] rounded text-[#6B6057] hover:bg-[#F7F6F2] cursor-pointer">キャンセル</button>
+                  <button onClick={applyAiReconcileResult} className="flex-1 py-2 text-xs font-black bg-amber-500 hover:bg-amber-600 text-white rounded cursor-pointer">この補正を適用</button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
