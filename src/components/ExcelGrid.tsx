@@ -3,7 +3,7 @@ import { DetailedEstimate, ProcessRow, ProcessCalcMode, Scenario } from '../type
 import { calculateEstimate } from '../utils/calculations';
 import { apiPost } from '../utils/apiClient';
 import {
-  Settings2, AlertTriangle,
+  Settings2,
   Sparkles, TrendingUp, Coins,
   History, Truck, Copy, Package,
 } from 'lucide-react';
@@ -945,23 +945,6 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       {/* ── 差額サマリー ── */}
       {renderDiffBar()}
 
-      {/* ── 利管費警告 ── */}
-      {(oldCalc.grandTotalUnitPrice > 0 || newCalc.grandTotalUnitPrice > 0) &&
-        ((+(oldEstimate.adjustments.sgaRatePercent || 0) > 0 && ((+(oldEstimate.adjustments.sgaRatePercent || 0)) < 5 || (+(oldEstimate.adjustments.sgaRatePercent || 0)) > 30)) ||
-         (+(newEstimate.adjustments.sgaRatePercent || 0) > 0 && ((+(newEstimate.adjustments.sgaRatePercent || 0)) < 5 || (+(newEstimate.adjustments.sgaRatePercent || 0)) > 30))) && (
-        <div className="p-4 bg-rose-950/80 border border-rose-800 text-rose-200 rounded-lg text-[10.5px] leading-relaxed">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-            <div>
-              <strong className="text-rose-300 block font-black text-xs mb-1">【審議警告】利管費%が不自然な範囲 (5%未満 / 30%超) です</strong>
-              賃率調整だけで辻褄を合わせようとしている場合、<strong className="text-white">工程の「出来高」と「段取時間」の前提見直し</strong>を合わせて行うと自然な数値に収まります。
-              <span className="block mt-1 text-rose-300">
-                現在値: 旧={(+(oldEstimate.adjustments.sgaRatePercent || 0)).toFixed(2)}% / 新={(+(newEstimate.adjustments.sgaRatePercent || 0)).toFixed(2)}%
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );
