@@ -504,18 +504,18 @@ export default function App() {
   const oldStackPrice = oldCalc.primeCost + oldCalc.shippingCostPerUnit;
   const newStackPrice = newCalc.primeCost + newCalc.shippingCostPerUnit;
 
-  // 実態の利管費率: 実仕入れ原価（actualTotalCost）ベースで計算
-  const getActualSgaRate = (sgaCost: number, actualTotalCost: number, mode: string): number | null => {
-    if (actualTotalCost <= 0) return null;
-    const base = mode === 'margin' ? (actualTotalCost + sgaCost) : actualTotalCost;
-    return base > 0 ? sgaCost / base * 100 : null;
-  };
-  const oldActualSgaRate = getActualSgaRate(oldCalc.sgaCost, oldCalc.actualTotalCost, oldEstimate.adjustments.sgaCalcMode || 'markup');
-  const newActualSgaRate = getActualSgaRate(newCalc.sgaCost, newCalc.actualTotalCost, newEstimate.adjustments.sgaCalcMode || 'markup');
-
   // 架空仕入れをもととした利管費率（targetProfitMarginOffが設定されている場合のみ表示）
   const oldSellForCalc = oldSell > 0 ? oldSell : oldCalc.grandTotalUnitPrice;
   const newSellForCalc = newSell > 0 ? newSell : newCalc.grandTotalUnitPrice;
+
+  // 実態の利管費率（内掛け）: (売値 - 架空送料 - 架空primeCost) ÷ (売値 - 架空送料) × 100
+  const getActualSgaRate = (sell: number, shippingCost: number, primeCost: number): number | null => {
+    const base = sell - shippingCost;
+    if (base <= 0) return null;
+    return (base - primeCost) / base * 100;
+  };
+  const oldActualSgaRate = getActualSgaRate(oldSellForCalc, oldCalc.shippingCostPerUnit, oldCalc.primeCost);
+  const newActualSgaRate = getActualSgaRate(newSellForCalc, newCalc.shippingCostPerUnit, newCalc.primeCost);
   const getFictionalSgaRate = (sell: number, sp: number, mode: string, hasOffset: boolean): number | null => {
     if (!hasOffset || sp <= 0 || sell <= 0 || Math.abs(sell - sp) < 0.01) return null;
     return mode === 'margin' ? (sell - sp) / sell * 100 : (sell - sp) / sp * 100;
