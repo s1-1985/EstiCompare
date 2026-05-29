@@ -594,7 +594,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                   <th className="py-1.5 px-1 text-right w-20">段取(h)</th>
                   <th className="py-1.5 px-1 text-right w-28 text-[#B5451B]">客提示賃率</th>
                   <th className="py-1.5 px-1 text-right w-28 text-[#1E3A5F]">実態賃率</th>
-                  <th className="py-1.5 px-1 text-right w-20">→費用</th>
+                  <th className="py-1.5 px-1 text-right w-20">加工費</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#EEEBE6]">
