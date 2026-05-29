@@ -237,13 +237,14 @@ export const CompareResults: React.FC<CompareResultsProps> = ({
                 </td>
               </tr>
 
-              {newEstimate.processes.map((newProc, idx) => {
+              {newEstimate.processes.map((newProc) => {
                 const oldProc = oldEstimate.processes.find(o => o.index === newProc.index) || {
-                  processName: '', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, directProcessingCost: 0
+                  processName: '', workContent: '', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, directProcessingCost: 0
                 };
 
-                const oldCost = oldCalc.processCosts[idx] || 0;
-                const newCost = newCalc.processCosts[idx] || 0;
+                // processCosts は 0始まり配列。工程は index(1始まり)で照合しているので index-1 でアクセス（idx混在を回避）。
+                const oldCost = oldCalc.processCosts[newProc.index - 1] || 0;
+                const newCost = newCalc.processCosts[newProc.index - 1] || 0;
                 const pDiff = newCost - oldCost;
 
                 if (!newProc.processName.trim() && !oldProc.processName?.trim()) return null;
@@ -252,7 +253,7 @@ export const CompareResults: React.FC<CompareResultsProps> = ({
                 const yieldDiff = newProc.yieldPerHour - (oldProc.yieldPerHour || 0);
 
                 return (
-                  <tr key={idx} className="hover:bg-[#F7F6F2]/60 transition-colors">
+                  <tr key={newProc.index} className="hover:bg-[#F7F6F2]/60 transition-colors">
                     <td className="px-3 sm:px-5 py-3 sm:py-4 font-mono text-[#9C9490] font-bold text-center bg-[#F7F6F2]/30">
                       #0{newProc.index}
                     </td>
@@ -476,7 +477,7 @@ export const CompareResults: React.FC<CompareResultsProps> = ({
                   AI自動価格査定＆インデクス監査
                 </h5>
                 <p className="text-[10px] text-[#9C9490] mt-0.5 leading-none">
-                  Gemini 2.0 Flashを駆動して、不自然な係数や調整をロジカル監査
+                  Gemini 2.5 Flashを駆動して、不自然な係数や調整をロジカル監査
                 </p>
               </div>
             </div>
@@ -541,7 +542,7 @@ export const CompareResults: React.FC<CompareResultsProps> = ({
           </div>
 
           <div className="p-4 bg-[#0F0C09] border-t border-[#2A2018] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 text-[10.5px]">
-            <span className="text-[#6B6057] font-mono font-bold hidden sm:block">Model Engine: Google Gemini 2.0 Flash</span>
+            <span className="text-[#6B6057] font-mono font-bold hidden sm:block">Model Engine: Google Gemini 2.5 Flash</span>
             <button
               onClick={onRunComparison}
               disabled={isLoading}

@@ -3,7 +3,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import helmet from "helmet";
 import cors from "cors";
 import { initializeApp as initFirebaseAdmin, getApps as getAdminApps } from "firebase-admin/app";
@@ -42,6 +42,10 @@ async function requireAuth(req: any, res: any, next: any) {
 const app = express();
 const PORT = parseInt(process.env.PORT || "3000", 10);
 
+// Behind Firebase Hosting → Cloud Run (proxy hops). Without this, express-rate-limit
+// sees the proxy IP for every request and collapses all users into one bucket.
+app.set("trust proxy", 1);
+
 const isProd = process.env.NODE_ENV === "production";
 
 // ── Security Headers ───────────────────────────────────────────────────────────
@@ -78,8 +82,9 @@ app.use(
 );
 
 // ── CORS ────────────────────────────────────────────────────────────────────────
+// APP_URL may be a comma-separated list (e.g. web.app + firebaseapp.com).
 const allowedOrigins = process.env.APP_URL
-  ? [process.env.APP_URL]
+  ? process.env.APP_URL.split(",").map((s) => s.trim()).filter(Boolean)
   : ["http://localhost:3000", "http://localhost:5173"];
 
 app.use(
@@ -91,18 +96,31 @@ app.use(
   })
 );
 
-// ── Per-IP Rate Limiter ────────────────────────────────────────────────────────
-const apiLimiter = rateLimit({
+// ── Rate limiting ────────────────────────────────────────────────────────────────
+// Loose per-IP limit BEFORE auth: protects token verification from unauthenticated floods.
+const ipLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 10,
+  max: 30,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "リクエストが多すぎます。しばらくしてから再試行してください。" },
 });
-app.use("/api/", apiLimiter);
+app.use("/api/", ipLimiter);
 
 // ── Auth enforcement on all /api/ routes ──────────────────────────────────────
 app.use("/api/", requireAuth);
+
+// Strict per-user limit AFTER auth: 10 req/min keyed by Firebase UID (falls back to IP).
+const userLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  // 認証済みは UID 単位。未認証フォールバックは IPv6 正規化のため ipKeyGenerator を使う。
+  keyGenerator: (req: any) => req.user?.uid || ipKeyGenerator(req.ip),
+  message: { error: "リクエストが多すぎます。しばらくしてから再試行してください。" },
+});
+app.use("/api/", userLimiter);
 
 // ── Body Parser (reduced limit) ───────────────────────────────────────────────
 app.use(express.json({ limit: "512kb" }));
@@ -148,6 +166,16 @@ function waitForRateLimit(): Promise<void> {
 const MAX_TEXT_LEN = 20_000;
 const MAX_FIELD_LEN = 500;
 const MAX_PROCESSES = 20;
+
+// ── Prompt-injection guard ───────────────────────────────────────────────────────
+// User input is wrapped in delimiter tags (<user_data> etc.). Strip any occurrence of
+// our own delimiter tags from the input so a crafted value can't break out of the
+// boundary and inject instructions. JSON we send to Gemini is display-only (never
+// re-parsed server-side), so removing these substrings is safe.
+const PROMPT_DELIMITERS = /<\/?(?:user_data|estimate_data|scenario_data|process_list|shipping_condition|material_info|user_request|spec_data)\s*>/gi;
+function sanitizeForPrompt(input: string): string {
+  return input.replace(PROMPT_DELIMITERS, "");
+}
 
 // ── ドメイン知識（KNOWLEDGE.md から埋め込み） ─────────────────────────────────
 const DOMAIN_KNOWLEDGE = `
@@ -229,7 +257,8 @@ function sendApiError(res: any, error: any, fallback: string) {
   if (isGeminiInput) {
     return res.status(422).json({ error: "入力内容に問題があります。内容を確認してから再試行してください。" });
   }
-  return res.status(500).json({ error: `${fallback} [${errStatus ?? 'no-status'}: ${errMsg}]` });
+  // Internal error details are logged above (console.error) but never returned to the client.
+  return res.status(500).json({ error: fallback });
 }
 
 // ── Gemini call — single attempt; client handles retry with countdown UI ──────
@@ -244,7 +273,8 @@ app.post("/api/ping-ai", async (_req, res) => {
     const r = await client.models.generateContent({ model: "gemini-2.5-flash", contents: "Reply with just: ok" });
     res.json({ ok: true, response: r.text?.trim().slice(0, 30) });
   } catch (e: any) {
-    res.status(500).json({ ok: false, error: e?.message, status: e?.status });
+    console.error("ping-ai failed:", "status:", e?.status, "message:", e?.message);
+    res.status(500).json({ ok: false, error: "AI接続確認に失敗しました。" });
   }
 });
 
@@ -267,7 +297,7 @@ app.post("/api/parse-estimate", async (req, res) => {
 
 【対象テキスト】:
 <user_data>
-${text}
+${sanitizeForPrompt(text)}
 </user_data>`;
 
     const response = await callGemini(() => client.models.generateContent({
@@ -338,8 +368,8 @@ app.post("/api/compare-estimates", async (req, res) => {
 
     // Validate structure minimally — prevent arbitrary large objects
     const partNumber = String(newEstimate.partNumber || "").slice(0, 128);
-    const oldJson = JSON.stringify(oldEstimate);
-    const newJson = JSON.stringify(newEstimate);
+    const oldJson = sanitizeForPrompt(JSON.stringify(oldEstimate));
+    const newJson = sanitizeForPrompt(JSON.stringify(newEstimate));
     if (oldJson.length > 40_000 || newJson.length > 40_000) {
       return res.status(400).json({ error: "見積データが大きすぎます。工程数や入力内容を減らしてください。" });
     }
@@ -432,9 +462,9 @@ app.post("/api/generate-estimate", async (req, res) => {
     const userContent = `以下の製品・加工要求、および条件に基づき、日本の下請加工賃率や金属価格相場に完全に等しい、妥当な詳細積算見積データを1件生成してください。
 
 <user_request>
-【製品仕様】: ${userPromptText}
-【生産・加工条件】: ${conditions || "特になし"}
-【原料・配送スペック】: ${spec || "特になし"}
+【製品仕様】: ${sanitizeForPrompt(userPromptText)}
+【生産・加工条件】: ${sanitizeForPrompt(String(conditions || "特になし"))}
+【原料・配送スペック】: ${sanitizeForPrompt(String(spec || "特になし"))}
 </user_request>`;
 
     const response = await callGemini(() => client.models.generateContent({
@@ -515,12 +545,12 @@ app.post("/api/infer-process-params", async (req, res) => {
       return res.status(400).json({ error: `工程数は最大 ${MAX_PROCESSES} 件までです。` });
     }
 
-    const safePartNumber = String(partNumber || "不明").slice(0, 128);
+    const safePartNumber = sanitizeForPrompt(String(partNumber || "不明").slice(0, 128));
     const processLines = processes
       .slice(0, MAX_PROCESSES)
       .map((p: any, i: number) => {
-        const name = String(p.processName || "未記入").slice(0, 100);
-        const content = String(p.workContent || "未記入").slice(0, 200);
+        const name = sanitizeForPrompt(String(p.processName || "未記入").slice(0, 100));
+        const content = sanitizeForPrompt(String(p.workContent || "未記入").slice(0, 200));
         return `${i + 1}. 工程名: ${name}, 作業内容: ${content}`;
       })
       .join("\n");
@@ -593,8 +623,8 @@ app.post("/api/calculate-shipping", async (req, res) => {
     const userContent = `以下の条件で、ヤマト運輸または佐川急便での宅配便・企業間配送の1箱あたりの運賃（税込）を推定してください。
 
 <shipping_condition>
-・発送元: ${String(originPrefecture).slice(0, 20)}
-・送付先: ${String(destinationPrefecture).slice(0, 20)}
+・発送元: ${sanitizeForPrompt(String(originPrefecture).slice(0, 20))}
+・送付先: ${sanitizeForPrompt(String(destinationPrefecture).slice(0, 20))}
 ・1箱の概算重量: ${weight.toFixed(2)}kg
 ・1箱の入数: ${qty}個
 </shipping_condition>
@@ -639,7 +669,7 @@ app.post("/api/get-scrap-price", async (req, res) => {
     const client = getAIClient();
     await waitForRateLimit();
 
-    const safeMaterialName = materialName.slice(0, 200);
+    const safeMaterialName = sanitizeForPrompt(materialName.slice(0, 200));
     const userContent = `以下の材料のスクラップ（切粉・端材・廃材）の買取相場単価（円/kg）を推定してください。
 
 <material_info>
@@ -681,7 +711,7 @@ app.post("/api/ai-auto-reconcile", async (req, res) => {
     }
 
     const panel = isNew ? "新単価" : "旧単価";
-    const estimateJson = JSON.stringify(estimate);
+    const estimateJson = sanitizeForPrompt(JSON.stringify(estimate));
     if (estimateJson.length > 40_000) {
       return res.status(400).json({ error: "見積データが大きすぎます。" });
     }
@@ -758,7 +788,7 @@ app.post("/api/analyze-scenario", async (req, res) => {
     }
 
     const { oldEstimate, newEstimate, name } = scenario;
-    const scenarioJson = JSON.stringify({ oldEstimate, newEstimate }, null, 0);
+    const scenarioJson = sanitizeForPrompt(JSON.stringify({ oldEstimate, newEstimate }, null, 0));
     if (scenarioJson.length > 60_000) {
       return res.status(400).json({ error: "シナリオデータが大きすぎます。" });
     }

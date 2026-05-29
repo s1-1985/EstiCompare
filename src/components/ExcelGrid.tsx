@@ -227,7 +227,11 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
         if (key === 'isDirectInput' || key === 'calcMode') return { ...proc, [key]: value };
         if (typeof value === 'string' && numericKeys.includes(key as string)) {
           const parsed = parseFloat(value);
-          return { ...proc, [key]: isNaN(parsed) ? (key === 'actualHourlyRate' ? undefined : 0) : parsed };
+          if (!isNaN(parsed)) return { ...proc, [key]: parsed };
+          // 実態値(actual*)は空欄→undefinedにして「客提示値を流用」のフォールバック(?? 演算子)を効かせる。
+          // 客提示値(賃率/出来高等)は計算で直接使うため空欄→0。
+          const isActual = (key as string).startsWith('actual');
+          return { ...proc, [key]: isActual ? undefined : 0 };
         }
         return { ...proc, [key]: value };
       }),
@@ -311,6 +315,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
   const handleSlideFromOld = () => {
     const rate = parseFloat(slideRate);
     if (isNaN(rate)) { alert('スライド率を数値で入力してください (例: 5 → +5%)'); return; }
+    if (rate <= -100) { alert('スライド率が-100%以下です。賃率・単価が0または負になるため設定できません。'); return; }
     const m = 1 + rate / 100;
     onChangeNew({
       ...newEstimate,

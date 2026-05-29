@@ -1,4 +1,4 @@
-import { useRef, Fragment } from 'react';
+import { useRef, useState, Fragment } from 'react';
 import { Printer, Download } from 'lucide-react';
 import { DetailedEstimate } from '../types';
 import { calculateEstimate, CalculatedSection, rateFromCostSell } from '../utils/calculations';
@@ -291,6 +291,7 @@ function buildChecklist(oldEstimate: DetailedEstimate, newEstimate: DetailedEsti
 
 export function PrintSheet({ oldEstimate, newEstimate }: PrintSheetProps) {
   const printRef = useRef<HTMLDivElement>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   const oldCalc = calculateEstimate(oldEstimate);
   const newCalc = calculateEstimate(newEstimate);
@@ -300,6 +301,9 @@ export function PrintSheet({ oldEstimate, newEstimate }: PrintSheetProps) {
   };
 
   const handleExcelDownload = async () => {
+    if (isExporting) return; // 連打・多重実行を防止
+    setIsExporting(true);
+    try {
     const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
 
@@ -424,6 +428,12 @@ export function PrintSheet({ oldEstimate, newEstimate }: PrintSheetProps) {
     const partNo = newEstimate.partNumber || oldEstimate.partNumber || '見積書';
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     XLSX.writeFile(wb, `${partNo}_新旧見積比較_${today}.xlsx`);
+    } catch (e) {
+      console.error('Excel export failed:', e);
+      alert('Excelの生成に失敗しました。通信状況を確認して再度お試しください。');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -441,10 +451,11 @@ export function PrintSheet({ oldEstimate, newEstimate }: PrintSheetProps) {
         </button>
         <button
           onClick={handleExcelDownload}
-          className="flex items-center gap-2 px-4 py-2 bg-[#1A6B3A] hover:bg-[#145730] text-white text-sm font-bold rounded cursor-pointer transition-colors"
+          disabled={isExporting}
+          className="flex items-center gap-2 px-4 py-2 bg-[#1A6B3A] hover:bg-[#145730] text-white text-sm font-bold rounded cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-wait"
         >
           <Download className="w-4 h-4" />
-          Excelダウンロード
+          {isExporting ? '生成中...' : 'Excelダウンロード'}
         </button>
       </div>
 
