@@ -1,7 +1,7 @@
 # EstiCompare — 引継ぎドキュメント
 
-最終更新: 2026-05-27（第2セッション終了時点）
-ブランチ: `main`（全PR済み）
+最終更新: 2026-05-29（第6セッション終了時点）
+ブランチ: `main`（全PR済み、PR #50・#51マージ済み）
 
 ---
 
@@ -160,6 +160,9 @@ auditVariance = grandTotalUnitPrice - sellingPrice
 | #46 | 新旧整合チェック・賃率警告・売値フロア・調整ナビ・客向け内掛け表示 |
 | #47 | リサイズ可能分割ペイン・マイシナリオ/Sheet2/Sheet3 全幅表示 |
 | #48 | 新単価パネル：目標利益率入力時に対応する目標単価を直下表示 |
+| #49 | ウォーターフォール削除・行アライン修正・grandTotalラベル変更・lot初期値修正 |
+| #50 | 上部パネルに5指標ストリップ表示・サイドバー横幅リサイズ・工程行に分単価表示 |
+| #51 | 指標ストリップ視認性強化・計算式修正・AIブロッキングモーダル・SGA下限1%保証 |
 
 ---
 
@@ -259,6 +262,66 @@ auditVariance = grandTotalUnitPrice - sellingPrice
 3. **マイシナリオ/Sheet2/Sheet3 で右半分全体を使用**
    - `showFixedHeader = activeView === 'workspace' && activeSheetTab === 'workspace'` で制御
    - ワークスペース以外のビューでは固定ヘッダー非表示 → 全高をコンテンツに割当
+
+---
+
+## 第5セッション（2026-05-28）で実施した変更（PR #50）
+
+### 実装内容
+
+1. **上部パネル（旧/新）に5指標ストリップ追加** — `App.tsx`
+   - 各パネル上部に固定表示（スクロール非対象）
+   - 表示項目: 見積単価（売値）・積み上げ単価・実態利管費率・架空利管費率・実態利益率（外掛け）
+   - `架空利管費率`: `targetProfitMarginOff` 未設定時は「—」表示
+   - `実態利管費率`: `actualTotalCost` ベースで計算（従来は `actualPrimeCost` ベースで誤値）
+   - `見積単価`: `targetUnitPrice` 優先、未入力なら `grandTotalUnitPrice`
+
+2. **サイドバー横幅リサイズ** — `App.tsx`
+   - 初期幅230px（従来288pxの約80%）
+   - サイドバーと右ペインの境界にドラッグハンドル追加
+   - `sidebarWidthPx` state + `isSidebarDragging` ref + mousemove/mouseup イベントで制御
+   - min: 150px, max: 380px
+
+3. **工程行に分単価表示** — `ExcelGrid.tsx`
+   - 各工程行の2行目（小さめ）に追加表示:
+     - 段取(h) 下: `${Math.round(totalHours * 60)}分`
+     - 客提示賃率 下: `${(hourlyRate / 60).toFixed(1)}円/分`
+     - 実態賃率 下: `${(actualHourlyRate ?? hourlyRate / 60).toFixed(1)}円/分`
+
+---
+
+## 第6セッション（2026-05-29）で実施した変更（PR #51）
+
+### 実装内容
+
+1. **指標ストリップ視認性強化** — `App.tsx`
+   - ラベル: 9px → より明瞭な色・サイズ
+   - 値: `text-sm`（14px）で大きく表示
+   - 各指標間に `border-r` 区切り線追加
+
+2. **実態利管費率の計算式修正** — `App.tsx`
+   - 旧: `sgaCost / actualPrimeCost`（誤）
+   - 新: `sgaCost / actualTotalCost`（正）
+   - `actualPurchasePrice` 入力時は `actualTotalCost` がそれを使うため、正確な実態ベースを反映
+
+3. **架空利管費率の0%誤表示修正** — `App.tsx`
+   - `targetProfitMarginOff = 0` の場合、`suggestedPurchasePriceForClient = sellingPrice` となり差額が0 → 0%が表示されていた
+   - 修正: `hasOffset` フラグで `targetProfitMarginOff > 0` のときのみ計算・表示、未設定は「—」
+
+4. **下部スクロール欄の重複「積み上げ単価」行を削除** — `App.tsx`
+   - 旧/新両パネルのスクロール領域から `grandTotalUnitPrice` 行を削除（上部ストリップに移動済み）
+
+5. **一発自動整合のSGA率 1〜15%強制** — `App.tsx` `handleAutoReconcile`
+   - 工程賃率スケール後にSGA率を計算し、1%未満の場合は目標単価を引き上げ
+   - 引き上げ後のSGA率が1〜15%に収まるよう再計算
+   - 下限利益率（`minProfitRate`）との整合も維持
+
+6. **AIブロッキングモーダル** — `ExcelGrid.tsx`
+   - `aiModal` state追加: `{ label, status: 'loading'|'success'|'error', message? }`
+   - AI処理中: fixed オーバーレイ（z-9999）+ スピナーで他操作ブロック
+   - 成功: ✓アイコン + 2.5秒後に自動クローズ
+   - 失敗: ✗アイコン + エラーメッセージ + 手動クローズボタン（4秒後自動解除も併用）
+   - 対象ボタン: AI自動設定・送料試算・スクラップ単価
 
 ---
 
