@@ -2,7 +2,7 @@ import { useRef, Fragment } from 'react';
 import * as XLSX from 'xlsx';
 import { Printer, Download } from 'lucide-react';
 import { DetailedEstimate } from '../types';
-import { calculateEstimate, CalculatedSection } from '../utils/calculations';
+import { calculateEstimate, CalculatedSection, rateFromCostSell } from '../utils/calculations';
 
 interface PrintSheetProps {
   oldEstimate: DetailedEstimate;
@@ -240,12 +240,12 @@ function buildChecklist(oldEstimate: DetailedEstimate, newEstimate: DetailedEsti
   const oldPurchase = oldEstimate.adjustments.actualPurchasePrice > 0
     ? oldEstimate.adjustments.actualPurchasePrice : oldCalc.grandTotalUnitPrice;
   const oldSell = oldEstimate.adjustments.targetUnitPrice || 0;
-  const oldMarkup = (oldSell > 0 && oldPurchase > 0) ? ((oldSell - oldPurchase) / oldPurchase * 100) : null;
+  const oldMarkup = (oldSell > 0 && oldPurchase > 0) ? rateFromCostSell(oldPurchase, oldSell, 'markup') : null; // 外掛け
 
   const newPurchase = newEstimate.adjustments.actualPurchasePrice > 0
     ? newEstimate.adjustments.actualPurchasePrice : newCalc.grandTotalUnitPrice;
   const newSell = newEstimate.adjustments.targetUnitPrice || 0;
-  const newMarkup = (newSell > 0 && newPurchase > 0) ? ((newSell - newPurchase) / newPurchase * 100) : null;
+  const newMarkup = (newSell > 0 && newPurchase > 0) ? rateFromCostSell(newPurchase, newSell, 'markup') : null; // 外掛け
 
   const oldMarginOff = oldEstimate.adjustments.targetProfitMarginOff || 0;
   const newMarginOff = newEstimate.adjustments.targetProfitMarginOff || 0;

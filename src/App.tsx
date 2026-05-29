@@ -24,7 +24,7 @@ import {
 import { auth, loginWithGoogle, logout } from './firebase';
 import { subscribeScenarios, saveUserScenario } from './utils/firestoreService';
 import { apiPost } from './utils/apiClient';
-import { calculateEstimate } from './utils/calculations';
+import { calculateEstimate, sellFromCost, costFromSell, rateFromCostSell, convertRate } from './utils/calculations';
 
 type ActiveView = 'workspace' | 'library';
 
@@ -280,9 +280,7 @@ export default function App() {
       return;
     }
     const mode = est.adjustments.sgaCalcMode || 'markup';
-    const newRate = mode === 'margin'
-      ? (1 - primeCost / base) * 100
-      : (base / primeCost - 1) * 100;
+    const newRate = rateFromCostSell(primeCost, base, mode);
     if (newRate < 0) {
       alert(`目標売値が積み上げコスト(¥${primeCost.toFixed(0)})を下回るため設定できません。`);
       return;
@@ -347,9 +345,7 @@ export default function App() {
       return sum + (proc.directProcessingCost || 0);
     }, 0);
     if (currentTotalProcessCostTemp > 0) {
-      const targetPrimeCost = sgaMode === 'margin'
-        ? Y * (1 - finalSgaPercent / 100)
-        : Y / (1 + finalSgaPercent / 100);
+      const targetPrimeCost = costFromSell(Y, finalSgaPercent, sgaMode);
       const targetNonDirectProcessCost = Math.max(0, targetPrimeCost - materialCost - directInputTotal);
       const multiplier = Math.max(0.1, targetNonDirectProcessCost / currentTotalProcessCostTemp);
       draftProcesses = target.processes.map((proc) => {
@@ -366,22 +362,16 @@ export default function App() {
       return sum + (processHoursList[i] * (proc.hourlyRate || 0));
     }, 0);
     if (tempPrimeCost > 0) {
-      const rawSga = sgaMode === 'margin'
-        ? Math.round((1 - tempPrimeCost / Y) * 10000) / 100
-        : Math.round(((Y / tempPrimeCost) - 1) * 10000) / 100;
+      const rawSga = Math.round(rateFromCostSell(tempPrimeCost, Y, sgaMode) * 100) / 100;
       if (rawSga < SGA_MIN) {
         if (isNew && !locked) {
           // 新単価フリー: 目標単価を引き上げて最低SGA_MINを確保
-          const requiredY = sgaMode === 'markup'
-            ? tempPrimeCost * (1 + SGA_MIN / 100)
-            : tempPrimeCost / (1 - SGA_MIN / 100);
+          const requiredY = sellFromCost(tempPrimeCost, SGA_MIN, sgaMode);
           const raisedPrice = Math.ceil(requiredY + (reconciledUnitPrice - Y));
           reconciledUnitPrice = raisedPrice;
           updatedAdjustments.targetUnitPrice = raisedPrice;
           const adjustedY = raisedPrice - (calc.shippingCostPerUnit) - (target.adjustments.otherAdjustment || 0);
-          finalSgaPercent = sgaMode === 'markup'
-            ? Math.min(SGA_MAX, Math.max(SGA_MIN, Math.round(((adjustedY / tempPrimeCost) - 1) * 10000) / 100))
-            : Math.min(SGA_MAX, Math.max(SGA_MIN, Math.round((1 - tempPrimeCost / adjustedY) * 10000) / 100));
+          finalSgaPercent = Math.min(SGA_MAX, Math.max(SGA_MIN, Math.round(rateFromCostSell(tempPrimeCost, adjustedY, sgaMode) * 100) / 100));
         } else {
           // 旧単価 or 新単価ロック: 目標単価固定、SGAをSGA_MINに設定
           finalSgaPercent = SGA_MIN;
@@ -451,7 +441,7 @@ export default function App() {
     }
     const cost = getNewCost();
     if (cost > 0) {
-      const markup = (sell - cost) / cost * 100;
+      const markup = rateFromCostSell(cost, sell, 'markup'); // 外掛け = (売価−原価)/売価
       setNewEstimate(prev => ({
         ...prev,
         adjustments: {
@@ -470,7 +460,7 @@ export default function App() {
     const markup = parseFloat(value);
     const cost = getNewCost();
     if (!isNaN(markup) && cost > 0) {
-      const sell = cost * (1 + markup / 100);
+      const sell = sellFromCost(cost, markup, 'markup'); // 外掛け: 売価 = 原価/(1−率)
       setNewEstimate(prev => ({
         ...prev,
         adjustments: {
@@ -488,7 +478,7 @@ export default function App() {
   const handleNewClientMarkupChange = (value: string) => {
     const mu = parseFloat(value);
     if (!isNaN(mu) && mu >= 0) {
-      const mg = mu / (1 + mu / 100); // store full precision to avoid round-trip drift
+      const mg = convertRate(mu, 'markup'); // 外掛け入力→内掛けで保存（i = e/(1−e)）
       setNewEstimate(prev => ({ ...prev, adjustments: { ...prev.adjustments, targetProfitMarginOff: mg } }));
     } else {
       setNewEstimate(prev => ({ ...prev, adjustments: { ...prev.adjustments, targetProfitMarginOff: 0 } }));
@@ -516,22 +506,22 @@ export default function App() {
     : newCalc.grandTotalUnitPrice;
 
   const oldSell = oldEstimate.adjustments.targetUnitPrice || 0;
-  const oldMarkup = (oldSell > 0 && oldPurchase > 0) ? ((oldSell - oldPurchase) / oldPurchase * 100) : null;
-  const oldMargin = (oldSell > 0 && oldPurchase > 0) ? ((oldSell - oldPurchase) / oldSell * 100) : null;
+  const oldMarkup = (oldSell > 0 && oldPurchase > 0) ? rateFromCostSell(oldPurchase, oldSell, 'markup') : null; // 外掛け
+  const oldMargin = (oldSell > 0 && oldPurchase > 0) ? rateFromCostSell(oldPurchase, oldSell, 'margin') : null; // 内掛け
   const oldGrossPerUnit = oldSell > 0 && oldPurchase > 0 ? oldSell - oldPurchase : null;
 
   const newSell = newEstimate.adjustments.targetUnitPrice || 0;
-  const newMarkup = (newSell > 0 && newPurchase > 0) ? ((newSell - newPurchase) / newPurchase * 100) : null;
-  const newMargin = (newSell > 0 && newPurchase > 0) ? ((newSell - newPurchase) / newSell * 100) : null;
+  const newMarkup = (newSell > 0 && newPurchase > 0) ? rateFromCostSell(newPurchase, newSell, 'markup') : null; // 外掛け
+  const newMargin = (newSell > 0 && newPurchase > 0) ? rateFromCostSell(newPurchase, newSell, 'margin') : null; // 内掛け
   const newGrossPerUnit = newSell > 0 && newPurchase > 0 ? newSell - newPurchase : null;
 
   // ㉚ derived display values (internal)
   const newInternalMarkup = newEstimate.adjustments.targetProfitRate || 0;
-  const newInternalMargin = newInternalMarkup > 0 ? newInternalMarkup / (1 + newInternalMarkup / 100) : null;
-  // 得意先用: derive external markup from stored internal margin
+  const newInternalMargin = newInternalMarkup > 0 ? convertRate(newInternalMarkup, 'markup') : null; // 外→内
+  // 得意先用: 保存値（内掛け）から外掛けを導出
   const newClientMarginOff = newEstimate.adjustments.targetProfitMarginOff || 0;
-  const newClientMarkupOff = newClientMarginOff > 0 && newClientMarginOff < 100
-    ? parseFloat((newClientMarginOff / (1 - newClientMarginOff / 100)).toFixed(4))
+  const newClientMarkupOff = newClientMarginOff > 0
+    ? parseFloat(convertRate(newClientMarginOff, 'margin').toFixed(4)) // 内→外
     : null;
 
   const purchaseRatio = (oldPurchase > 0 && newPurchase > 0) ? (newPurchase / oldPurchase * 100) : null;
@@ -543,49 +533,49 @@ export default function App() {
   const oldGapToTarget = (oldSell > 0 && oldCalc.grandTotalUnitPrice > 0) ? oldCalc.grandTotalUnitPrice - oldSell : null;
   const newGapToTarget = (newSell > 0 && newCalc.grandTotalUnitPrice > 0) ? newCalc.grandTotalUnitPrice - newSell : null;
   // 積み上げ単価を使った外掛け/内掛け（常時表示用）
-  const oldCalcMarkup = (oldSell > 0 && oldCalc.grandTotalUnitPrice > 0) ? ((oldSell - oldCalc.grandTotalUnitPrice) / oldCalc.grandTotalUnitPrice * 100) : null;
-  const oldCalcMargin = (oldSell > 0 && oldCalc.grandTotalUnitPrice > 0) ? ((oldSell - oldCalc.grandTotalUnitPrice) / oldSell * 100) : null;
-  const newCalcMarkup = (newSell > 0 && newCalc.grandTotalUnitPrice > 0) ? ((newSell - newCalc.grandTotalUnitPrice) / newCalc.grandTotalUnitPrice * 100) : null;
-  const newCalcMargin = (newSell > 0 && newCalc.grandTotalUnitPrice > 0) ? ((newSell - newCalc.grandTotalUnitPrice) / newSell * 100) : null;
+  const oldCalcMarkup = (oldSell > 0 && oldCalc.grandTotalUnitPrice > 0) ? rateFromCostSell(oldCalc.grandTotalUnitPrice, oldSell, 'markup') : null;
+  const oldCalcMargin = (oldSell > 0 && oldCalc.grandTotalUnitPrice > 0) ? rateFromCostSell(oldCalc.grandTotalUnitPrice, oldSell, 'margin') : null;
+  const newCalcMarkup = (newSell > 0 && newCalc.grandTotalUnitPrice > 0) ? rateFromCostSell(newCalc.grandTotalUnitPrice, newSell, 'markup') : null;
+  const newCalcMargin = (newSell > 0 && newCalc.grandTotalUnitPrice > 0) ? rateFromCostSell(newCalc.grandTotalUnitPrice, newSell, 'margin') : null;
 
-  // 帳尻内掛け率: 材工費 (primeCost) に対して、何% 内掛け利管費をかければ目標売値に帳尻が合うか
-  // base = targetSell - shipping - other → sgaRate(margin mode) = 1 - primeCost/base
+  // 帳尻利管費率: 材工費 (primeCost) に対して、何%の利管費をかければ目標売値に帳尻が合うか
+  // base = targetSell - shipping - other を売価、primeCost を原価として外掛け/内掛けを算出
   const oldReconcileMargin: number | null = (() => {
     if (oldCalc.primeCost <= 0 || oldSell <= 0) return null;
     const base = oldSell - oldCalc.shippingCostPerUnit - (oldEstimate.adjustments.otherAdjustment || 0);
     if (base <= oldCalc.primeCost) return null;
-    return (1 - oldCalc.primeCost / base) * 100;
+    return rateFromCostSell(oldCalc.primeCost, base, 'margin'); // 内掛け
   })();
   const oldReconcileMarkup: number | null = (() => {
     if (oldCalc.primeCost <= 0 || oldSell <= 0) return null;
     const base = oldSell - oldCalc.shippingCostPerUnit - (oldEstimate.adjustments.otherAdjustment || 0);
     if (base <= oldCalc.primeCost) return null;
-    return (base / oldCalc.primeCost - 1) * 100;
+    return rateFromCostSell(oldCalc.primeCost, base, 'markup'); // 外掛け
   })();
 
   const newReconcileMargin: number | null = (() => {
     if (newCalc.primeCost <= 0 || newSell <= 0) return null;
     const base = newSell - newCalc.shippingCostPerUnit - (newEstimate.adjustments.otherAdjustment || 0);
     if (base <= newCalc.primeCost) return null;
-    return (1 - newCalc.primeCost / base) * 100;
+    return rateFromCostSell(newCalc.primeCost, base, 'margin'); // 内掛け
   })();
   const newReconcileMarkup: number | null = (() => {
     if (newCalc.primeCost <= 0 || newSell <= 0) return null;
     const base = newSell - newCalc.shippingCostPerUnit - (newEstimate.adjustments.otherAdjustment || 0);
     if (base <= newCalc.primeCost) return null;
-    return (base / newCalc.primeCost - 1) * 100;
+    return rateFromCostSell(newCalc.primeCost, base, 'markup'); // 外掛け
   })();
 
-  // Proposal 2: 売値フロア — 外掛け25%を維持できる最低売値
-  const newSellFloor = newCalc.actualTotalCost > 0 ? newCalc.actualTotalCost * 1.25 : null;
+  // Proposal 2: 売値フロア — 外掛け25%を維持できる最低売値（売価=原価/(1−0.25)）
+  const newSellFloor = newCalc.actualTotalCost > 0 ? sellFromCost(newCalc.actualTotalCost, 25, 'markup') : null;
   const newSellFloorGap = newSellFloor !== null && newSell > 0 ? newSell - newSellFloor : null;
 
   // Proposal 5: primeCostベース客向け実内掛け — materials+processingだけを客提示仕入れと仮定した場合の客向け内掛け率
-  // ≤15% なら primeCostが十分に膨らんでいる。>15% ならまだ積み上げが必要
+  // 内掛け = (売価−原価)/原価。値が小さいほど primeCost が十分に膨らんでいる
   const oldPrimeCostMargin = oldSell > 0 && oldCalc.primeCost > 0
-    ? (oldSell - oldCalc.primeCost) / oldSell * 100 : null;
+    ? rateFromCostSell(oldCalc.primeCost, oldSell, 'margin') : null;
   const newPrimeCostMargin = newSell > 0 && newCalc.primeCost > 0
-    ? (newSell - newCalc.primeCost) / newSell * 100 : null;
+    ? rateFromCostSell(newCalc.primeCost, newSell, 'margin') : null;
 
   // 架空仕入れ積み上げ達成度 — 売値(目標)に対してgrandTotalUnitPriceがどの程度達しているか
   const oldFictionalTarget = oldCalc.suggestedPurchasePriceForClient > 0 && (oldEstimate.adjustments.targetProfitMarginOff || 0) > 0
@@ -605,30 +595,32 @@ export default function App() {
   const oldSellForCalc = oldSell > 0 ? oldSell : oldCalc.grandTotalUnitPrice;
   const newSellForCalc = newSell > 0 ? newSell : newCalc.grandTotalUnitPrice;
 
-  // 実態の利管費率（内掛け）: (売値 - 架空送料 - 架空primeCost) ÷ (売値 - 架空送料) × 100
-  const getActualSgaRate = (sell: number, shippingCost: number, primeCost: number): number | null => {
+  // 実態の利管費率: 原価=架空primeCost、売価=売値−架空送料 として、選択中の方式(外掛け/内掛け)で算出
+  const getActualSgaRate = (sell: number, shippingCost: number, primeCost: number, mode: 'markup' | 'margin'): number | null => {
     const base = sell - shippingCost;
-    if (base <= 0) return null;
-    return (base - primeCost) / base * 100;
+    if (base <= 0 || primeCost <= 0) return null;
+    return rateFromCostSell(primeCost, base, mode);
   };
-  const oldActualSgaRate = getActualSgaRate(oldSellForCalc, oldCalc.shippingCostPerUnit, oldCalc.primeCost);
-  const newActualSgaRate = getActualSgaRate(newSellForCalc, newCalc.shippingCostPerUnit, newCalc.primeCost);
-  const getFictionalSgaRate = (sell: number, sp: number, mode: string, hasOffset: boolean): number | null => {
+  const oldSgaMode = oldEstimate.adjustments.sgaCalcMode || 'markup';
+  const newSgaMode = newEstimate.adjustments.sgaCalcMode || 'markup';
+  const oldActualSgaRate = getActualSgaRate(oldSellForCalc, oldCalc.shippingCostPerUnit, oldCalc.primeCost, oldSgaMode);
+  const newActualSgaRate = getActualSgaRate(newSellForCalc, newCalc.shippingCostPerUnit, newCalc.primeCost, newSgaMode);
+  const getFictionalSgaRate = (sell: number, sp: number, mode: 'markup' | 'margin', hasOffset: boolean): number | null => {
     if (!hasOffset || sp <= 0 || sell <= 0 || Math.abs(sell - sp) < 0.01) return null;
-    return mode === 'margin' ? (sell - sp) / sell * 100 : (sell - sp) / sp * 100;
+    return rateFromCostSell(sp, sell, mode);
   };
-  const oldFictionalSgaRate = getFictionalSgaRate(oldSellForCalc, oldCalc.suggestedPurchasePriceForClient, oldEstimate.adjustments.sgaCalcMode || 'markup', (oldEstimate.adjustments.targetProfitMarginOff || 0) > 0);
-  const newFictionalSgaRate = getFictionalSgaRate(newSellForCalc, newCalc.suggestedPurchasePriceForClient, newEstimate.adjustments.sgaCalcMode || 'markup', (newEstimate.adjustments.targetProfitMarginOff || 0) > 0);
+  const oldFictionalSgaRate = getFictionalSgaRate(oldSellForCalc, oldCalc.suggestedPurchasePriceForClient, oldSgaMode, (oldEstimate.adjustments.targetProfitMarginOff || 0) > 0);
+  const newFictionalSgaRate = getFictionalSgaRate(newSellForCalc, newCalc.suggestedPurchasePriceForClient, newSgaMode, (newEstimate.adjustments.targetProfitMarginOff || 0) > 0);
 
-  // 実態の利益率（外掛け）: 仕入実費が入力されている場合は直接使用（送料を二重計上しない）
+  // 実態の利益率（内掛け＝原価基準）: 仕入実費が入力されている場合は直接使用（送料を二重計上しない）
   const oldActualCostForMarkup = oldEstimate.adjustments.actualPurchasePrice > 0
     ? oldEstimate.adjustments.actualPurchasePrice : oldCalc.actualTotalCost;
   const newActualCostForMarkup = newEstimate.adjustments.actualPurchasePrice > 0
     ? newEstimate.adjustments.actualPurchasePrice : newCalc.actualTotalCost;
   const oldActualMarkupRate = oldActualCostForMarkup > 0 && oldSellForCalc > 0
-    ? (oldSellForCalc - oldActualCostForMarkup) / oldActualCostForMarkup * 100 : null;
+    ? rateFromCostSell(oldActualCostForMarkup, oldSellForCalc, 'margin') : null; // 内掛け=(売価−原価)/原価
   const newActualMarkupRate = newActualCostForMarkup > 0 && newSellForCalc > 0
-    ? (newSellForCalc - newActualCostForMarkup) / newActualCostForMarkup * 100 : null;
+    ? rateFromCostSell(newActualCostForMarkup, newSellForCalc, 'margin') : null;
 
   const showFixedHeader = activeView === 'workspace' && activeSheetTab === 'workspace';
 
@@ -1242,14 +1234,14 @@ export default function App() {
                       </div>
                     </div>
                     <div className="border-r border-[#E8C8BC] pr-2">
-                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">架空利管費率<Tooltip text="客提示用の積み上げ単価に占める利管費の割合（内掛け）。suggestedPurchasePriceForClient算出時に使用する客先提示用の利益率。" /></div>
+                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">架空利管費率<Tooltip text="架空primeCost（原価）と売値−送料（売価）から算出した利管費率。選択中の方式（外掛け=率÷売価／内掛け=率÷原価）で表示。" /></div>
                       <div className={`font-mono font-black text-sm leading-tight ${oldActualSgaRate !== null ? 'text-amber-700' : 'text-[#C8C2B8]'}`}>
                         {oldActualSgaRate !== null ? `${oldActualSgaRate.toFixed(2)}%` : '—'}
                       </div>
-                      {oldActualSgaRate !== null && <div className="text-[8px] text-[#9C9490] mt-0.5">内掛け</div>}
+                      {oldActualSgaRate !== null && <div className="text-[8px] text-[#9C9490] mt-0.5">{oldSgaMode === 'markup' ? '外掛け' : '内掛け'}</div>}
                     </div>
                     <div>
-                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">実態利益率<Tooltip text="実際の仕入原価に対して何%の利益を乗せているか（外掛け）。(売値 - 仕入実費) ÷ 仕入実費 × 100" /></div>
+                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">実態利益率<Tooltip text="実際の仕入原価に対して何%の利益を乗せているか（内掛け＝原価基準）。(売値 − 仕入実費) ÷ 仕入実費 × 100" /></div>
                       <div className={`font-mono font-black text-sm leading-tight ${oldActualMarkupRate !== null ? profitColorCls(oldActualMarkupRate) : 'text-[#C8C2B8]'}`}>
                         {oldActualMarkupRate !== null ? `${oldActualMarkupRate.toFixed(2)}%` : '—'}
                       </div>
@@ -1453,14 +1445,14 @@ export default function App() {
                       </div>
                     </div>
                     <div className="border-r border-[#B8CCE8] pr-2">
-                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">架空利管費率<Tooltip text="客提示用の積み上げ単価に占める利管費の割合（内掛け）。suggestedPurchasePriceForClient算出時に使用する客先提示用の利益率。" /></div>
+                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">架空利管費率<Tooltip text="架空primeCost（原価）と売値−送料（売価）から算出した利管費率。選択中の方式（外掛け=率÷売価／内掛け=率÷原価）で表示。" /></div>
                       <div className={`font-mono font-black text-sm leading-tight ${newActualSgaRate !== null ? 'text-amber-700' : 'text-[#C8C2B8]'}`}>
                         {newActualSgaRate !== null ? `${newActualSgaRate.toFixed(2)}%` : '—'}
                       </div>
-                      {newActualSgaRate !== null && <div className="text-[8px] text-[#9C9490] mt-0.5">内掛け</div>}
+                      {newActualSgaRate !== null && <div className="text-[8px] text-[#9C9490] mt-0.5">{newSgaMode === 'markup' ? '外掛け' : '内掛け'}</div>}
                     </div>
                     <div>
-                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">実態利益率<Tooltip text="実際の仕入原価に対して何%の利益を乗せているか（外掛け）。(売値 - 仕入実費) ÷ 仕入実費 × 100" /></div>
+                      <div className="text-[9px] font-bold text-[#9C9490] leading-none mb-1 truncate">実態利益率<Tooltip text="実際の仕入原価に対して何%の利益を乗せているか（内掛け＝原価基準）。(売値 − 仕入実費) ÷ 仕入実費 × 100" /></div>
                       <div className={`font-mono font-black text-sm leading-tight ${newActualMarkupRate !== null ? profitColorCls(newActualMarkupRate) : 'text-[#C8C2B8]'}`}>
                         {newActualMarkupRate !== null ? `${newActualMarkupRate.toFixed(2)}%` : '—'}
                       </div>
