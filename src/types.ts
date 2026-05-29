@@ -99,6 +99,7 @@ export interface Scenario {
   newEstimate: DetailedEstimate;
   oldEstimate: DetailedEstimate;
   comparisonResult: ComparisonResult | null;
+  aiAnalysis?: string | null;
   createdAt?: any;
   updatedAt?: any;
 }
