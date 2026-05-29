@@ -48,6 +48,7 @@ export interface AdvancedAdjustment {
   maxProfitRate?: number;        // 【旧単価専用】上限の利益率・外掛け (%) - 旧単価でのみ使用
   targetProfitMarginOff: number; // 【客先ルール】客提示用利益率・内掛け (%) - 例: 15%
   targetUnitPrice: number;       // 目標単価・決定売価 (円)
+  targetPriceLocked?: boolean;   // 新単価目標単価ロック（一発自動整合で変えない）
   
   actualPurchasePrice: number;    // 実際の仕入単価（サプライヤー仕入れ単価） (円)
   sgaRatePercent: number;        // 利管費率 (%) - 例: 15%
