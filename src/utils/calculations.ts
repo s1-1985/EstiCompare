@@ -1,5 +1,39 @@
 import { DetailedEstimate, ProcessRow, ProcessCalcMode } from '../types';
 
+// ─── 外掛け / 内掛け の正準定義（bizmemo準拠） ────────────────────────────────
+// 外掛け(markup): 率は「売価」基準。 率 = (売価−原価)/売価、 売価 = 原価 ÷ (1 − 率)
+// 内掛け(margin): 率は「原価」基準。 率 = (売価−原価)/原価、 売価 = 原価 × (1 + 率)
+export type MarginMode = 'markup' | 'margin';
+
+/** 原価と率から売価を求める */
+export function sellFromCost(cost: number, ratePercent: number, mode: MarginMode): number {
+  const r = ratePercent / 100;
+  if (mode === 'markup') return r < 1 ? cost / (1 - r) : 0; // 外掛け
+  return cost * (1 + r);                                     // 内掛け
+}
+
+/** 原価と売価から率(%)を求める */
+export function rateFromCostSell(cost: number, sell: number, mode: MarginMode): number {
+  if (cost <= 0 || sell <= 0) return 0;
+  return mode === 'markup'
+    ? (1 - cost / sell) * 100   // 外掛け = (売価−原価)/売価
+    : (sell / cost - 1) * 100;  // 内掛け = (売価−原価)/原価
+}
+
+/** 売価と率から原価を逆算する */
+export function costFromSell(sell: number, ratePercent: number, mode: MarginMode): number {
+  const r = ratePercent / 100;
+  return mode === 'markup' ? sell * (1 - r) : sell / (1 + r);
+}
+
+/** 率を別方式へ換算する（外→内 / 内→外）。fromは元の方式。 */
+export function convertRate(ratePercent: number, from: MarginMode): number {
+  const r = ratePercent / 100;
+  // 外掛けe=(s-c)/s, 内掛けi=(s-c)/c ⇒ i = e/(1-e), e = i/(1+i)
+  if (from === 'markup') return r < 1 ? (r / (1 - r)) * 100 : 0; // 外→内
+  return (r / (1 + r)) * 100;                                    // 内→外
+}
+
 function resolveCalcMode(proc: ProcessRow): ProcessCalcMode {
   if (proc.calcMode) return proc.calcMode;
   if (proc.isDirectInput) return 'direct';
@@ -103,9 +137,12 @@ export function calculateEstimate(est: DetailedEstimate): CalculatedSection {
   const totalProcessCost = processCosts.reduce((a, b) => a + b, 0);
   const primeCost = netMaterialCost + totalProcessCost;
 
-  // 利管費: 外掛け(markup) = primeCost × rate / 内掛け(margin) = primeCost × rate/(1−rate)
+  // 利管費（bizmemo準拠）:
+  //   外掛け(markup): 売価 = 原価/(1−率) ⇒ 利管費 = 原価 × 率/(1−率)
+  //   内掛け(margin): 売価 = 原価×(1+率) ⇒ 利管費 = 原価 × 率
   const sgaRate = (adjustments.sgaRatePercent || 0) / 100;
-  const sgaBase = adjustments.sgaCalcMode === 'margin'
+  const sgaMode: MarginMode = adjustments.sgaCalcMode || 'markup';
+  const sgaBase = sgaMode === 'markup'
     ? (sgaRate < 1 ? primeCost * sgaRate / (1 - sgaRate) : 0)
     : primeCost * sgaRate;
   const sgaCost = sgaBase + (adjustments.sgaFixedAdjustment || 0);
@@ -145,9 +182,9 @@ export function calculateEstimate(est: DetailedEstimate): CalculatedSection {
   const minProfitDecimal = (adjustments.minProfitRate || 0) / 100;       // 例: 外掛け下限 15%
   const clientMarginPercentDecimal = (adjustments.targetProfitMarginOff || 0) / 100; // 例: 15% (内掛け)
   
-  // 社内マージン（外掛け 目標%/下限%）を満たす必要売価 ＝ 実原価 * (1 + X%)
-  const requiredSellingPrice = actualTotalCost * (1 + targetProfitDecimal);
-  const minRequiredSellingPrice = actualTotalCost * (1 + minProfitDecimal);
+  // 社内マージン（外掛け 目標%/下限%）を満たす必要売価 ＝ 実原価 ÷ (1 − X%)
+  const requiredSellingPrice = targetProfitDecimal < 1 ? actualTotalCost / (1 - targetProfitDecimal) : 0;
+  const minRequiredSellingPrice = minProfitDecimal < 1 ? actualTotalCost / (1 - minProfitDecimal) : 0;
 
   // 決定売価（目標単価/売値。通常はユーザーが決めた or 調整の targetUnitPrice）
   const rawSellingPrice = adjustments.targetUnitPrice || grandTotalUnitPrice;
@@ -155,9 +192,9 @@ export function calculateEstimate(est: DetailedEstimate): CalculatedSection {
   // 重要：下限利益率の売価を下回らないように決定単価を引き上げる保護ルール
   const sellingPrice = (rawSellingPrice < minRequiredSellingPrice) ? minRequiredSellingPrice : rawSellingPrice;
 
-  // 客提出見積において「内掛け X%」の利管費と見せるために逆算される「提出用架空仕入れ原価（仕入単価）」
-  // 提出用客向架空原価 ＝ 決定売価 * (1 - X%)
-  const suggestedPurchasePriceForClient = sellingPrice * (1 - clientMarginPercentDecimal);
+  // 客提出見積において「内掛け X%」の利益と見せるために逆算される「提出用架空仕入れ原価（仕入単価）」
+  // 内掛け: 売価 = 原価×(1+X%) ⇒ 提出用客向架空原価 ＝ 決定売価 ÷ (1 + X%)
+  const suggestedPurchasePriceForClient = sellingPrice / (1 + clientMarginPercentDecimal);
 
   // 調整に必要な「ゲタ（上乗せ・調整）総額」 ＝ 架空原価 - 実情原価
   const makeupGapAmount = Math.max(0, suggestedPurchasePriceForClient - actualTotalCost);
