@@ -273,9 +273,19 @@ export default function App() {
     let reconciledUnitPrice = targetUnitPrice;
 
     if (!isNew) {
-      // 旧単価: 目標単価（現行売値）は変更しない
+      // 旧単価: 売値・プロセス賃率は一切変更しない。SGA率だけ逆算して帳尻を合わせる。
       if (targetUnitPrice <= 0) { alert('先に現行売価を入力してください。'); return; }
-      reconciledUnitPrice = targetUnitPrice;
+      const primeCost = calc.primeCost;
+      if (primeCost <= 0) { alert('材料費・加工費を先に入力してください。'); return; }
+      const base = targetUnitPrice - calc.shippingCostPerUnit - (target.adjustments.otherAdjustment || 0);
+      if (base <= primeCost * 0.01) { alert('現行売価が積み上げコストより低すぎます。'); return; }
+      const mode = target.adjustments.sgaCalcMode || 'markup';
+      const newRate = mode === 'margin'
+        ? (1 - primeCost / base) * 100
+        : (base / primeCost - 1) * 100;
+      if (newRate < 0) { alert(`現行売価が積み上げコスト(¥${primeCost.toFixed(0)})を下回るため設定できません。`); return; }
+      setOldEstimate({ ...target, adjustments: { ...target.adjustments, sgaRatePercent: parseFloat(newRate.toFixed(2)) } });
+      return;
     } else if (locked) {
       // 新単価ロック: 目標単価固定
       if (targetUnitPrice <= 0) { alert('先に目標単価を入力してください。'); return; }
