@@ -576,31 +576,22 @@ export default function App() {
 
   // 帳尻利管費率: 材工費 (primeCost) に対して、何%の利管費をかければ目標売値に帳尻が合うか
   // base = targetSell - shipping - other を売価、primeCost を原価として外掛け/内掛けを算出
-  const oldReconcileMargin: number | null = (() => {
-    if (oldCalc.primeCost <= 0 || oldSell <= 0) return null;
-    const base = oldSell - oldCalc.shippingCostPerUnit - (oldEstimate.adjustments.otherAdjustment || 0);
-    if (base <= oldCalc.primeCost) return null;
-    return rateFromCostSell(oldCalc.primeCost, base, 'margin'); // 内掛け
-  })();
-  const oldReconcileMarkup: number | null = (() => {
-    if (oldCalc.primeCost <= 0 || oldSell <= 0) return null;
-    const base = oldSell - oldCalc.shippingCostPerUnit - (oldEstimate.adjustments.otherAdjustment || 0);
-    if (base <= oldCalc.primeCost) return null;
-    return rateFromCostSell(oldCalc.primeCost, base, 'markup'); // 外掛け
-  })();
-
-  const newReconcileMargin: number | null = (() => {
-    if (newCalc.primeCost <= 0 || newSell <= 0) return null;
-    const base = newSell - newCalc.shippingCostPerUnit - (newEstimate.adjustments.otherAdjustment || 0);
-    if (base <= newCalc.primeCost) return null;
-    return rateFromCostSell(newCalc.primeCost, base, 'margin'); // 内掛け
-  })();
-  const newReconcileMarkup: number | null = (() => {
-    if (newCalc.primeCost <= 0 || newSell <= 0) return null;
-    const base = newSell - newCalc.shippingCostPerUnit - (newEstimate.adjustments.otherAdjustment || 0);
-    if (base <= newCalc.primeCost) return null;
-    return rateFromCostSell(newCalc.primeCost, base, 'markup'); // 外掛け
-  })();
+  // 帳尻利管費率: base > 0 さえあれば常に表示（マイナスや0は赤で警告表示）
+  const calcReconcileRates = (primeCost: number, sell: number, shipping: number, other: number) => {
+    if (primeCost <= 0 || sell <= 0) return { margin: null as number | null, markup: null as number | null };
+    const base = sell - shipping - other;
+    if (base <= 0) return { margin: null as number | null, markup: null as number | null };
+    return {
+      margin: rateFromCostSell(primeCost, base, 'margin'), // 内掛け = (base-cost)/cost
+      markup: rateFromCostSell(primeCost, base, 'markup'), // 外掛け = (base-cost)/base
+    };
+  };
+  const { margin: oldReconcileMargin, markup: oldReconcileMarkup } = calcReconcileRates(
+    oldCalc.primeCost, oldSell, oldCalc.shippingCostPerUnit, oldEstimate.adjustments.otherAdjustment || 0
+  );
+  const { margin: newReconcileMargin, markup: newReconcileMarkup } = calcReconcileRates(
+    newCalc.primeCost, newSell, newCalc.shippingCostPerUnit, newEstimate.adjustments.otherAdjustment || 0
+  );
 
   // Proposal 2: 売値フロア — 外掛け25%を維持できる最低売値（売価=原価/(1−0.25)）
   const newSellFloor = newCalc.actualTotalCost > 0 ? sellFromCost(newCalc.actualTotalCost, 25, 'markup') : null;
@@ -1328,25 +1319,27 @@ export default function App() {
                   <div className="mt-2 pt-2 border-t border-[#EEEBE6]">
                     <div className="text-[9px] font-black text-[#6B6057] uppercase tracking-wide mb-1.5">利益・利管費設定</div>
 
-                    {/* 帳尻利管費率（内掛け・外掛け並列表示） */}
+                    {/* 帳尻利管費率（内掛け・外掛け色分け枠表示） */}
                     {(oldReconcileMargin !== null || oldReconcileMarkup !== null) && (
-                      <div className={`mb-1.5 px-2 py-1 rounded border ${
-                        oldEstimate.adjustments.sgaRatePercent > 0 && oldReconcileMargin !== null && Math.abs(oldReconcileMargin - (oldEstimate.adjustments.sgaRatePercent || 0)) < 0.1
-                          ? 'bg-emerald-50 border-emerald-300'
-                          : 'bg-amber-50 border-amber-200'
-                      }`}>
-                        <div className="text-[8px] font-black text-amber-800 leading-tight mb-1">帳尻利管費率 材工費→売値</div>
-                        <div className="flex gap-3">
-                          {oldReconcileMargin !== null && (
-                            <div className="flex items-center gap-1">
-                              <span className="text-[8px] text-[#6B6057]">内掛け</span>
-                              <span className="font-mono font-black text-sm text-amber-700">{oldReconcileMargin.toFixed(2)}%</span>
+                      <div className="mb-1.5">
+                        <div className="text-[8px] font-black text-[#6B6057] uppercase tracking-wide mb-1">帳尻利管費率 材工費→売値</div>
+                        <div className="flex gap-1.5">
+                          {oldReconcileMarkup !== null && (
+                            <div className={`flex-1 px-2 py-1 rounded border-2 ${oldReconcileMarkup < 0 ? 'border-rose-400 bg-rose-50' : 'border-[#D6A89C] bg-[#FEF0EB]'}`}>
+                              <div className="text-[8px] font-bold text-[#B5451B] mb-0.5">外掛け</div>
+                              <div className={`font-mono font-black text-base leading-none ${oldReconcileMarkup < 0 ? 'text-rose-600' : 'text-[#B5451B]'}`}>
+                                {oldReconcileMarkup.toFixed(2)}%
+                              </div>
+                              <div className="text-[7px] text-[#B5451B]/70 mt-0.5">(売価−原価)÷売価</div>
                             </div>
                           )}
-                          {oldReconcileMarkup !== null && (
-                            <div className="flex items-center gap-1">
-                              <span className="text-[8px] text-[#6B6057]">外掛け</span>
-                              <span className="font-mono font-black text-sm text-amber-700">{oldReconcileMarkup.toFixed(2)}%</span>
+                          {oldReconcileMargin !== null && (
+                            <div className={`flex-1 px-2 py-1 rounded border-2 ${oldReconcileMargin < 0 ? 'border-rose-400 bg-rose-50' : 'border-[#93B4D9] bg-[#EFF4FD]'}`}>
+                              <div className="text-[8px] font-bold text-[#1E3A5F] mb-0.5">内掛け</div>
+                              <div className={`font-mono font-black text-base leading-none ${oldReconcileMargin < 0 ? 'text-rose-600' : 'text-[#1E3A5F]'}`}>
+                                {oldReconcileMargin.toFixed(2)}%
+                              </div>
+                              <div className="text-[7px] text-[#1E3A5F]/70 mt-0.5">(売価−原価)÷原価</div>
                             </div>
                           )}
                         </div>
@@ -1571,25 +1564,27 @@ export default function App() {
                   <div className="mt-2 pt-2 border-t border-[#EEEBE6]">
                     <div className="text-[9px] font-black text-[#6B6057] uppercase tracking-wide mb-1.5">利益・利管費設定</div>
 
-                    {/* 帳尻利管費率（内掛け・外掛け並列表示） */}
+                    {/* 帳尻利管費率（内掛け・外掛け色分け枠表示） */}
                     {(newReconcileMargin !== null || newReconcileMarkup !== null) && (
-                      <div className={`mb-1.5 px-2 py-1 rounded border ${
-                        newEstimate.adjustments.sgaRatePercent > 0 && newReconcileMargin !== null && Math.abs(newReconcileMargin - (newEstimate.adjustments.sgaRatePercent || 0)) < 0.1
-                          ? 'bg-emerald-50 border-emerald-300'
-                          : 'bg-amber-50 border-amber-200'
-                      }`}>
-                        <div className="text-[8px] font-black text-amber-800 leading-tight mb-1">帳尻利管費率 材工費→売値</div>
-                        <div className="flex gap-3">
-                          {newReconcileMargin !== null && (
-                            <div className="flex items-center gap-1">
-                              <span className="text-[8px] text-[#6B6057]">内掛け</span>
-                              <span className="font-mono font-black text-sm text-amber-700">{newReconcileMargin.toFixed(2)}%</span>
+                      <div className="mb-1.5">
+                        <div className="text-[8px] font-black text-[#6B6057] uppercase tracking-wide mb-1">帳尻利管費率 材工費→売値</div>
+                        <div className="flex gap-1.5">
+                          {newReconcileMarkup !== null && (
+                            <div className={`flex-1 px-2 py-1 rounded border-2 ${newReconcileMarkup < 0 ? 'border-rose-400 bg-rose-50' : 'border-[#D6A89C] bg-[#FEF0EB]'}`}>
+                              <div className="text-[8px] font-bold text-[#B5451B] mb-0.5">外掛け</div>
+                              <div className={`font-mono font-black text-base leading-none ${newReconcileMarkup < 0 ? 'text-rose-600' : 'text-[#B5451B]'}`}>
+                                {newReconcileMarkup.toFixed(2)}%
+                              </div>
+                              <div className="text-[7px] text-[#B5451B]/70 mt-0.5">(売価−原価)÷売価</div>
                             </div>
                           )}
-                          {newReconcileMarkup !== null && (
-                            <div className="flex items-center gap-1">
-                              <span className="text-[8px] text-[#6B6057]">外掛け</span>
-                              <span className="font-mono font-black text-sm text-amber-700">{newReconcileMarkup.toFixed(2)}%</span>
+                          {newReconcileMargin !== null && (
+                            <div className={`flex-1 px-2 py-1 rounded border-2 ${newReconcileMargin < 0 ? 'border-rose-400 bg-rose-50' : 'border-[#93B4D9] bg-[#EFF4FD]'}`}>
+                              <div className="text-[8px] font-bold text-[#1E3A5F] mb-0.5">内掛け</div>
+                              <div className={`font-mono font-black text-base leading-none ${newReconcileMargin < 0 ? 'text-rose-600' : 'text-[#1E3A5F]'}`}>
+                                {newReconcileMargin.toFixed(2)}%
+                              </div>
+                              <div className="text-[7px] text-[#1E3A5F]/70 mt-0.5">(売価−原価)÷原価</div>
                             </div>
                           )}
                         </div>
