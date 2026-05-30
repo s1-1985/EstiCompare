@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { DetailedEstimate, ComparisonResult, Scenario } from './types';
+import { DetailedEstimate, ComparisonResult, Scenario, QuantityPattern } from './types';
 import { createEmptyEstimate } from './data/samples';
 import { ExcelGrid } from './components/ExcelGrid';
 import { CompareResults } from './components/CompareResults';
 import { ScenarioLibrary } from './components/ScenarioLibrary';
 import { PrintSheet } from './components/PrintSheet';
+import { MultiPatternSheet } from './components/MultiPatternSheet';
+import { BatchCompareSheet } from './components/BatchCompareSheet';
 import { Tooltip } from './components/Tooltip';
 import {
   FileSpreadsheet,
@@ -20,6 +22,8 @@ import {
   Settings2,
   CheckCircle2,
   AlertTriangle,
+  Layers,
+  Layers3,
 } from 'lucide-react';
 import type { User } from 'firebase/auth';
 import { auth, loginWithGoogle, logout } from './firebase';
@@ -27,7 +31,7 @@ import { subscribeScenarios, saveUserScenario } from './utils/firestoreService';
 import { apiPost } from './utils/apiClient';
 import { calculateEstimate, sellFromCost, costFromSell, rateFromCostSell, convertRate } from './utils/calculations';
 
-type ActiveView = 'workspace' | 'library';
+type ActiveView = 'workspace' | 'library' | 'multipattern' | 'batch';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -47,6 +51,7 @@ export default function App() {
   const [oldEstimate, setOldEstimate] = useState<DetailedEstimate>(() =>
     JSON.parse(JSON.stringify(createEmptyEstimate()))
   );
+  const [quantityPatterns, setQuantityPatterns] = useState<QuantityPattern[]>([]);
 
   const [activeSheetTab, setActiveSheetTab] = useState<'workspace' | 'compare' | 'print'>('workspace');
   const [comparisonResult, setComparisonResult] = useState<ComparisonResult | null>(null);
@@ -121,6 +126,7 @@ export default function App() {
     setActiveScenarioId(id);
     setNewEstimate(JSON.parse(JSON.stringify(scen.newEstimate)));
     setOldEstimate(JSON.parse(JSON.stringify(scen.oldEstimate)));
+    setQuantityPatterns(scen.quantityPatterns ? JSON.parse(JSON.stringify(scen.quantityPatterns)) : []);
     setComparisonResult(scen.comparisonResult);
     setNewScenarioName(scen.name);
     setActiveSheetTab('workspace');
@@ -132,11 +138,13 @@ export default function App() {
     if (saved) {
       setNewEstimate(JSON.parse(JSON.stringify(saved.newEstimate)));
       setOldEstimate(JSON.parse(JSON.stringify(saved.oldEstimate)));
+      setQuantityPatterns(saved.quantityPatterns ? JSON.parse(JSON.stringify(saved.quantityPatterns)) : []);
       setComparisonResult(saved.comparisonResult);
     } else {
       const emptyEst = createEmptyEstimate();
       setNewEstimate(JSON.parse(JSON.stringify(emptyEst)));
       setOldEstimate(JSON.parse(JSON.stringify(emptyEst)));
+      setQuantityPatterns([]);
       setComparisonResult(null);
     }
     setActiveSheetTab('workspace');
@@ -148,6 +156,7 @@ export default function App() {
     setActiveScenarioId('new-custom-sheet');
     setOldEstimate(JSON.parse(JSON.stringify(emptyEst)));
     setNewEstimate(JSON.parse(JSON.stringify(emptyEst)));
+    setQuantityPatterns([]);
     setNewScenarioName('新規カスタム見積');
     setComparisonResult(null);
     setActiveSheetTab('workspace');
@@ -173,7 +182,7 @@ export default function App() {
     setIsSaving(true);
     try {
       const savedId = await saveUserScenario(
-        targetId, targetName, newEstimate, oldEstimate, comparisonResult, saveModalNotes.trim() || undefined
+        targetId, targetName, newEstimate, oldEstimate, comparisonResult, saveModalNotes.trim() || undefined, quantityPatterns
       );
       if (savedId) {
         setActiveScenarioId(savedId);
@@ -799,6 +808,39 @@ export default function App() {
                   {customScenarios.length}
                 </span>
               )}
+            </button>
+
+            <button
+              onClick={() => setActiveView(activeView === 'multipattern' ? 'workspace' : 'multipattern')}
+              className={`w-full p-1.5 border rounded font-bold flex items-center gap-1.5 cursor-pointer text-[10px] select-none transition-all ${
+                activeView === 'multipattern'
+                  ? 'bg-[#1E3A5F] text-white border-[#16293F] hover:bg-[#2A4A7F]'
+                  : 'bg-white hover:bg-[#EFF4FD] text-[#1E3A5F] border-[#D6D0C8] hover:border-[#B8CCE8]'
+              }`}
+              title="1品番・複数数量パターン（ロット別）の同時辻褄合わせシート"
+            >
+              <Layers className="w-3 h-3 shrink-0" />
+              <span>複数数量パターン</span>
+              {quantityPatterns.length > 0 && (
+                <span className={`ml-auto text-[8px] font-black rounded-full px-1.5 py-0.5 leading-none ${
+                  activeView === 'multipattern' ? 'bg-white/20 text-white' : 'bg-[#1E3A5F] text-white'
+                }`}>
+                  {quantityPatterns.length}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => setActiveView(activeView === 'batch' ? 'workspace' : 'batch')}
+              className={`w-full p-1.5 border rounded font-bold flex items-center gap-1.5 cursor-pointer text-[10px] select-none transition-all ${
+                activeView === 'batch'
+                  ? 'bg-[#1E3A5F] text-white border-[#16293F] hover:bg-[#2A4A7F]'
+                  : 'bg-white hover:bg-[#EFF4FD] text-[#1E3A5F] border-[#D6D0C8] hover:border-[#B8CCE8]'
+              }`}
+              title="保存済み複数品番を同時に並べて整合性チェック（一斉単価改定向け）"
+            >
+              <Layers3 className="w-3 h-3 shrink-0" />
+              <span>複数品番同時比較</span>
             </button>
 
             <button
@@ -1718,6 +1760,18 @@ export default function App() {
                 onBack={() => setActiveView('workspace')}
                 isLoggedIn={!!user}
                 onNewSheet={handleCreateNewSheet}
+              />
+            ) : activeView === 'multipattern' ? (
+              <MultiPatternSheet
+                base={newEstimate}
+                patterns={quantityPatterns}
+                onBaseChange={setNewEstimate}
+                onPatternsChange={setQuantityPatterns}
+              />
+            ) : activeView === 'batch' ? (
+              <BatchCompareSheet
+                scenarios={customScenarios}
+                onBack={() => setActiveView('workspace')}
               />
             ) : (
               <section>

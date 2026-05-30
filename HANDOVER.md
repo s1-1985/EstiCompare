@@ -1,6 +1,6 @@
 # EstiCompare — 引継ぎドキュメント
 
-最終更新: 2026-05-29（第9セッション終了時点）
+最終更新: 2026-05-29（第10セッション終了時点）
 ブランチ: `main`（全PR済み、PR #57マージ済み）
 
 ---
@@ -388,11 +388,37 @@ auditVariance = grandTotalUnitPrice - sellingPrice
    - `alert()` （UIブロック）→ フローティングトーストに変更
    - 3秒後自動消去・フェードインアニメーション付き（`index.css` にキーフレーム追加）
 
+## 第10セッション（2026-05-29）で実施した変更（PR #66）
+
+### ローンチ前 徹底監査 — セキュリティ・計算・UIの一括修正
+3観点の並行レビュー（セキュリティ／計算ロジック／UI・バグ）＋依存関係・CI・シークレット・ランタイム検証を実施。
+
+**セキュリティ（`server.ts` / `deploy.yml`）**
+- `trust proxy` 設定追加 — プロキシ背後でレート制限が単一IPに集約され正規ユーザーが即429になる可用性障害を修正
+- レート制限を二層化（認証前IP 30/min＋認証後UID 10/min、`ipKeyGenerator`でIPv6正規化）
+- 500・ping-aiでのGemini内部エラー/ステータスのクライアント漏洩を停止
+- 全AIエンドポイントにプロンプトインジェクション対策（区切りタグ除去 `sanitizeForPrompt`）
+- `deploy.yml` に `APP_URL`/`NODE_ENV` 注入（本番CORSがlocalhost固定になる問題）
+
+**計算ロジック（`calculations.ts` / `App.tsx`）**
+- `costFromSell` の外掛け率≥100%・内掛け率≤-100%ガード追加
+- `handleAutoReconcile`: 辻褄が合わない（SGAクランプで残差）場合にAGENTS.md §3準拠の前提見直し警告
+- `getActualSgaRate` の base に `otherAdjustment` 反映（表示SGA率の不整合解消）
+- `handleNew29Change`: 外掛け利益率100%以上を99.99%にクランプ
+
+**UI・バグ**
+- AI自動補正の適用: index照合を1始まりに統一（オフバイワン解消）、standardモードのみ賃率更新、型ガード追加
+- `actual*` 空入力を全てundefined統一（`??` フォールバック修正）
+- スライド転記の-100%以下拒否、xlsx import失敗ハンドリング＋連打防止
+- リサイズ中のテキスト選択抑止、CompareResultsの添字混在解消・モデル表記2.5化、`user` 型付け
+
 ---
 
 ## 既知の課題・次セッションの予定
 
 - その他UIの改善（次回指示予定）
+- **入力検証のスキーマ化（zod等）**: AIレスポンス・APIボディが `any` 依存。堅牢性向上の余地（監査で指摘・未対応）
+- **CIのOIDC移行**: 長期SAキー使用中。Workload Identity Federation化（WIFプール設定が必要）
 
 ---
 
@@ -402,7 +428,8 @@ auditVariance = grandTotalUnitPrice - sellingPrice
    - HTTPリファラー制限（本番ドメインのみ）
    - URL: `console.cloud.google.com/apis/credentials`
 
-2. **旧APIキーの無効化**
+2. **旧APIキーの無効化（要対応・優先）**
+   - 旧Geminiキー `AIzaSyAN0...`（旧プロジェクト `gen-lang-client-0134924529`）が **git履歴に永続露出**。未失効なら即無効化すること
    - Blueprint23Dプロジェクトなど不要になったキーを無効化
 
 3. **Firestoreルールのデプロイ確認**
