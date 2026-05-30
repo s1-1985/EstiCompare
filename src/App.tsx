@@ -141,6 +141,7 @@ export default function App() {
       setQuantityPatterns(saved.quantityPatterns ? JSON.parse(JSON.stringify(saved.quantityPatterns)) : []);
       setComparisonResult(saved.comparisonResult);
     } else {
+      if (quantityPatterns.length > 0 && !window.confirm(`未保存の数量パターンが${quantityPatterns.length}件あります。リセットすると削除されます。続けますか？`)) return;
       const emptyEst = createEmptyEstimate();
       setNewEstimate(JSON.parse(JSON.stringify(emptyEst)));
       setOldEstimate(JSON.parse(JSON.stringify(emptyEst)));
@@ -152,6 +153,7 @@ export default function App() {
   };
 
   const handleCreateNewSheet = () => {
+    if (quantityPatterns.length > 0 && !window.confirm(`未保存の数量パターンが${quantityPatterns.length}件あります。新規作成すると削除されます。続けますか？`)) return;
     const emptyEst = createEmptyEstimate();
     setActiveScenarioId('new-custom-sheet');
     setOldEstimate(JSON.parse(JSON.stringify(emptyEst)));

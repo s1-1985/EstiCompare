@@ -18,7 +18,7 @@ interface MultiPatternSheetProps {
 }
 
 const SGA_MIN = 5;
-const SGA_MAX = 15;
+const SGA_MAX = 25;
 
 const yenFmt = (v: number) =>
   `¥${v.toLocaleString('ja-JP', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -40,7 +40,10 @@ function reconcilePattern(
   const sgaMode = pattern.sgaCalcMode || base.adjustments.sgaCalcMode || 'markup';
   const shipping = calc.shippingCostPerUnit;
   const other = pattern.otherAdjustment || 0;
-  const Y = target - shipping - other;
+  const sgaFixed = pattern.sgaFixedAdjustment || 0;
+  // Y = the portion of target that primeCost+sgaBase must cover
+  // (calculateEstimate adds sgaFixed on top of sgaBase, so we subtract it here)
+  const Y = target - shipping - other - sgaFixed;
   if (Y <= 0) return { pattern, residual: target - calc.grandTotalUnitPrice };
 
   const materialCost = calc.netMaterialCost;
@@ -89,6 +92,7 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
 }) => {
   const [warnings, setWarnings] = useState<Record<string, number>>({});
   const [showProcessDetail, setShowProcessDetail] = useState(true);
+  const [baseEdited, setBaseEdited] = useState(false);
 
   const activeProcesses = base.processes.filter((p) => p.processName.trim() !== '');
 
@@ -119,13 +123,20 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
   const updateSharedProcess = (procIndex: number, key: 'yieldPerHour' | 'totalHours', value: number) => {
     // shared edit → clear all warnings since all calcs change
     setWarnings({});
+    setBaseEdited(true);
     onBaseChange((prev) => ({
       ...prev,
       processes: prev.processes.map((p) => (p.index === procIndex ? { ...p, [key]: value } : p)),
     }));
   };
 
+  const MAX_PATTERNS = 20;
+
   const addPattern = () => {
+    if (patterns.length >= MAX_PATTERNS) {
+      alert(`数量パターンは最大${MAX_PATTERNS}件まで登録できます。`);
+      return;
+    }
     const n = patterns.length + 1;
     onPatternsChange([...patterns, createPatternFromEstimate(base, `数量${n}`, base.baseLotSize || 100)]);
   };
@@ -233,6 +244,11 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
               {base.partNumber || '(品番未設定)'}{base.partName ? ` / ${base.partName}` : ''} — {patterns.length}パターン
             </p>
           </div>
+          {baseEdited && (
+            <span className="text-[9px] font-bold bg-amber-100 border border-amber-400 text-amber-800 px-1.5 py-0.5 rounded">
+              出来高・段取を編集中 — 保存すると基本見積にも反映されます
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1.5">
           <button
@@ -473,7 +489,7 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
                             )}
                           </td>
                           <td className="px-1 py-1 text-right font-mono text-[#1E3A5F] font-bold">
-                            {procCost > 0 ? yenFmt(procCost) : '—'}
+                            {yenFmt(procCost)}
                           </td>
                         </React.Fragment>
                       );

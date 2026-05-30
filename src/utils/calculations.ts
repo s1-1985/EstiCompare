@@ -62,7 +62,7 @@ export function applyPatternOverride(base: DetailedEstimate, pattern: QuantityPa
   });
   return {
     ...base,
-    baseLotSize: pattern.baseLotSize || base.baseLotSize,
+    baseLotSize: pattern.baseLotSize > 0 ? pattern.baseLotSize : base.baseLotSize,
     lotUnit: pattern.lotUnit || base.lotUnit,
     processes,
     logistics: {
@@ -98,7 +98,7 @@ export function createPatternFromEstimate(base: DetailedEstimate, label: string,
     baseLotSize: lotSize,
     lotUnit: base.lotUnit || '個/Lot',
     targetUnitPrice: base.adjustments.targetUnitPrice || 0,
-    sgaRatePercent: base.adjustments.sgaRatePercent || 15,
+    sgaRatePercent: base.adjustments.sgaRatePercent ?? 15,
     sgaCalcMode: base.adjustments.sgaCalcMode || 'markup',
     sgaFixedAdjustment: base.adjustments.sgaFixedAdjustment || 0,
     otherAdjustment: base.adjustments.otherAdjustment || 0,
@@ -107,16 +107,9 @@ export function createPatternFromEstimate(base: DetailedEstimate, label: string,
   };
 }
 
-function resolveCalcMode(proc: ProcessRow): ProcessCalcMode {
-  if (proc.calcMode) return proc.calcMode;
-  if (proc.isDirectInput) return 'direct';
-  if (proc.kgPrice > 0) return 'kg';
-  return 'standard';
-}
-
 function calcClientCost(proc: ProcessRow, finishedWeightG: number, baseLotSize: number): number {
   if (!proc.processName.trim()) return 0;
-  const mode = resolveCalcMode(proc);
+  const mode = resolveProcessCalcMode(proc);
   switch (mode) {
     case 'direct':
       return proc.directProcessingCost || 0;
@@ -134,7 +127,7 @@ function calcClientCost(proc: ProcessRow, finishedWeightG: number, baseLotSize: 
 
 function calcActualCost(proc: ProcessRow, finishedWeightG: number, baseLotSize: number): number {
   if (!proc.processName.trim()) return 0;
-  const mode = resolveCalcMode(proc);
+  const mode = resolveProcessCalcMode(proc);
   switch (mode) {
     case 'direct':
       return (proc.actualDirectProcessingCost ?? proc.directProcessingCost) || 0;

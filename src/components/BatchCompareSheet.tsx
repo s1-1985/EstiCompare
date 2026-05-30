@@ -137,11 +137,21 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ scenarios,
     return out;
   }, [selectedScenarios, groups]);
 
-  // numeric inconsistency within same group
+  // Precompute group→members map once; used by inconsistency helpers below
+  const groupMembersMap = useMemo(() => {
+    const map: Record<string, Scenario[]> = {};
+    selectedScenarios.forEach((s) => {
+      const g = groups[s.id];
+      if (g) (map[g] ||= []).push(s);
+    });
+    return map;
+  }, [selectedScenarios, groups]);
+
+  // numeric inconsistency within same group — O(groupSize) per call, not O(selected)
   const groupValueInconsistent = (sid: string, getter: (s: Scenario) => number | null): boolean => {
     const g = groups[sid];
     if (!g) return false;
-    const members = selectedScenarios.filter((s) => groups[s.id] === g);
+    const members = groupMembersMap[g] ?? [];
     if (members.length < 2) return false;
     const vals = new Set<number>();
     members.forEach((s) => {
@@ -151,11 +161,11 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ scenarios,
     return vals.size > 1;
   };
 
-  // string inconsistency within same group
+  // string inconsistency within same group — O(groupSize) per call
   const groupStringInconsistent = (sid: string, getter: (s: Scenario) => string | null): boolean => {
     const g = groups[sid];
     if (!g) return false;
-    const members = selectedScenarios.filter((s) => groups[s.id] === g);
+    const members = groupMembersMap[g] ?? [];
     if (members.length < 2) return false;
     const vals = new Set<string>();
     members.forEach((s) => {
