@@ -5,10 +5,11 @@ import {
   applyPatternOverride,
   createPatternFromEstimate,
   resolveProcessCalcMode,
+  calcProcessBreakdown,
   costFromSell,
   rateFromCostSell,
 } from '../utils/calculations';
-import { Plus, Trash2, Zap, Layers, AlertTriangle, Info, Copy, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, Zap, Layers, AlertTriangle, Info, Copy } from 'lucide-react';
 
 interface MultiPatternSheetProps {
   base: DetailedEstimate;
@@ -19,6 +20,7 @@ interface MultiPatternSheetProps {
 
 const SGA_MIN = 5;
 const SGA_MAX = 25;
+const MAX_PATTERNS = 20;
 
 const yenFmt = (v: number) =>
   `¥${v.toLocaleString('ja-JP', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -42,7 +44,7 @@ function reconcilePattern(
   const other = pattern.otherAdjustment || 0;
   const sgaFixed = pattern.sgaFixedAdjustment || 0;
   // Y = the portion of target that primeCost+sgaBase must cover
-  // (calculateEstimate adds sgaFixed on top of sgaBase, so we subtract it here)
+  // (calculateEstimate adds sgaFixed on top of sgaBase, so subtract it here)
   const Y = target - shipping - other - sgaFixed;
   if (Y <= 0) return { pattern, residual: target - calc.grandTotalUnitPrice };
 
@@ -91,12 +93,10 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
   onPatternsChange,
 }) => {
   const [warnings, setWarnings] = useState<Record<string, number>>({});
-  const [showProcessDetail, setShowProcessDetail] = useState(true);
   const [baseEdited, setBaseEdited] = useState(false);
 
   const activeProcesses = base.processes.filter((p) => p.processName.trim() !== '');
 
-  // Clear a pattern's warning when it's manually edited
   const clearWarn = (id: string) =>
     setWarnings((w) => { const n = { ...w }; delete n[id]; return n; });
 
@@ -120,8 +120,11 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
     );
   };
 
-  const updateSharedProcess = (procIndex: number, key: 'yieldPerHour' | 'totalHours', value: number) => {
-    // shared edit → clear all warnings since all calcs change
+  const updateSharedProcess = (
+    procIndex: number,
+    key: 'yieldPerHour' | 'totalHours' | 'processName',
+    value: number | string,
+  ) => {
     setWarnings({});
     setBaseEdited(true);
     onBaseChange((prev) => ({
@@ -129,8 +132,6 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
       processes: prev.processes.map((p) => (p.index === procIndex ? { ...p, [key]: value } : p)),
     }));
   };
-
-  const MAX_PATTERNS = 20;
 
   const addPattern = () => {
     if (patterns.length >= MAX_PATTERNS) {
@@ -200,13 +201,13 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
         <p className="text-sm text-[#6B6057] leading-relaxed mb-2">
           1品番に対して見積数量が複数ある場合（例: ロット100/300/1000個）のシートです。
         </p>
-        <div className="flex flex-col sm:flex-row gap-3 justify-center items-center text-xs mb-5">
-          <div className="px-3 py-2 bg-[#F0FAF4] border border-[#A8D4BC] rounded text-[#1A6B3A] font-bold">
-            出来高・段取は全パターン共通（生産前提として固定）
-          </div>
-          <div className="px-3 py-2 bg-[#EFF4FD] border border-[#B8CCE8] rounded text-[#1E3A5F] font-bold">
-            賃率・利管費・送料は数量ごとに調整可能
-          </div>
+        <div className="bg-[#FFF8F0] border border-[#E8C8BC] rounded-lg p-3 text-left text-xs text-[#6B6057] mb-4 leading-relaxed">
+          <p className="font-black text-[#B5451B] mb-1">数量で単価が変わる本当の理由 ＝ 段取費の按分</p>
+          段取費/個 ＝ <span className="font-mono">賃率 × 段取時間 ÷ ロット数</span>。
+          ロットが小さいほど段取費/個が大きくなり単価が上がります。
+          出来高・段取時間は全パターン共通（生産前提）、各パターンの単価差は段取費の逓減で生まれます。
+          このシートは工程ごとに<strong className="text-[#B5451B]">段取費/個の逓減</strong>を可視化し、
+          全パターン同時に辻褄を合わせます。
         </div>
         <button
           onClick={initPatterns}
@@ -223,14 +224,26 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
     );
   }
 
-  const calcs = patterns.map((p) => ({ pattern: p, calc: calculateEstimate(applyPatternOverride(base, p)) }));
+  // merged estimate per pattern (gives per-pattern overridden rates) + full calc
+  const calcs = patterns.map((p) => {
+    const merged = applyPatternOverride(base, p);
+    return { pattern: p, merged, calc: calculateEstimate(merged) };
+  });
 
-  // ロット逓減率: 最小ロット（最高単価）を基準に各パターンの割引率を計算
+  // ロット逓減率: 最小ロット（最高単価）を基準に各パターンの差を計算
   const refCalc = calcs.reduce(
     (ref, c) => (c.pattern.baseLotSize < ref.pattern.baseLotSize ? c : ref),
     calcs[0],
   );
   const refPrice = refCalc.calc.grandTotalUnitPrice;
+
+  // per-process breakdown lookup: procIndex → patternId → {cycle,setup,total}
+  const breakdownFor = (procIndex: number, c: typeof calcs[number]) => {
+    const mp = c.merged.processes.find((x) => x.index === procIndex);
+    return mp ? calcProcessBreakdown(mp, c.merged.baseLotSize) : { cycle: 0, setup: 0, total: 0 };
+  };
+
+  const SUB = 3; // sub-columns per pattern: 賃率 | 段取費/個 | 計/個
 
   return (
     <div className="space-y-3">
@@ -246,7 +259,7 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
           </div>
           {baseEdited && (
             <span className="text-[9px] font-bold bg-amber-100 border border-amber-400 text-amber-800 px-1.5 py-0.5 rounded">
-              出来高・段取を編集中 — 保存すると基本見積にも反映されます
+              出来高・段取・工程名を編集中 — 保存すると基本見積にも反映されます
             </span>
           )}
         </div>
@@ -268,15 +281,17 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
 
       {/* Pattern config cards */}
       <div className="flex gap-2 overflow-x-auto pb-1">
-        {patterns.map((p) => {
-          const pCalc = calcs.find((c) => c.pattern.id === p.id);
-          const grandTotal = pCalc?.calc.grandTotalUnitPrice ?? 0;
+        {calcs.map((c) => {
+          const p = c.pattern;
+          const calc = c.calc;
+          const grandTotal = calc.grandTotalUnitPrice;
           const discountPct = refPrice > 0 && grandTotal > 0 && p.id !== refCalc.pattern.id
             ? ((grandTotal - refPrice) / refPrice) * 100
             : null;
+          // 段取費合計/個（このパターンの全工程合計）
+          const setupTotal = activeProcesses.reduce((s, proc) => s + breakdownFor(proc.index, c).setup, 0);
           return (
             <div key={p.id} className="flex-none w-48 bg-[#F0F5FF] border border-[#B8CCE8] rounded p-2 space-y-1.5">
-              {/* Title row + actions */}
               <div className="flex items-center gap-1">
                 <input
                   value={p.label}
@@ -299,7 +314,6 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
                   <Trash2 className="w-3 h-3" />
                 </button>
               </div>
-              {/* Lot size */}
               <div className="flex items-center gap-1">
                 <span className="text-[9px] text-[#6B6057] font-bold shrink-0 w-10">基準数</span>
                 <input
@@ -314,7 +328,6 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
                   className="w-12 px-1 py-0.5 text-[10px] rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#1E3A5F]"
                 />
               </div>
-              {/* Freight per box override */}
               <div className="flex items-center gap-1">
                 <span className="text-[9px] text-[#6B6057] font-bold shrink-0 w-10">送料/箱</span>
                 <input
@@ -329,7 +342,11 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
                   className={inp}
                 />
               </div>
-              {/* ロット逓減率 badge */}
+              {/* 段取費/個（このパターン合計） — 数量変動の本体 */}
+              <div className="flex items-center justify-between text-[9px] bg-white/70 rounded px-1.5 py-0.5 border border-[#E8C8BC]">
+                <span className="text-[#B5451B] font-bold">段取費/個</span>
+                <span className="font-mono font-black text-[#B5451B]">{yenFmt(setupTotal)}</span>
+              </div>
               {discountPct !== null && (
                 <div className={`text-center text-[10px] font-black rounded px-1.5 py-0.5 ${discountPct < 0 ? 'bg-emerald-100 text-emerald-700 border border-emerald-300' : 'bg-rose-100 text-rose-700 border border-rose-300'}`}>
                   最小ロット比 {pctFmt(discountPct)}
@@ -350,24 +367,17 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
             <tr className="bg-[#18130F] text-white">
               <th className="px-2 py-1.5 text-left font-black border-r border-[#3A3028] sticky left-0 bg-[#18130F] z-20">#</th>
               <th className="px-2 py-1.5 text-left font-black border-r border-[#3A3028] sticky left-8 bg-[#18130F] z-20 min-w-[130px]">工程名</th>
-              <th
-                className="px-2 py-1.5 text-center font-black border-r border-[#3A3028] bg-[#1A6B3A] min-w-[68px] cursor-pointer select-none"
-                title="クリックで詳細を折りたたみ"
-                onClick={() => setShowProcessDetail((v) => !v)}
-              >
-                <span className="flex items-center justify-center gap-0.5">
-                  {showProcessDetail ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-                  出来高<br /><span className="text-[8px] opacity-70">共通(個/h)</span>
-                </span>
+              <th className="px-2 py-1.5 text-center font-black border-r border-[#3A3028] bg-[#1A6B3A] min-w-[64px]">
+                出来高<br /><span className="text-[8px] opacity-70">共通(個/h)</span>
               </th>
-              <th className="px-2 py-1.5 text-center font-black border-r border-[#5A4A3A] bg-[#1A6B3A] min-w-[68px]">
+              <th className="px-2 py-1.5 text-center font-black border-r border-[#5A4A3A] bg-[#1A6B3A] min-w-[64px]">
                 段取<br /><span className="text-[8px] opacity-70">共通(h)</span>
               </th>
               {patterns.map((p) => (
                 <th
                   key={p.id}
-                  colSpan={2}
-                  className="px-2 py-1.5 text-center font-black border-l-2 border-[#B5451B] bg-[#1E3A5F] min-w-[140px]"
+                  colSpan={SUB}
+                  className="px-2 py-1.5 text-center font-black border-l-2 border-[#B5451B] bg-[#1E3A5F] min-w-[180px]"
                 >
                   {p.label}
                   <br />
@@ -382,23 +392,22 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
               <th className="border-r border-[#3A3028] sticky left-8 bg-[#2A2018] z-20" />
               <th className="border-r border-[#3A3028]" />
               <th className="border-r border-[#5A4A3A]" />
-              {patterns.map((p) => (
-                <React.Fragment key={p.id}>
-                  <th className="px-1 py-1 text-center border-l-2 border-[#B5451B] font-bold">
-                    {rateLabel(resolveProcessCalcMode(activeProcesses[0] || base.processes[0]))}
-                  </th>
-                  <th className="px-1 py-1 text-center font-bold">加工費/個</th>
-                </React.Fragment>
-              ))}
+              {patterns.map((p) => {
+                const mode = resolveProcessCalcMode(activeProcesses[0] || base.processes[0]);
+                return (
+                  <React.Fragment key={p.id}>
+                    <th className="px-1 py-1 text-center border-l-2 border-[#B5451B] font-bold">{rateLabel(mode)}</th>
+                    <th className="px-1 py-1 text-center font-bold text-[#F8C9BB]">段取費/個</th>
+                    <th className="px-1 py-1 text-center font-bold">加工費/個</th>
+                  </React.Fragment>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
             {activeProcesses.length === 0 ? (
               <tr>
-                <td
-                  colSpan={4 + patterns.length * 2}
-                  className="px-4 py-6 text-center text-[#9C9490] text-xs"
-                >
+                <td colSpan={4 + patterns.length * SUB} className="px-4 py-6 text-center text-[#9C9490] text-xs">
                   工程が未入力です。Sheet1（新旧見開き調整ワークスペース）で工程を入力してから戻ってください。
                 </td>
               </tr>
@@ -412,84 +421,64 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
                       {proc.index}
                     </td>
                     <td className="px-2 py-1 font-bold text-[#18130F] border-r border-[#EEEBE6] sticky left-8 bg-white">
-                      {proc.processName}
-                      <span className="ml-1 text-[8px] text-[#9C9490] font-mono">[{rateLabel(mode)}]</span>
+                      <input
+                        value={proc.processName}
+                        onChange={(e) => updateSharedProcess(proc.index, 'processName', e.target.value)}
+                        className="w-full bg-transparent outline-none border-b border-transparent focus:border-[#1E3A5F] font-bold"
+                      />
+                      <span className="text-[8px] text-[#9C9490] font-mono">[{rateLabel(mode)}]</span>
                     </td>
                     {/* 共通: 出来高 */}
                     <td className="px-1 py-0.5 border-r border-[#EEEBE6] bg-[#F0FAF4]">
-                      {isStd && showProcessDetail ? (
+                      {isStd ? (
                         <input
                           type="number"
                           value={proc.yieldPerHour || ''}
-                          onChange={(e) =>
-                            updateSharedProcess(proc.index, 'yieldPerHour', parseFloat(e.target.value) || 0)
-                          }
+                          onChange={(e) => updateSharedProcess(proc.index, 'yieldPerHour', parseFloat(e.target.value) || 0)}
                           className="w-full px-1 py-0.5 text-xs font-mono rounded border border-[#A8D4BC] bg-white outline-none focus:ring-1 focus:border-[#1A6B3A] text-right"
                         />
-                      ) : isStd ? (
-                        <span className="block text-right text-xs font-mono pr-1 text-[#1A6B3A] font-bold">
-                          {proc.yieldPerHour}
-                        </span>
                       ) : (
                         <span className="block text-center text-[#C8C2B8]">—</span>
                       )}
                     </td>
                     {/* 共通: 段取 */}
                     <td className="px-1 py-0.5 border-r border-[#EEEBE6] bg-[#F0FAF4]">
-                      {isStd && showProcessDetail ? (
+                      {isStd ? (
                         <input
                           type="number"
                           value={proc.totalHours || ''}
-                          onChange={(e) =>
-                            updateSharedProcess(proc.index, 'totalHours', parseFloat(e.target.value) || 0)
-                          }
+                          onChange={(e) => updateSharedProcess(proc.index, 'totalHours', parseFloat(e.target.value) || 0)}
                           className="w-full px-1 py-0.5 text-xs font-mono rounded border border-[#A8D4BC] bg-white outline-none focus:ring-1 focus:border-[#1A6B3A] text-right"
                         />
-                      ) : isStd ? (
-                        <span className="block text-right text-xs font-mono pr-1 text-[#1A6B3A] font-bold">
-                          {proc.totalHours}
-                        </span>
                       ) : (
                         <span className="block text-center text-[#C8C2B8]">—</span>
                       )}
                     </td>
-                    {/* per-pattern */}
-                    {calcs.map(({ pattern, calc }) => {
+                    {/* per-pattern: 賃率 | 段取費/個 | 加工費/個 */}
+                    {calcs.map((c) => {
+                      const { pattern } = c;
                       const r = pattern.processRates[proc.index] || {};
                       const rateVal =
                         mode === 'kg' ? r.kgPrice
                         : mode === 'lump' ? r.lumpSumPrice
                         : mode === 'direct' ? r.directProcessingCost
                         : r.hourlyRate;
-                      const procCost =
-                        calc.processCosts[base.processes.findIndex((bp) => bp.index === proc.index)] || 0;
-                      // Show actual rate hint for standard processes
-                      const actualRate =
-                        mode === 'standard' ? (proc.actualHourlyRate ?? null) : null;
+                      const bd = breakdownFor(proc.index, c);
                       return (
                         <React.Fragment key={pattern.id}>
                           <td className="px-1 py-0.5 border-l-2 border-[#E8C8BC]">
                             <input
                               type="number"
                               value={rateVal ?? ''}
-                              onChange={(e) =>
-                                updatePatternRate(
-                                  pattern.id,
-                                  proc.index,
-                                  mode,
-                                  parseFloat(e.target.value) || 0,
-                                )
-                              }
+                              onChange={(e) => updatePatternRate(pattern.id, proc.index, mode, parseFloat(e.target.value) || 0)}
                               className={inp}
                             />
-                            {actualRate !== null && (actualRate ?? 0) > 0 && (
-                              <div className="text-[8px] text-[#9C9490] text-right font-mono mt-0.5">
-                                実態: ¥{actualRate.toLocaleString()}
-                              </div>
-                            )}
+                          </td>
+                          <td className="px-1 py-1 text-right font-mono text-[#B5451B] bg-[#FFF8F0] font-bold">
+                            {isStd ? yenFmt(bd.setup) : '—'}
                           </td>
                           <td className="px-1 py-1 text-right font-mono text-[#1E3A5F] font-bold">
-                            {yenFmt(procCost)}
+                            {yenFmt(bd.total)}
                           </td>
                         </React.Fragment>
                       );
@@ -502,24 +491,33 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
 
           {/* Summary footer */}
           <tfoot className="bg-[#FAFAF8] text-xs border-t-2 border-[#D6D0C8]">
+            {/* 段取費合計/個 — 数量変動の本体を強調 */}
+            <tr className="border-b border-[#EEEBE6] bg-[#FFF3EA]">
+              <td colSpan={4} className="px-2 py-1 text-right font-black text-[#B5451B] sticky left-0 bg-[#FFF3EA]">
+                段取費合計/個
+              </td>
+              {calcs.map((c) => {
+                const setupTotal = activeProcesses.reduce((s, proc) => s + breakdownFor(proc.index, c).setup, 0);
+                return (
+                  <td key={c.pattern.id} colSpan={SUB} className="px-2 py-1 text-right font-mono font-black text-[#B5451B] border-l-2 border-[#E8C8BC]">
+                    {yenFmt(setupTotal)}
+                  </td>
+                );
+              })}
+            </tr>
+
             {(
               [
                 ['材料費/個', (c: ReturnType<typeof calculateEstimate>) => yenFmt(c.netMaterialCost)],
-                ['加工費合計', (c: ReturnType<typeof calculateEstimate>) => yenFmt(c.totalProcessCost)],
-                ['直製造原価', (c: ReturnType<typeof calculateEstimate>) => yenFmt(c.primeCost)],
+                ['加工費合計/個', (c: ReturnType<typeof calculateEstimate>) => yenFmt(c.totalProcessCost)],
+                ['直製造原価/個', (c: ReturnType<typeof calculateEstimate>) => yenFmt(c.primeCost)],
                 ['送料/個', (c: ReturnType<typeof calculateEstimate>) => yenFmt(c.shippingCostPerUnit)],
               ] as const
             ).map(([label, fn]) => (
               <tr key={label} className="border-b border-[#EEEBE6]">
-                <td colSpan={4} className="px-2 py-1 text-right font-bold text-[#6B6057] sticky left-0 bg-[#FAFAF8]">
-                  {label}
-                </td>
+                <td colSpan={4} className="px-2 py-1 text-right font-bold text-[#6B6057] sticky left-0 bg-[#FAFAF8]">{label}</td>
                 {calcs.map(({ pattern, calc }) => (
-                  <td
-                    key={pattern.id}
-                    colSpan={2}
-                    className="px-2 py-1 text-right font-mono text-[#18130F] border-l-2 border-[#E8C8BC]"
-                  >
+                  <td key={pattern.id} colSpan={SUB} className="px-2 py-1 text-right font-mono text-[#18130F] border-l-2 border-[#E8C8BC]">
                     {fn(calc)}
                   </td>
                 ))}
@@ -528,18 +526,12 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
 
             {/* 利管費率 (editable) */}
             <tr className="border-b border-[#EEEBE6]">
-              <td colSpan={4} className="px-2 py-1 text-right font-bold text-[#6B6057] sticky left-0 bg-[#FAFAF8]">
-                利管費率 (%)
-              </td>
+              <td colSpan={4} className="px-2 py-1 text-right font-bold text-[#6B6057] sticky left-0 bg-[#FAFAF8]">利管費率 (%)</td>
               {patterns.map((p) => (
-                <td key={p.id} colSpan={2} className="px-2 py-1 border-l-2 border-[#E8C8BC]">
+                <td key={p.id} colSpan={SUB} className="px-2 py-1 border-l-2 border-[#E8C8BC]">
                   <div className="flex items-center gap-1 justify-end">
                     <button
-                      onClick={() =>
-                        updatePattern(p.id, {
-                          sgaCalcMode: (p.sgaCalcMode || 'markup') === 'markup' ? 'margin' : 'markup',
-                        })
-                      }
+                      onClick={() => updatePattern(p.id, { sgaCalcMode: (p.sgaCalcMode || 'markup') === 'markup' ? 'margin' : 'markup' })}
                       className={`text-[8px] font-black px-1.5 py-0.5 rounded border cursor-pointer transition-colors ${
                         (p.sgaCalcMode || 'markup') === 'markup'
                           ? 'bg-[#FEF0EB] text-[#B5451B] border-[#E8C8BC]'
@@ -562,42 +554,24 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
 
             {/* 積み上げ単価 — prominent */}
             <tr className="border-b-2 border-[#D6D0C8] bg-[#EEF3FB]">
-              <td colSpan={4} className="px-2 py-2 text-right font-black text-[#1E3A5F] text-sm sticky left-0 bg-[#EEF3FB]">
-                積み上げ単価
-              </td>
+              <td colSpan={4} className="px-2 py-2 text-right font-black text-[#1E3A5F] text-sm sticky left-0 bg-[#EEF3FB]">積み上げ単価</td>
               {calcs.map(({ pattern, calc }) => (
-                <td
-                  key={pattern.id}
-                  colSpan={2}
-                  className="px-2 py-2 text-right font-mono font-black text-[#1E3A5F] text-sm border-l-2 border-[#E8C8BC]"
-                >
+                <td key={pattern.id} colSpan={SUB} className="px-2 py-2 text-right font-mono font-black text-[#1E3A5F] text-sm border-l-2 border-[#E8C8BC]">
                   {yenFmt(calc.grandTotalUnitPrice)}
                 </td>
               ))}
             </tr>
 
-            {/* ロット逓減率 (vs 最小ロット) */}
+            {/* 最小ロット比 */}
             <tr className="border-b border-[#EEEBE6]">
-              <td colSpan={4} className="px-2 py-1 text-right font-bold text-[#6B6057] sticky left-0 bg-[#FAFAF8]">
-                最小ロット比
-              </td>
+              <td colSpan={4} className="px-2 py-1 text-right font-bold text-[#6B6057] sticky left-0 bg-[#FAFAF8]">最小ロット比</td>
               {calcs.map(({ pattern, calc }) => {
                 if (pattern.id === refCalc.pattern.id || refPrice <= 0) {
-                  return (
-                    <td key={pattern.id} colSpan={2} className="px-2 py-1 text-right font-mono text-[#9C9490] border-l-2 border-[#E8C8BC]">
-                      基準
-                    </td>
-                  );
+                  return <td key={pattern.id} colSpan={SUB} className="px-2 py-1 text-right font-mono text-[#9C9490] border-l-2 border-[#E8C8BC]">基準</td>;
                 }
                 const pct = calc.grandTotalUnitPrice > 0 ? ((calc.grandTotalUnitPrice - refPrice) / refPrice) * 100 : null;
                 return (
-                  <td
-                    key={pattern.id}
-                    colSpan={2}
-                    className={`px-2 py-1 text-right font-mono font-black border-l-2 border-[#E8C8BC] ${
-                      pct === null ? 'text-[#9C9490]' : pct < 0 ? 'text-emerald-700' : 'text-rose-600'
-                    }`}
-                  >
+                  <td key={pattern.id} colSpan={SUB} className={`px-2 py-1 text-right font-mono font-black border-l-2 border-[#E8C8BC] ${pct === null ? 'text-[#9C9490]' : pct < 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
                     {pct === null ? '—' : pctFmt(pct)}
                   </td>
                 );
@@ -606,11 +580,9 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
 
             {/* 目標単価 (editable) */}
             <tr className="border-b border-[#EEEBE6]">
-              <td colSpan={4} className="px-2 py-1 text-right font-bold text-[#6B6057] sticky left-0 bg-[#FAFAF8]">
-                目標単価
-              </td>
+              <td colSpan={4} className="px-2 py-1 text-right font-bold text-[#6B6057] sticky left-0 bg-[#FAFAF8]">目標単価</td>
               {patterns.map((p) => (
-                <td key={p.id} colSpan={2} className="px-2 py-1 border-l-2 border-[#E8C8BC]">
+                <td key={p.id} colSpan={SUB} className="px-2 py-1 border-l-2 border-[#E8C8BC]">
                   <input
                     type="number"
                     value={p.targetUnitPrice || ''}
@@ -621,43 +593,28 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
               ))}
             </tr>
 
-            {/* 差額(辻褄) */}
+            {/* 積み上げ vs 目標 */}
             <tr className="border-b border-[#EEEBE6]">
-              <td colSpan={4} className="px-2 py-1 text-right font-black text-[#18130F] sticky left-0 bg-[#FAFAF8]">
-                差額(辻褄)
-              </td>
+              <td colSpan={4} className="px-2 py-1 text-right font-black text-[#18130F] sticky left-0 bg-[#FAFAF8]">積み上げ vs 目標</td>
               {calcs.map(({ pattern, calc }) => {
-                const diff =
-                  pattern.targetUnitPrice > 0 ? calc.grandTotalUnitPrice - pattern.targetUnitPrice : null;
-                const cls =
-                  diff === null
-                    ? 'text-[#9C9490]'
-                    : Math.abs(diff) < 0.5
-                    ? 'text-emerald-700'
-                    : diff > 0
-                    ? 'text-rose-600'
-                    : 'text-amber-700';
+                const diff = pattern.targetUnitPrice > 0 ? calc.grandTotalUnitPrice - pattern.targetUnitPrice : null;
+                const balanced = diff !== null && Math.abs(diff) < 0.5;
+                const cls = diff === null ? 'text-[#9C9490]' : balanced ? 'text-emerald-700' : diff > 0 ? 'text-rose-600' : 'text-amber-700';
                 return (
-                  <td
-                    key={pattern.id}
-                    colSpan={2}
-                    className={`px-2 py-1 text-right font-mono font-black border-l-2 border-[#E8C8BC] ${cls}`}
-                  >
-                    {diff === null ? '—' : `${diff > 0 ? '+' : ''}${diff.toFixed(2)}`}
+                  <td key={pattern.id} colSpan={SUB} className={`px-2 py-1 text-right font-mono font-black border-l-2 border-[#E8C8BC] ${cls}`}>
+                    {diff === null ? '—' : balanced ? '✓ 整合' : `${diff > 0 ? '+' : ''}${diff.toFixed(2)}`}
                   </td>
                 );
               })}
             </tr>
 
-            {/* 整合ボタン + 残差警告 */}
+            {/* 一発整合 + 残差 */}
             <tr>
-              <td colSpan={4} className="px-2 py-1.5 text-right font-bold text-[#6B6057] sticky left-0 bg-[#FAFAF8]">
-                辻褄合わせ
-              </td>
+              <td colSpan={4} className="px-2 py-1.5 text-right font-bold text-[#6B6057] sticky left-0 bg-[#FAFAF8]">辻褄合わせ</td>
               {patterns.map((p) => {
                 const w = warnings[p.id];
                 return (
-                  <td key={p.id} colSpan={2} className="px-2 py-1.5 border-l-2 border-[#E8C8BC]">
+                  <td key={p.id} colSpan={SUB} className="px-2 py-1.5 border-l-2 border-[#E8C8BC]">
                     <button
                       onClick={() => reconcileOne(p.id)}
                       className="w-full bg-[#18130F] hover:bg-[#B5451B] text-white font-black text-[10px] py-1 rounded inline-flex items-center justify-center gap-1 cursor-pointer transition-all"
@@ -666,14 +623,11 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
                     </button>
                     {w !== undefined &&
                       (Number.isNaN(w) ? (
-                        <div className="mt-0.5 text-[8px] text-rose-600 font-bold text-center">
-                          目標単価を入力してください
-                        </div>
+                        <div className="mt-0.5 text-[8px] text-rose-600 font-bold text-center">目標単価を入力してください</div>
                       ) : Math.abs(w) >= 1 ? (
                         <div className="mt-0.5 text-[8px] text-amber-700 font-bold text-center flex items-center justify-center gap-0.5">
                           <AlertTriangle className="w-2.5 h-2.5" />
-                          残差{w > 0 ? '+' : ''}
-                          {w.toFixed(1)}円 — 前提見直しが必要
+                          残差{w > 0 ? '+' : ''}{w.toFixed(1)}円 — 前提見直しが必要
                         </div>
                       ) : (
                         <div className="mt-0.5 text-[8px] text-emerald-700 font-bold text-center">✓ 整合済</div>
@@ -686,12 +640,12 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
         </table>
       </div>
 
-      <div className="flex items-start gap-1.5 text-[10px] text-[#6B6057] bg-[#F0FAF4] border border-[#A8D4BC] rounded p-2">
-        <Info className="w-3.5 h-3.5 text-[#1A6B3A] shrink-0 mt-0.5" />
+      <div className="flex items-start gap-1.5 text-[10px] text-[#6B6057] bg-[#FFF8F0] border border-[#E8C8BC] rounded p-2">
+        <Info className="w-3.5 h-3.5 text-[#B5451B] shrink-0 mt-0.5" />
         <span>
-          <strong className="text-[#1A6B3A]">出来高・段取時間（緑列）は全パターン共通</strong> — 生産前提として固定。編集すると全パターンに即時反映。
-          <strong className="text-[#1E3A5F]"> 賃率のみ数量により調整可能</strong>。
-          残差が1円以上残る場合は賃率だけでは辻褄が合わないサインです — 出来高・段取の前提自体を見直してください。
+          <strong className="text-[#B5451B]">段取費/個（橙列）＝ 賃率 × 段取時間 ÷ ロット数</strong> がロットで逓減 ＝ これが数量で単価が変わる本体です。
+          出来高・段取時間（緑列）は全パターン共通の生産前提。賃率は数量により調整可。
+          残差が1円以上残る場合は賃率だけでは辻褄が合わないサイン — 出来高・段取の前提自体を見直してください。
         </span>
       </div>
     </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { DetailedEstimate, ComparisonResult, Scenario, QuantityPattern } from './types';
+import { DetailedEstimate, ComparisonResult, Scenario, QuantityPattern, BatchPart } from './types';
 import { createEmptyEstimate } from './data/samples';
 import { ExcelGrid } from './components/ExcelGrid';
 import { CompareResults } from './components/CompareResults';
@@ -52,6 +52,7 @@ export default function App() {
     JSON.parse(JSON.stringify(createEmptyEstimate()))
   );
   const [quantityPatterns, setQuantityPatterns] = useState<QuantityPattern[]>([]);
+  const [batchParts, setBatchParts] = useState<BatchPart[]>([]);
 
   const [activeSheetTab, setActiveSheetTab] = useState<'workspace' | 'compare' | 'print'>('workspace');
   const [comparisonResult, setComparisonResult] = useState<ComparisonResult | null>(null);
@@ -839,10 +840,17 @@ export default function App() {
                   ? 'bg-[#1E3A5F] text-white border-[#16293F] hover:bg-[#2A4A7F]'
                   : 'bg-white hover:bg-[#EFF4FD] text-[#1E3A5F] border-[#D6D0C8] hover:border-[#B8CCE8]'
               }`}
-              title="保存済み複数品番を同時に並べて整合性チェック（一斉単価改定向け）"
+              title="複数品番を横並びに編集しながら整合（一斉単価改定向け／直接入力・ライブラリ取込）"
             >
               <Layers3 className="w-3 h-3 shrink-0" />
               <span>複数品番同時比較</span>
+              {batchParts.length > 0 && (
+                <span className={`ml-auto text-[8px] font-black rounded-full px-1.5 py-0.5 leading-none ${
+                  activeView === 'batch' ? 'bg-white/20 text-white' : 'bg-[#1E3A5F] text-white'
+                }`}>
+                  {batchParts.length}
+                </span>
+              )}
             </button>
 
             <button
@@ -1772,6 +1780,8 @@ export default function App() {
               />
             ) : activeView === 'batch' ? (
               <BatchCompareSheet
+                parts={batchParts}
+                onPartsChange={setBatchParts}
                 scenarios={customScenarios}
                 onBack={() => setActiveView('workspace')}
               />

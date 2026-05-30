@@ -1,785 +1,601 @@
-import React, { useState, useMemo } from 'react';
-import { Scenario } from '../types';
+import React, { useMemo, useState } from 'react';
+import { BatchPart, Scenario, ProcessRow, DetailedEstimate } from '../types';
+import { createEmptyEstimate } from '../data/samples';
 import { calculateEstimate, resolveProcessCalcMode, rateFromCostSell } from '../utils/calculations';
 import {
-  ArrowLeft, Layers3, AlertTriangle, CheckCircle2, Users,
-  Lock, Unlock, ChevronDown, ChevronRight,
+  ArrowLeft, Layers3, Plus, Trash2, Download, Lock, Unlock,
+  ChevronDown, ChevronRight, ArrowLeftRight, AlertTriangle,
 } from 'lucide-react';
 
 interface BatchCompareSheetProps {
+  parts: BatchPart[];
+  onPartsChange: (parts: BatchPart[]) => void;
   scenarios: Scenario[];
   onBack: () => void;
 }
 
-const MAX_SELECT = 8;
+const MAX_PARTS = 10;
+const rand = () => Math.random().toString(36).slice(2, 7);
+const yen = (v: number) => `¥${v.toLocaleString('ja-JP', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-const GROUP_COLORS = [
-  { dot: '#1E3A5F', bg: 'bg-[#EFF4FD]', border: 'border-[#B8CCE8]', text: 'text-[#1E3A5F]' },
-  { dot: '#1A6B3A', bg: 'bg-[#F0FAF4]', border: 'border-[#A8D4BC]', text: 'text-[#1A6B3A]' },
-  { dot: '#B5451B', bg: 'bg-[#FEF0EB]', border: 'border-[#E8C8BC]', text: 'text-[#B5451B]' },
-  { dot: '#6B3FA0', bg: 'bg-[#F3EFFA]', border: 'border-[#CBB8E8]', text: 'text-[#6B3FA0]' },
-];
-
-const yen = (v: number) =>
-  `¥${v.toLocaleString('ja-JP', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ scenarios, onBack }) => {
-  const [selected, setSelected] = useState<string[]>([]);
-  const [groups, setGroups] = useState<Record<string, string>>({});
-  const [groupInput, setGroupInput] = useState('');
+export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onPartsChange, scenarios, onBack }) => {
   const [internalMode, setInternalMode] = useState(true);
-  const [showProcessDetail, setShowProcessDetail] = useState(false);
+  const [showProcDetail, setShowProcDetail] = useState(true);
+  const [importOpen, setImportOpen] = useState(false);
 
-  const toggle = (id: string) => {
-    setSelected((prev) => {
-      if (prev.includes(id)) return prev.filter((x) => x !== id);
-      if (prev.length >= MAX_SELECT) return prev;
-      return [...prev, id];
+  // ── part mutation helpers ──────────────────────────────────────────────────
+  const patchEstimate = (id: string, updater: (e: DetailedEstimate) => DetailedEstimate) =>
+    onPartsChange(parts.map((pt) => (pt.id === id ? { ...pt, estimate: updater(pt.estimate) } : pt)));
+
+  const setPartField = (id: string, patch: Partial<DetailedEstimate>) =>
+    patchEstimate(id, (e) => ({ ...e, ...patch }));
+
+  const setMaterial = (id: string, patch: Partial<DetailedEstimate['material']>) =>
+    patchEstimate(id, (e) => ({ ...e, material: { ...e.material, ...patch } }));
+
+  const setAdjust = (id: string, patch: Partial<DetailedEstimate['adjustments']>) =>
+    patchEstimate(id, (e) => ({ ...e, adjustments: { ...e.adjustments, ...patch } }));
+
+  const setLogistics = (id: string, patch: Partial<DetailedEstimate['logistics']>) =>
+    patchEstimate(id, (e) => ({ ...e, logistics: { ...e.logistics, ...patch } }));
+
+  const updateProc = (id: string, pn: string, patch: Partial<ProcessRow>) =>
+    patchEstimate(id, (e) => ({
+      ...e,
+      processes: e.processes.map((p) => (p.processName.trim() === pn ? { ...p, ...patch } : p)),
+    }));
+
+  // add a (named) process to a single part that doesn't yet have it
+  const updateProcAdd = (partId: string, pn: string) =>
+    patchEstimate(partId, (e) => {
+      if (e.processes.some((p) => p.processName.trim() === pn)) return e;
+      const slot = e.processes.findIndex((p) => !p.processName.trim());
+      const processes = slot >= 0
+        ? e.processes.map((p, i) => (i === slot ? { ...p, processName: pn } : p))
+        : [...e.processes, { index: e.processes.length + 1, processName: pn, workContent: '', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 }];
+      return { ...e, processes };
     });
+
+  const setOldPrice = (id: string, v: number | undefined) =>
+    onPartsChange(parts.map((pt) => (pt.id === id ? { ...pt, oldUnitPrice: v } : pt)));
+
+  // ── add / remove parts ──────────────────────────────────────────────────────
+  const addBlank = () => {
+    if (parts.length >= MAX_PARTS) { alert(`品番は最大${MAX_PARTS}件までです。`); return; }
+    onPartsChange([...parts, { id: `bp-${Date.now()}-${rand()}`, estimate: JSON.parse(JSON.stringify(createEmptyEstimate())) }]);
   };
 
-  const selectAll = () => setSelected(scenarios.slice(0, MAX_SELECT).map((s) => s.id));
-  const clearAll = () => setSelected([]);
-
-  const selectedScenarios = useMemo(
-    () => selected.map((id) => scenarios.find((s) => s.id === id)).filter((s): s is Scenario => !!s),
-    [selected, scenarios]
-  );
-
-  const groupNames = useMemo(
-    () => Array.from(new Set(Object.values(groups).filter(Boolean))),
-    [groups]
-  );
-
-  const colorFor = (id: string) => {
-    const g = groups[id];
-    if (!g) return null;
-    return GROUP_COLORS[groupNames.indexOf(g) % GROUP_COLORS.length];
+  const addFromScenario = (sid: string) => {
+    if (parts.length >= MAX_PARTS) { alert(`品番は最大${MAX_PARTS}件までです。`); return; }
+    const s = scenarios.find((x) => x.id === sid);
+    if (!s) return;
+    const oldCalc = calculateEstimate(s.oldEstimate);
+    onPartsChange([
+      ...parts,
+      {
+        id: `bp-${Date.now()}-${rand()}`,
+        estimate: JSON.parse(JSON.stringify(s.newEstimate)),
+        oldUnitPrice: oldCalc.grandTotalUnitPrice > 0 ? oldCalc.grandTotalUnitPrice : undefined,
+        sourceScenarioId: s.id,
+      },
+    ]);
+    setImportOpen(false);
   };
 
-  const assignGroup = () => {
-    const name = groupInput.trim();
-    if (!name || selected.length === 0) return;
-    setGroups((prev) => {
-      const next = { ...prev };
-      selected.forEach((id) => { next[id] = name; });
-      return next;
-    });
-    setGroupInput('');
-  };
+  const removePart = (id: string) => onPartsChange(parts.filter((pt) => pt.id !== id));
 
+  // ── process union (read-only names; add via prompt, remove across all) ───────
   const processNames = useMemo(() => {
     const names: string[] = [];
-    selectedScenarios.forEach((s) => {
-      s.newEstimate.processes.forEach((p) => {
-        if (p.processName.trim() && !names.includes(p.processName.trim()))
-          names.push(p.processName.trim());
-      });
-    });
+    parts.forEach((pt) =>
+      pt.estimate.processes.forEach((p) => {
+        const n = p.processName.trim();
+        if (n && !names.includes(n)) names.push(n);
+      }),
+    );
     return names;
-  }, [selectedScenarios]);
+  }, [parts]);
 
+  const addProcessAll = () => {
+    const name = (window.prompt('全品番に追加する工程名を入力') || '').trim();
+    if (!name) return;
+    onPartsChange(
+      parts.map((pt) => {
+        if (pt.estimate.processes.some((p) => p.processName.trim() === name)) return pt;
+        const slot = pt.estimate.processes.findIndex((p) => !p.processName.trim());
+        let processes;
+        if (slot >= 0) {
+          processes = pt.estimate.processes.map((p, i) => (i === slot ? { ...p, processName: name } : p));
+        } else {
+          processes = [
+            ...pt.estimate.processes,
+            { index: pt.estimate.processes.length + 1, processName: name, workContent: '', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
+          ];
+        }
+        return { ...pt, estimate: { ...pt.estimate, processes } };
+      }),
+    );
+  };
+
+  const removeProcessAll = (pn: string) => {
+    onPartsChange(
+      parts.map((pt) => ({
+        ...pt,
+        estimate: {
+          ...pt.estimate,
+          processes: pt.estimate.processes.map((p) =>
+            p.processName.trim() === pn
+              ? { ...p, processName: '', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, lumpSumPrice: 0, directProcessingCost: 0 }
+              : p,
+          ),
+        },
+      })),
+    );
+  };
+
+  // ── cross-cutting alignment (揃える = copy leftmost part's value to all) ──────
+  const alignMaterialPrice = () => {
+    if (parts.length < 2) return;
+    const ref = parts[0].estimate.material.basePricePerKg;
+    onPartsChange(parts.map((pt, i) => (i === 0 ? pt : { ...pt, estimate: { ...pt.estimate, material: { ...pt.estimate.material, basePricePerKg: ref } } })));
+  };
+  const alignSga = () => {
+    if (parts.length < 2) return;
+    const rate = parts[0].estimate.adjustments.sgaRatePercent;
+    const mode = parts[0].estimate.adjustments.sgaCalcMode || 'markup';
+    onPartsChange(parts.map((pt, i) => (i === 0 ? pt : { ...pt, estimate: { ...pt.estimate, adjustments: { ...pt.estimate.adjustments, sgaRatePercent: rate, sgaCalcMode: mode } } })));
+  };
+  const alignProcRate = (pn: string) => {
+    if (parts.length < 2) return;
+    const refProc = parts[0].estimate.processes.find((p) => p.processName.trim() === pn);
+    if (!refProc) return;
+    onPartsChange(
+      parts.map((pt, i) => {
+        if (i === 0) return pt;
+        return {
+          ...pt,
+          estimate: {
+            ...pt.estimate,
+            processes: pt.estimate.processes.map((p) =>
+              p.processName.trim() === pn
+                ? { ...p, hourlyRate: refProc.hourlyRate, kgPrice: refProc.kgPrice, lumpSumPrice: refProc.lumpSumPrice, directProcessingCost: refProc.directProcessingCost }
+                : p,
+            ),
+          },
+        };
+      }),
+    );
+  };
+
+  // ── computed per part (calc + process cost by name) ─────────────────────────
   const calcs = useMemo(
-    () => selectedScenarios.map((s) => ({ scenario: s, calc: calculateEstimate(s.newEstimate) })),
-    [selectedScenarios]
+    () =>
+      parts.map((pt) => {
+        const calc = calculateEstimate(pt.estimate);
+        const costByName: Record<string, number> = {};
+        pt.estimate.processes.forEach((p, i) => {
+          const n = p.processName.trim();
+          if (n) costByName[n] = (costByName[n] || 0) + (calc.processCosts[i] || 0);
+        });
+        return { part: pt, calc, costByName };
+      }),
+    [parts],
   );
 
-  // ── Consistency detection (same-group members) ──────────────────────────────
-  const warnings = useMemo(() => {
-    const out: string[] = [];
-    const byGroup: Record<string, Scenario[]> = {};
-    selectedScenarios.forEach((s) => {
-      const g = groups[s.id];
-      if (!g) return;
-      (byGroup[g] ||= []).push(s);
-    });
-    Object.entries(byGroup).forEach(([gname, members]) => {
-      if (members.length < 2) return;
-
-      // lot size
-      const lotSizes = new Set(members.map((s) => s.newEstimate.baseLotSize));
-      if (lotSizes.size > 1)
-        out.push(`【${gname}】見積基準数が不一致 (${Array.from(lotSizes).join(' / ')}個)`);
-
-      // material price per same material name
-      const matMap: Record<string, Set<number>> = {};
-      members.forEach((s) => {
-        const m = s.newEstimate.material;
-        if (m.materialName.trim())
-          (matMap[m.materialName.trim()] ||= new Set()).add(Math.round(m.basePricePerKg));
-      });
-      Object.entries(matMap).forEach(([mat, prices]) => {
-        if (prices.size > 1)
-          out.push(`【${gname}】材料「${mat}」の建値が不一致 (${Array.from(prices).map((p) => `¥${p}`).join(' / ')})`);
-      });
-
-      // process yield / setup
-      const procNames = new Set<string>();
-      members.forEach((s) =>
-        s.newEstimate.processes.forEach((p) => p.processName.trim() && procNames.add(p.processName.trim()))
-      );
-      procNames.forEach((pn) => {
-        const yields = new Set<number>();
-        const setups = new Set<number>();
-        members.forEach((s) => {
-          const p = s.newEstimate.processes.find((x) => x.processName.trim() === pn);
-          if (p && resolveProcessCalcMode(p) === 'standard') {
-            yields.add(p.yieldPerHour);
-            setups.add(p.totalHours);
-          }
-        });
-        if (yields.size > 1)
-          out.push(`【${gname}】工程「${pn}」の出来高が不一致 (${Array.from(yields).join(' / ')}個/h)`);
-        if (setups.size > 1)
-          out.push(`【${gname}】工程「${pn}」の段取が不一致 (${Array.from(setups).join(' / ')}h)`);
-      });
-    });
-    return out;
-  }, [selectedScenarios, groups]);
-
-  // Precompute group→members map once; used by inconsistency helpers below
-  const groupMembersMap = useMemo(() => {
-    const map: Record<string, Scenario[]> = {};
-    selectedScenarios.forEach((s) => {
-      const g = groups[s.id];
-      if (g) (map[g] ||= []).push(s);
-    });
-    return map;
-  }, [selectedScenarios, groups]);
-
-  // numeric inconsistency within same group — O(groupSize) per call, not O(selected)
-  const groupValueInconsistent = (sid: string, getter: (s: Scenario) => number | null): boolean => {
-    const g = groups[sid];
-    if (!g) return false;
-    const members = groupMembersMap[g] ?? [];
-    if (members.length < 2) return false;
-    const vals = new Set<number>();
-    members.forEach((s) => {
-      const v = getter(s);
-      if (v !== null) vals.add(Math.round(v * 100) / 100);
-    });
-    return vals.size > 1;
+  // inconsistency detection across all parts (for alignable rows)
+  const numDiffers = (getter: (pt: BatchPart) => number): boolean => {
+    if (parts.length < 2) return false;
+    const set = new Set(parts.map((pt) => Math.round(getter(pt) * 100) / 100));
+    return set.size > 1;
   };
+  const refNum = (getter: (pt: BatchPart) => number) => (parts.length ? getter(parts[0]) : 0);
 
-  // string inconsistency within same group — O(groupSize) per call
-  const groupStringInconsistent = (sid: string, getter: (s: Scenario) => string | null): boolean => {
-    const g = groups[sid];
-    if (!g) return false;
-    const members = groupMembersMap[g] ?? [];
-    if (members.length < 2) return false;
-    const vals = new Set<string>();
-    members.forEach((s) => {
-      const v = getter(s);
-      if (v !== null && v.trim() !== '') vals.add(v.trim());
-    });
-    return vals.size > 1;
-  };
+  const inp = 'w-full px-1 py-0.5 text-xs font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#1E3A5F] text-right';
+  const inpL = 'w-full px-1 py-0.5 text-xs rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#1E3A5F]';
+  const warnCell = 'bg-amber-50';
+  const lbl = 'px-2 py-1 font-bold text-[#6B6057] sticky left-0 bg-white z-10';
 
-  const warnCell = 'bg-amber-100 border border-amber-400';
-  const hasGroups = Object.keys(groups).length > 0;
+  const AlignBtn: React.FC<{ onClick: () => void; differs: boolean }> = ({ onClick, differs }) => (
+    <button
+      onClick={onClick}
+      title="先頭品番の値に全列を揃える"
+      className={`ml-1 inline-flex items-center cursor-pointer rounded px-1 py-0.5 text-[8px] font-black border transition-colors ${
+        differs ? 'bg-amber-100 border-amber-400 text-amber-800 animate-pulse' : 'border-[#D6D0C8] text-[#9C9490] hover:bg-[#F0EDE8]'
+      }`}
+    >
+      <ArrowLeftRight className="w-2.5 h-2.5 mr-0.5" />揃える
+    </button>
+  );
 
-  return (
-    <div className="flex gap-3 h-full">
-      {/* ── LEFT sidebar ── */}
-      <aside className="flex-none w-56 space-y-3">
-        <button
-          onClick={onBack}
-          className="text-xs text-[#6B6057] hover:text-[#B5451B] font-bold inline-flex items-center gap-1 cursor-pointer"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" /> ライブラリへ戻る
-        </button>
-
-        {/* part selection */}
-        <div className="bg-white border border-[#D6D0C8] rounded p-2">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-black text-[#18130F] uppercase tracking-wide">品番選択</span>
-            <span className="text-[9px] text-[#9C9490] font-mono">
-              {selected.length}/{Math.min(MAX_SELECT, scenarios.length)}
-            </span>
-          </div>
-          <div className="flex gap-1 mb-1.5">
-            <button
-              onClick={selectAll}
-              className="flex-1 text-[9px] font-bold py-0.5 rounded border border-[#D6D0C8] hover:bg-[#F0EDE8] cursor-pointer"
-            >
-              全選択
-            </button>
-            <button
-              onClick={clearAll}
-              className="flex-1 text-[9px] font-bold py-0.5 rounded border border-[#D6D0C8] hover:bg-[#F0EDE8] cursor-pointer"
-            >
-              全解除
-            </button>
-          </div>
-          <div className="space-y-0.5 max-h-72 overflow-y-auto">
-            {scenarios.length === 0 && (
-              <div className="text-[10px] text-[#9C9490] p-2">保存済みシナリオがありません</div>
-            )}
-            {scenarios.map((s) => {
-              const isSel = selected.includes(s.id);
-              const c = colorFor(s.id);
-              return (
-                <label
-                  key={s.id}
-                  className={`flex items-center gap-1.5 px-1.5 py-1 rounded cursor-pointer text-[10px] ${isSel ? 'bg-[#FEF0EB]' : 'hover:bg-[#F7F6F2]'}`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={isSel}
-                    onChange={() => toggle(s.id)}
-                    className="shrink-0 accent-[#B5451B]"
-                  />
-                  {c && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: c.dot }} />}
-                  <span className="min-w-0 flex-1">
-                    <span className="block font-bold text-[#18130F] truncate">
-                      {s.newEstimate.partNumber || '(品番未設定)'}
-                    </span>
-                    <span className="block text-[#9C9490] truncate">{s.name}</span>
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* supplier group assignment */}
-        <div className="bg-white border border-[#D6D0C8] rounded p-2">
-          <div className="flex items-center gap-1 mb-1.5">
-            <Users className="w-3 h-3 text-[#1E3A5F]" />
-            <span className="text-[10px] font-black text-[#18130F] uppercase tracking-wide">
-              サプライヤーグループ
-            </span>
-          </div>
-          <p className="text-[9px] text-[#9C9490] mb-1.5 leading-tight">
-            選択中の品番に同一仕入先グループ名を割当 → 整合性を自動チェック
-          </p>
-          <div className="flex gap-1 mb-1.5">
-            <input
-              value={groupInput}
-              onChange={(e) => setGroupInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && assignGroup()}
-              placeholder="例: ボルトメーカーA"
-              className="flex-1 px-1.5 py-1 text-[10px] rounded border border-[#D6D0C8] outline-none focus:ring-1 focus:border-[#1E3A5F]"
-            />
-            <button
-              onClick={assignGroup}
-              disabled={!groupInput.trim() || selected.length === 0}
-              className="text-[10px] font-bold px-2 rounded bg-[#1E3A5F] text-white disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
-            >
-              割当
-            </button>
-          </div>
-          {groupNames.length > 0 && (
-            <div className="space-y-0.5">
-              {groupNames.map((g) => {
-                const idx = groupNames.indexOf(g);
-                const c = GROUP_COLORS[idx % GROUP_COLORS.length];
-                const count = Object.values(groups).filter((x) => x === g).length;
-                return (
-                  <div
-                    key={g}
-                    className={`flex items-center gap-1.5 px-1.5 py-0.5 rounded border text-[9px] ${c.bg} ${c.border}`}
-                  >
-                    <span className="w-2 h-2 rounded-full" style={{ background: c.dot }} />
-                    <span className={`font-bold ${c.text} truncate flex-1`}>{g}</span>
-                    <span className="text-[#9C9490] font-mono">{count}品番</span>
-                  </div>
-                );
-              })}
-              <button
-                onClick={() => setGroups({})}
-                className="text-[9px] text-[#9C9490] hover:text-rose-600 underline cursor-pointer mt-0.5"
-              >
-                グループをクリア
+  // ── empty state ─────────────────────────────────────────────────────────────
+  if (parts.length === 0) {
+    return (
+      <div className="max-w-2xl mx-auto mt-8 bg-white rounded-xl border border-[#D6D0C8] p-8 text-center shadow-sm">
+        <Layers3 className="w-10 h-10 mx-auto text-[#B5451B] mb-3" />
+        <h2 className="text-lg font-black text-[#18130F] mb-2">複数品番同時比較</h2>
+        <p className="text-sm text-[#6B6057] leading-relaxed mb-4">
+          客先の一斉価格改定などで、複数品番を横並びに<strong className="text-[#B5451B]">編集しながら</strong>整合させるワークシートです。
+          同一サプライヤーの材料建値・賃率・SGA率を「揃える」ボタンで横断的に統一し、各品番の辻褄をリアルタイムで確認できます。
+        </p>
+        <div className="flex flex-col sm:flex-row gap-2 justify-center items-center">
+          <button onClick={addBlank} className="bg-[#B5451B] hover:bg-[#9A3A16] text-white px-5 py-2.5 rounded-lg font-black text-sm inline-flex items-center gap-2 cursor-pointer">
+            <Plus className="w-4 h-4" /> 空の品番を追加（直接入力）
+          </button>
+          {scenarios.length > 0 && (
+            <div className="relative">
+              <button onClick={() => setImportOpen((v) => !v)} className="bg-white border border-[#1E3A5F] text-[#1E3A5F] hover:bg-[#EFF4FD] px-5 py-2.5 rounded-lg font-black text-sm inline-flex items-center gap-2 cursor-pointer">
+                <Download className="w-4 h-4" /> ライブラリから取込
               </button>
+              {importOpen && (
+                <div className="absolute z-30 mt-1 left-0 w-64 max-h-60 overflow-y-auto bg-white border border-[#D6D0C8] rounded shadow-lg text-left">
+                  {scenarios.map((s) => (
+                    <button key={s.id} onClick={() => addFromScenario(s.id)} className="block w-full text-left px-3 py-1.5 text-xs hover:bg-[#FEF0EB] cursor-pointer border-b border-[#EEEBE6]">
+                      <span className="font-bold text-[#18130F]">{s.newEstimate.partNumber || '(品番未設定)'}</span>
+                      <span className="block text-[#9C9490] truncate">{s.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
-      </aside>
-
-      {/* ── RIGHT: comparison table ── */}
-      <div className="flex-1 min-w-0 space-y-2">
-
-        {/* toolbar */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <Layers3 className="w-5 h-5 text-[#B5451B]" />
-          <h2 className="text-sm font-black text-[#18130F]">複数品番同時比較</h2>
-          <span className="text-[10px] text-[#9C9490] font-mono">{selectedScenarios.length}品番選択中</span>
-
-          <div className="ml-auto flex items-center gap-2">
-            <button
-              onClick={() => setShowProcessDetail((v) => !v)}
-              className={`flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded border cursor-pointer transition-colors ${
-                showProcessDetail
-                  ? 'bg-[#EFF4FD] border-[#B8CCE8] text-[#1E3A5F]'
-                  : 'border-[#D6D0C8] text-[#6B6057] hover:bg-[#F0EDE8]'
-              }`}
-            >
-              {showProcessDetail
-                ? <ChevronDown className="w-3 h-3" />
-                : <ChevronRight className="w-3 h-3" />}
-              工程詳細
-            </button>
-            <button
-              onClick={() => setInternalMode((v) => !v)}
-              className={`flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded border cursor-pointer transition-colors ${
-                internalMode
-                  ? 'bg-rose-50 border-rose-200 text-rose-700'
-                  : 'border-[#D6D0C8] text-[#6B6057] hover:bg-[#F0EDE8]'
-              }`}
-            >
-              {internalMode ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
-              {internalMode ? '社内モード' : '閲覧モード'}
-            </button>
-          </div>
+        <div className="mt-4">
+          <button onClick={onBack} className="text-xs text-[#6B6057] hover:text-[#B5451B] font-bold underline cursor-pointer">ワークスペースへ戻る</button>
         </div>
+      </div>
+    );
+  }
 
-        {/* internal mode warning banner */}
-        {internalMode && selectedScenarios.length > 0 && (
-          <div className="bg-rose-50 border border-rose-200 rounded p-2 flex items-start gap-2">
-            <Lock className="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
-            <p className="text-[10px] text-rose-700 leading-tight">
-              <span className="font-black">社内専用モード</span>{' '}
-              — 実利益率・賃率など原価情報を表示中です。客先との画面共有時は右上の「閲覧モード」に切り替えてください。
-            </p>
-          </div>
-        )}
+  return (
+    <div className="space-y-2">
+      {/* toolbar */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <button onClick={onBack} className="text-xs text-[#6B6057] hover:text-[#B5451B] font-bold inline-flex items-center gap-1 cursor-pointer">
+          <ArrowLeft className="w-3.5 h-3.5" /> 戻る
+        </button>
+        <Layers3 className="w-5 h-5 text-[#B5451B]" />
+        <h2 className="text-sm font-black text-[#18130F]">複数品番同時比較</h2>
+        <span className="text-[10px] text-[#9C9490] font-mono">{parts.length}品番</span>
 
-        {/* consistency alerts */}
-        {warnings.length > 0 && (
-          <div className="bg-amber-50 border border-amber-300 rounded p-2 space-y-1">
-            <div className="flex items-center gap-1 text-[10px] font-black text-amber-800">
-              <AlertTriangle className="w-3.5 h-3.5" /> 整合性アラート（同一グループ内の不一致）
+        <div className="ml-auto flex items-center gap-1.5">
+          <button onClick={addBlank} className="text-[10px] font-bold px-2 py-1 rounded border border-[#B5451B] text-[#B5451B] hover:bg-[#FEF0EB] cursor-pointer inline-flex items-center gap-1">
+            <Plus className="w-3 h-3" /> 品番追加
+          </button>
+          {scenarios.length > 0 && (
+            <div className="relative">
+              <button onClick={() => setImportOpen((v) => !v)} className="text-[10px] font-bold px-2 py-1 rounded border border-[#1E3A5F] text-[#1E3A5F] hover:bg-[#EFF4FD] cursor-pointer inline-flex items-center gap-1">
+                <Download className="w-3 h-3" /> 取込
+              </button>
+              {importOpen && (
+                <div className="absolute z-30 mt-1 right-0 w-64 max-h-60 overflow-y-auto bg-white border border-[#D6D0C8] rounded shadow-lg text-left">
+                  {scenarios.map((s) => (
+                    <button key={s.id} onClick={() => addFromScenario(s.id)} className="block w-full text-left px-3 py-1.5 text-xs hover:bg-[#FEF0EB] cursor-pointer border-b border-[#EEEBE6]">
+                      <span className="font-bold text-[#18130F]">{s.newEstimate.partNumber || '(品番未設定)'}</span>
+                      <span className="block text-[#9C9490] truncate">{s.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-            <div className="flex flex-wrap gap-1">
-              {warnings.map((w, i) => (
-                <span
-                  key={i}
-                  className="text-[9px] font-bold bg-amber-100 border border-amber-400 text-amber-800 px-1.5 py-0.5 rounded"
-                >
-                  {w}
-                </span>
+          )}
+          <button onClick={() => setShowProcDetail((v) => !v)} className={`text-[10px] font-bold px-2 py-1 rounded border cursor-pointer inline-flex items-center gap-1 ${showProcDetail ? 'bg-[#EFF4FD] border-[#B8CCE8] text-[#1E3A5F]' : 'border-[#D6D0C8] text-[#6B6057] hover:bg-[#F0EDE8]'}`}>
+            {showProcDetail ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}工程詳細
+          </button>
+          <button onClick={() => setInternalMode((v) => !v)} className={`text-[10px] font-bold px-2 py-1 rounded border cursor-pointer inline-flex items-center gap-1 ${internalMode ? 'bg-rose-50 border-rose-200 text-rose-700' : 'border-[#D6D0C8] text-[#6B6057] hover:bg-[#F0EDE8]'}`}>
+            {internalMode ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}{internalMode ? '社内モード' : '閲覧モード'}
+          </button>
+        </div>
+      </div>
+
+      {internalMode && (
+        <div className="bg-rose-50 border border-rose-200 rounded p-2 flex items-start gap-2">
+          <Lock className="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
+          <p className="text-[10px] text-rose-700 leading-tight">
+            <span className="font-black">社内専用モード</span> — 実利益率など原価情報を表示中。客先と画面共有する際は「閲覧モード」に切り替えてください。
+            <span className="text-[#9C9490] ml-1">「揃える」は先頭（左端）品番の値を全列にコピーします。黄色＝列間で値が不一致。</span>
+          </p>
+        </div>
+      )}
+
+      <div className="overflow-x-auto border border-[#D6D0C8] rounded bg-white">
+        <table className="text-xs border-collapse min-w-full">
+          <thead>
+            <tr className="bg-[#18130F] text-white">
+              <th className="px-2 py-1.5 text-left font-black sticky left-0 bg-[#18130F] z-20 min-w-[150px]">項目</th>
+              {calcs.map(({ part }, i) => (
+                <th key={part.id} className="px-2 py-1.5 text-center font-black border-l border-[#3A3028] min-w-[150px]">
+                  <div className="flex items-center justify-center gap-1">
+                    {i === 0 && <span className="text-[8px] bg-[#B5451B] px-1 rounded">基準</span>}
+                    <input
+                      value={part.estimate.partNumber}
+                      onChange={(e) => setPartField(part.id, { partNumber: e.target.value })}
+                      placeholder="品番"
+                      className="w-full bg-transparent text-white text-center font-mono text-[11px] outline-none border-b border-[#3A3028] focus:border-white placeholder:text-[#6B6057]"
+                    />
+                    <button onClick={() => removePart(part.id)} className="text-[#9C9490] hover:text-rose-400 cursor-pointer shrink-0" title="この品番を削除">
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <input
+                    value={part.estimate.partName || ''}
+                    onChange={(e) => setPartField(part.id, { partName: e.target.value })}
+                    placeholder="品名"
+                    className="w-full bg-transparent text-[#C8C2B8] text-center text-[9px] outline-none mt-0.5 placeholder:text-[#6B6057]"
+                  />
+                  <div className="flex items-center justify-center gap-1 mt-0.5">
+                    <input
+                      type="number"
+                      value={part.estimate.baseLotSize || ''}
+                      onChange={(e) => setPartField(part.id, { baseLotSize: parseFloat(e.target.value) || 0 })}
+                      className="w-14 bg-[#2A2018] text-white text-center font-mono text-[9px] rounded outline-none px-1"
+                    />
+                    <input
+                      value={part.estimate.lotUnit}
+                      onChange={(e) => setPartField(part.id, { lotUnit: e.target.value })}
+                      className="w-10 bg-[#2A2018] text-[#C8C2B8] text-center text-[8px] rounded outline-none px-0.5"
+                    />
+                  </div>
+                </th>
               ))}
-            </div>
-          </div>
-        )}
-        {selectedScenarios.length > 0 && warnings.length === 0 && hasGroups && (
-          <div className="bg-emerald-50 border border-emerald-300 rounded p-2 flex items-center gap-1 text-[10px] font-black text-emerald-700">
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            同一グループ内の見積基準数・出来高・段取・材料建値はすべて整合しています
-          </div>
-        )}
+            </tr>
+          </thead>
+          <tbody>
+            {/* ── Material ── */}
+            <tr className="bg-[#FEF0EB] border-b border-[#EEEBE6]">
+              <td colSpan={parts.length + 1} className="px-2 py-1 font-black text-[#B5451B] text-[10px] sticky left-0 bg-[#FEF0EB]">▸ 材料</td>
+            </tr>
+            <tr className="border-b border-[#EEEBE6]">
+              <td className={lbl}>材質</td>
+              {calcs.map(({ part }) => (
+                <td key={part.id} className="px-1 py-0.5 border-l border-[#EEEBE6]">
+                  <input value={part.estimate.material.materialName} onChange={(e) => setMaterial(part.id, { materialName: e.target.value })} className={inpL} />
+                </td>
+              ))}
+            </tr>
+            <tr className="border-b border-[#EEEBE6]">
+              <td className={lbl}>
+                材料建値 ¥/kg
+                {parts.length >= 2 && <AlignBtn onClick={alignMaterialPrice} differs={numDiffers((pt) => pt.estimate.material.basePricePerKg)} />}
+              </td>
+              {calcs.map(({ part }) => {
+                const bad = parts.length >= 2 && numDiffers((pt) => pt.estimate.material.basePricePerKg) && Math.round(part.estimate.material.basePricePerKg * 100) / 100 !== Math.round(refNum((pt) => pt.estimate.material.basePricePerKg) * 100) / 100;
+                return (
+                  <td key={part.id} className={`px-1 py-0.5 border-l border-[#EEEBE6] ${bad ? warnCell : ''}`}>
+                    <input type="number" value={part.estimate.material.basePricePerKg || ''} onChange={(e) => setMaterial(part.id, { basePricePerKg: parseFloat(e.target.value) || 0 })} className={inp} />
+                  </td>
+                );
+              })}
+            </tr>
+            <tr className="border-b border-[#EEEBE6]">
+              <td className={lbl}>投入量 g</td>
+              {calcs.map(({ part }) => (
+                <td key={part.id} className="px-1 py-0.5 border-l border-[#EEEBE6]">
+                  <input type="number" value={part.estimate.material.inputWeightG || ''} onChange={(e) => setMaterial(part.id, { inputWeightG: parseFloat(e.target.value) || 0 })} className={inp} />
+                </td>
+              ))}
+            </tr>
+            <tr className="border-b border-[#EEEBE6]">
+              <td className={lbl}>スクラップ g / ¥/kg</td>
+              {calcs.map(({ part }) => (
+                <td key={part.id} className="px-1 py-0.5 border-l border-[#EEEBE6]">
+                  <div className="flex gap-0.5">
+                    <input type="number" value={part.estimate.material.scrapWeightG || ''} onChange={(e) => setMaterial(part.id, { scrapWeightG: parseFloat(e.target.value) || 0 })} className={inp} title="スクラップ重量g" />
+                    <input type="number" value={part.estimate.material.scrapPricePerKg || ''} onChange={(e) => setMaterial(part.id, { scrapPricePerKg: parseFloat(e.target.value) || 0 })} className={inp} title="スクラップ単価¥/kg" />
+                  </div>
+                </td>
+              ))}
+            </tr>
+            <tr className="border-b border-[#EEEBE6] bg-[#FAFAF8]">
+              <td className="px-2 py-1 font-bold text-[#18130F] sticky left-0 bg-[#FAFAF8] z-10">材料費/個</td>
+              {calcs.map(({ part, calc }) => (
+                <td key={part.id} className="px-2 py-1 text-right font-mono font-bold text-[#18130F] border-l border-[#EEEBE6]">{yen(calc.netMaterialCost)}</td>
+              ))}
+            </tr>
 
-        {selectedScenarios.length === 0 ? (
-          <div className="bg-white border border-dashed border-[#D6D0C8] rounded p-12 text-center text-sm text-[#9C9490]">
-            左のリストから品番を選択してください（最大{MAX_SELECT}品番）
-          </div>
-        ) : (
-          <div className="overflow-x-auto border border-[#D6D0C8] rounded bg-white">
-            <table className="text-xs border-collapse min-w-full">
-              <thead>
-                <tr className="bg-[#18130F] text-white">
-                  <th className="px-2 py-2 text-left font-black sticky left-0 bg-[#18130F] z-10 min-w-[130px]">
-                    項目
-                  </th>
-                  {selectedScenarios.map((s) => {
-                    const c = colorFor(s.id);
-                    return (
-                      <th
-                        key={s.id}
-                        className="px-2 py-2 text-center font-black border-l border-[#3A3028] min-w-[140px]"
-                      >
-                        <div className="flex items-center justify-center gap-1">
-                          {c && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: c.dot }} />}
-                          <span className="truncate font-mono text-[11px]">
-                            {s.newEstimate.partNumber || '(品番未設定)'}
-                          </span>
-                        </div>
-                        {s.newEstimate.partName && (
-                          <div className="text-[9px] opacity-80 font-normal truncate mt-0.5">
-                            {s.newEstimate.partName}
-                          </div>
-                        )}
-                        <div className="text-[9px] opacity-60 font-mono font-normal mt-0.5">
-                          {s.newEstimate.baseLotSize.toLocaleString()}
-                          {s.newEstimate.lotUnit || '個/Lot'}
-                        </div>
-                        {groups[s.id] && (
-                          <div className="text-[8px] opacity-60 font-normal truncate">{groups[s.id]}</div>
-                        )}
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-
-                {/* ── Material ─────────────────────────────────────────── */}
-                <tr className="bg-[#FEF0EB] border-b border-[#EEEBE6]">
-                  <td
-                    colSpan={selectedScenarios.length + 1}
-                    className="px-2 py-1 font-black text-[#B5451B] text-[10px] sticky left-0 bg-[#FEF0EB]"
-                  >
-                    ▸ 材料
-                  </td>
-                </tr>
-                <tr className="border-b border-[#EEEBE6]">
-                  <td className="px-2 py-1 font-bold text-[#6B6057] sticky left-0 bg-white">材質</td>
-                  {selectedScenarios.map((s) => {
-                    const bad = groupStringInconsistent(
-                      s.id, (x) => x.newEstimate.material.materialName
-                    );
-                    return (
-                      <td
-                        key={s.id}
-                        className={`px-2 py-1 text-center text-[#18130F] border-l border-[#EEEBE6] ${bad ? warnCell : ''}`}
-                      >
-                        {s.newEstimate.material.materialName || '—'}
-                      </td>
-                    );
-                  })}
-                </tr>
-                <tr className="border-b border-[#EEEBE6]">
-                  <td className="px-2 py-1 font-bold text-[#6B6057] sticky left-0 bg-white">
-                    材料建値 (¥/kg)
-                  </td>
-                  {selectedScenarios.map((s) => {
-                    const bad = groupValueInconsistent(
-                      s.id, (x) => x.newEstimate.material.basePricePerKg
-                    );
-                    return (
-                      <td
-                        key={s.id}
-                        className={`px-2 py-1 text-right font-mono border-l border-[#EEEBE6] ${bad ? warnCell : ''}`}
-                      >
-                        ¥{s.newEstimate.material.basePricePerKg.toLocaleString()}
-                      </td>
-                    );
-                  })}
-                </tr>
-                <tr className="border-b border-[#EEEBE6] bg-[#FAFAF8]">
-                  <td className="px-2 py-1 font-bold text-[#18130F] sticky left-0 bg-[#FAFAF8]">
-                    材料費/個
-                  </td>
-                  {calcs.map(({ scenario, calc }) => (
-                    <td
-                      key={scenario.id}
-                      className="px-2 py-1 text-right font-mono font-bold text-[#18130F] border-l border-[#EEEBE6]"
-                    >
-                      {yen(calc.netMaterialCost)}
+            {/* ── Processes ── */}
+            <tr className="bg-[#EFF4FD] border-b border-[#EEEBE6]">
+              <td colSpan={parts.length + 1} className="px-2 py-1 sticky left-0 bg-[#EFF4FD]">
+                <div className="flex items-center justify-between">
+                  <span className="font-black text-[#1E3A5F] text-[10px]">▸ 工程別加工費</span>
+                  <button onClick={addProcessAll} className="text-[9px] font-bold text-[#1E3A5F] hover:underline cursor-pointer inline-flex items-center gap-0.5">
+                    <Plus className="w-2.5 h-2.5" /> 工程を全品番に追加
+                  </button>
+                </div>
+              </td>
+            </tr>
+            {processNames.length === 0 && (
+              <tr className="border-b border-[#EEEBE6]">
+                <td colSpan={parts.length + 1} className="px-2 py-3 text-center text-[#9C9490] text-[10px]">
+                  工程がありません。「工程を全品番に追加」で作成するか、ライブラリから取り込んでください。
+                </td>
+              </tr>
+            )}
+            {processNames.map((pn) => {
+              const rateDiffers = parts.length >= 2 && numDiffers((pt) => pt.estimate.processes.find((p) => p.processName.trim() === pn)?.hourlyRate ?? NaN);
+              return (
+                <React.Fragment key={pn}>
+                  <tr className="border-b border-[#EEEBE6] hover:bg-[#FAFAF8]">
+                    <td className="px-2 py-1 font-bold text-[#18130F] sticky left-0 bg-white z-10">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="truncate">{pn}</span>
+                        <button onClick={() => removeProcessAll(pn)} className="text-[#C8C2B8] hover:text-rose-500 cursor-pointer shrink-0" title="全品番からこの工程を削除">
+                          <Trash2 className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
                     </td>
-                  ))}
-                </tr>
-
-                {/* ── Processes ────────────────────────────────────────── */}
-                <tr className="bg-[#EFF4FD] border-b border-[#EEEBE6]">
-                  <td
-                    colSpan={selectedScenarios.length + 1}
-                    className="px-2 py-1 font-black text-[#1E3A5F] text-[10px] sticky left-0 bg-[#EFF4FD]"
-                  >
-                    ▸ 工程別加工費
-                    {!showProcessDetail && (
-                      <span className="font-normal opacity-60 ml-1.5">
-                        （加工費/個のみ表示 — 「工程詳細」で出来高・段取
-                        {internalMode ? '・賃率' : ''}を展開）
-                      </span>
-                    )}
-                  </td>
-                </tr>
-                {processNames.map((pn) => (
-                  <React.Fragment key={pn}>
-                    {/* always-visible: 加工費/個 */}
-                    <tr className="border-b border-[#EEEBE6] hover:bg-[#FAFAF8]">
-                      <td className="px-2 py-1.5 font-bold text-[#18130F] sticky left-0 bg-white">{pn}</td>
-                      {calcs.map(({ scenario, calc }) => {
-                        const p = scenario.newEstimate.processes.find(
-                          (x) => x.processName.trim() === pn
-                        );
-                        if (!p)
-                          return (
-                            <td
-                              key={scenario.id}
-                              className="px-2 py-1.5 text-center text-[#C8C2B8] border-l border-[#EEEBE6]"
-                            >
-                              —
-                            </td>
-                          );
-                        const idx = scenario.newEstimate.processes.findIndex((x) => x.index === p.index);
-                        const cost = calc.processCosts[idx] ?? 0;
+                    {calcs.map(({ part, costByName }) => {
+                      const has = part.estimate.processes.some((p) => p.processName.trim() === pn);
+                      if (!has) {
                         return (
-                          <td
-                            key={scenario.id}
-                            className="px-2 py-1.5 text-right font-mono font-bold text-[#18130F] border-l border-[#EEEBE6]"
-                          >
-                            {yen(cost)}
+                          <td key={part.id} className="px-1 py-1 text-center border-l border-[#EEEBE6]">
+                            <button onClick={() => updateProcAdd(part.id, pn)} className="text-[9px] text-[#1E3A5F] hover:underline cursor-pointer">＋追加</button>
                           </td>
                         );
-                      })}
-                    </tr>
-
-                    {/* detail rows: 出来高/段取 */}
-                    {showProcessDetail && (
-                      <>
-                        <tr className="border-b border-[#EEEBE6] bg-[#F7F8FD]">
-                          <td className="px-2 py-0.5 pl-6 text-[9px] text-[#6B6057] sticky left-0 bg-[#F7F8FD]">
-                            出来高 / 段取
-                          </td>
-                          {calcs.map(({ scenario }) => {
-                            const p = scenario.newEstimate.processes.find(
-                              (x) => x.processName.trim() === pn
-                            );
-                            if (!p)
-                              return (
-                                <td
-                                  key={scenario.id}
-                                  className="px-2 py-0.5 text-center text-[#C8C2B8] border-l border-[#EEEBE6] text-[9px]"
-                                >
-                                  —
-                                </td>
-                              );
-                            const mode = resolveProcessCalcMode(p);
-                            if (mode !== 'standard')
-                              return (
-                                <td
-                                  key={scenario.id}
-                                  className="px-2 py-0.5 text-center text-[9px] text-[#9C9490] border-l border-[#EEEBE6]"
-                                >
-                                  [{mode}]
-                                </td>
-                              );
-                            const yBad = groupValueInconsistent(scenario.id, (s) => {
-                              const q = s.newEstimate.processes.find((x) => x.processName.trim() === pn);
-                              return q && resolveProcessCalcMode(q) === 'standard' ? q.yieldPerHour : null;
-                            });
-                            const sBad = groupValueInconsistent(scenario.id, (s) => {
-                              const q = s.newEstimate.processes.find((x) => x.processName.trim() === pn);
-                              return q && resolveProcessCalcMode(q) === 'standard' ? q.totalHours : null;
-                            });
-                            return (
-                              <td
-                                key={scenario.id}
-                                className="px-2 py-0.5 border-l border-[#EEEBE6]"
-                              >
-                                <div className="flex justify-end gap-1.5 text-[9px] font-mono">
-                                  <span
-                                    className={`px-1 rounded ${yBad ? 'bg-amber-200 text-amber-900' : 'text-[#6B6057]'}`}
-                                  >
-                                    {p.yieldPerHour}個/h
-                                  </span>
-                                  <span
-                                    className={`px-1 rounded ${sBad ? 'bg-amber-200 text-amber-900' : 'text-[#6B6057]'}`}
-                                  >
-                                    段{p.totalHours}h
-                                  </span>
-                                </div>
-                              </td>
-                            );
-                          })}
-                        </tr>
-
-                        {/* 🔒 賃率: internal mode only */}
-                        {internalMode && (
-                          <tr className="border-b border-[#EEEBE6] bg-rose-50">
-                            <td className="px-2 py-0.5 pl-6 text-[9px] text-rose-600 font-bold sticky left-0 bg-rose-50">
-                              賃率 🔒
-                            </td>
-                            {calcs.map(({ scenario }) => {
-                              const p = scenario.newEstimate.processes.find(
-                                (x) => x.processName.trim() === pn
-                              );
-                              if (!p)
-                                return (
-                                  <td
-                                    key={scenario.id}
-                                    className="px-2 py-0.5 text-center text-[#C8C2B8] border-l border-[#EEEBE6] text-[9px]"
-                                  >
-                                    —
-                                  </td>
-                                );
-                              const mode = resolveProcessCalcMode(p);
-                              if (mode !== 'standard')
-                                return (
-                                  <td
-                                    key={scenario.id}
-                                    className="px-2 py-0.5 text-center text-[9px] text-[#9C9490] border-l border-[#EEEBE6] bg-rose-50"
-                                  >
-                                    —
-                                  </td>
-                                );
-                              return (
-                                <td
-                                  key={scenario.id}
-                                  className="px-2 py-0.5 text-right font-mono text-[9px] text-rose-700 border-l border-[#EEEBE6] bg-rose-50"
-                                >
-                                  ¥{p.hourlyRate.toLocaleString()}/h
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        )}
-                      </>
-                    )}
-                  </React.Fragment>
-                ))}
-
-                {/* ── Summary ──────────────────────────────────────────── */}
-                <tr className="bg-[#F0EDE8] border-b border-[#EEEBE6]">
-                  <td
-                    colSpan={selectedScenarios.length + 1}
-                    className="px-2 py-1 font-black text-[#6B6057] text-[10px] sticky left-0 bg-[#F0EDE8]"
-                  >
-                    ▸ 集計
-                  </td>
-                </tr>
-                <tr className="border-b border-[#EEEBE6]">
-                  <td className="px-2 py-1 font-bold text-[#6B6057] sticky left-0 bg-white">加工費合計/個</td>
-                  {calcs.map(({ scenario, calc }) => (
-                    <td
-                      key={scenario.id}
-                      className="px-2 py-1 text-right font-mono text-[#18130F] border-l border-[#EEEBE6]"
-                    >
-                      {yen(calc.totalProcessCost)}
-                    </td>
-                  ))}
-                </tr>
-                <tr className="border-b border-[#EEEBE6]">
-                  <td className="px-2 py-1 font-bold text-[#6B6057] sticky left-0 bg-white">直製造原価/個</td>
-                  {calcs.map(({ scenario, calc }) => (
-                    <td
-                      key={scenario.id}
-                      className="px-2 py-1 text-right font-mono text-[#18130F] border-l border-[#EEEBE6]"
-                    >
-                      {yen(calc.primeCost)}
-                    </td>
-                  ))}
-                </tr>
-                <tr className="border-b border-[#EEEBE6]">
-                  <td className="px-2 py-1 font-bold text-[#6B6057] sticky left-0 bg-white">送料/個</td>
-                  {calcs.map(({ scenario, calc }) => (
-                    <td
-                      key={scenario.id}
-                      className="px-2 py-1 text-right font-mono text-[#18130F] border-l border-[#EEEBE6]"
-                    >
-                      {yen(calc.shippingCostPerUnit)}
-                    </td>
-                  ))}
-                </tr>
-                <tr className="border-b border-[#EEEBE6]">
-                  <td className="px-2 py-1 font-bold text-[#6B6057] sticky left-0 bg-white">利管費率</td>
-                  {selectedScenarios.map((s) => {
-                    const mode = s.newEstimate.adjustments.sgaCalcMode || 'markup';
-                    const rate = s.newEstimate.adjustments.sgaRatePercent;
-                    return (
-                      <td
-                        key={s.id}
-                        className="px-2 py-1 text-right font-mono text-[#18130F] border-l border-[#EEEBE6]"
-                      >
-                        {rate}%
-                        <span className="text-[9px] text-[#9C9490] ml-0.5">
-                          {mode === 'markup' ? '外掛' : '内掛'}
-                        </span>
-                      </td>
-                    );
-                  })}
-                </tr>
-
-                {/* 積み上げ単価 — most prominent */}
-                <tr className="border-b border-[#EEEBE6] bg-[#EEF3FB]">
-                  <td className="px-2 py-2 font-black text-[#18130F] sticky left-0 bg-[#EEF3FB]">
-                    積み上げ単価
-                  </td>
-                  {calcs.map(({ scenario, calc }) => (
-                    <td
-                      key={scenario.id}
-                      className="px-2 py-2 text-right font-mono font-black text-lg text-[#1E3A5F] border-l border-[#EEEBE6]"
-                    >
-                      {yen(calc.grandTotalUnitPrice)}
-                    </td>
-                  ))}
-                </tr>
-
-                <tr className="border-b border-[#EEEBE6]">
-                  <td className="px-2 py-1.5 font-bold text-[#6B6057] sticky left-0 bg-white">目標単価</td>
-                  {selectedScenarios.map((s) => (
-                    <td
-                      key={s.id}
-                      className="px-2 py-1.5 text-right font-mono font-bold text-[#B5451B] border-l border-[#EEEBE6]"
-                    >
-                      {s.newEstimate.adjustments.targetUnitPrice > 0
-                        ? yen(s.newEstimate.adjustments.targetUnitPrice)
-                        : '—'}
-                    </td>
-                  ))}
-                </tr>
-
-                <tr className={`border-b border-[#EEEBE6] ${internalMode ? '' : 'last'}`}>
-                  <td className="px-2 py-1.5 font-bold text-[#6B6057] sticky left-0 bg-white">
-                    積み上げ vs 目標
-                  </td>
-                  {calcs.map(({ scenario, calc }) => {
-                    const t = scenario.newEstimate.adjustments.targetUnitPrice;
-                    const diff = t > 0 ? calc.grandTotalUnitPrice - t : null;
-                    const balanced = diff !== null && Math.abs(diff) < 0.5;
-                    const cls =
-                      diff === null
-                        ? 'text-[#9C9490]'
-                        : balanced
-                        ? 'text-emerald-700 font-bold'
-                        : diff > 0
-                        ? 'text-rose-600 font-bold'
-                        : 'text-amber-700 font-bold';
-                    return (
-                      <td
-                        key={scenario.id}
-                        className={`px-2 py-1.5 text-right font-mono border-l border-[#EEEBE6] ${cls}`}
-                      >
-                        {diff === null
-                          ? '—'
-                          : balanced
-                          ? '✓ 整合'
-                          : `${diff > 0 ? '+' : ''}${diff.toFixed(2)}`}
-                      </td>
-                    );
-                  })}
-                </tr>
-
-                {/* 🔒 実利益率: internal mode only */}
-                {internalMode && (
-                  <tr>
-                    <td className="px-2 py-1.5 font-bold text-rose-600 sticky left-0 bg-rose-50">
-                      実利益率 🔒
-                    </td>
-                    {calcs.map(({ scenario, calc }) => {
-                      const cost =
-                        scenario.newEstimate.adjustments.actualPurchasePrice > 0
-                          ? scenario.newEstimate.adjustments.actualPurchasePrice
-                          : calc.actualTotalCost;
-                      const sell = scenario.newEstimate.adjustments.targetUnitPrice;
-                      const rate =
-                        cost > 0 && sell > 0 ? rateFromCostSell(cost, sell, 'margin') : null;
-                      const cls =
-                        rate === null
-                          ? 'text-[#9C9490]'
-                          : rate >= 15
-                          ? 'text-emerald-700'
-                          : rate >= 5
-                          ? 'text-amber-700'
-                          : 'text-rose-600';
+                      }
                       return (
-                        <td
-                          key={scenario.id}
-                          className={`px-2 py-1.5 text-right font-mono font-bold border-l border-[#EEEBE6] bg-rose-50 ${cls}`}
-                        >
-                          {rate === null ? '—' : `${rate.toFixed(2)}%`}
-                        </td>
+                        <td key={part.id} className="px-2 py-1 text-right font-mono font-bold text-[#18130F] border-l border-[#EEEBE6]">{yen(costByName[pn] || 0)}</td>
                       );
                     })}
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
+
+                  {showProcDetail && (
+                    <>
+                      {/* 賃率 (alignable) */}
+                      <tr className="border-b border-[#EEEBE6] bg-[#F7F8FD]">
+                        <td className="px-2 py-0.5 pl-5 text-[9px] text-[#6B6057] sticky left-0 bg-[#F7F8FD] z-10">
+                          賃率¥/h
+                          {parts.length >= 2 && <AlignBtn onClick={() => alignProcRate(pn)} differs={rateDiffers} />}
+                        </td>
+                        {calcs.map(({ part }) => {
+                          const p = part.estimate.processes.find((x) => x.processName.trim() === pn);
+                          if (!p) return <td key={part.id} className="border-l border-[#EEEBE6] bg-[#F7F8FD]" />;
+                          const mode = resolveProcessCalcMode(p);
+                          const bad = rateDiffers && Math.round((p.hourlyRate || 0) * 100) / 100 !== Math.round(refNum((pt) => pt.estimate.processes.find((q) => q.processName.trim() === pn)?.hourlyRate ?? 0) * 100) / 100;
+                          return (
+                            <td key={part.id} className={`px-1 py-0.5 border-l border-[#EEEBE6] ${bad ? warnCell : 'bg-[#F7F8FD]'}`}>
+                              {mode === 'standard' ? (
+                                <input type="number" value={p.hourlyRate || ''} onChange={(e) => updateProc(part.id, pn, { hourlyRate: parseFloat(e.target.value) || 0 })} className={inp} />
+                              ) : (
+                                <span className="block text-center text-[8px] text-[#9C9490]">[{mode}]</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                      {/* 出来高 / 段取 */}
+                      <tr className="border-b border-[#EEEBE6] bg-[#F7F8FD]">
+                        <td className="px-2 py-0.5 pl-5 text-[9px] text-[#6B6057] sticky left-0 bg-[#F7F8FD] z-10">出来高(個/h) / 段取(h)</td>
+                        {calcs.map(({ part }) => {
+                          const p = part.estimate.processes.find((x) => x.processName.trim() === pn);
+                          if (!p) return <td key={part.id} className="border-l border-[#EEEBE6] bg-[#F7F8FD]" />;
+                          const mode = resolveProcessCalcMode(p);
+                          if (mode !== 'standard') return <td key={part.id} className="border-l border-[#EEEBE6] bg-[#F7F8FD]" />;
+                          return (
+                            <td key={part.id} className="px-1 py-0.5 border-l border-[#EEEBE6] bg-[#F7F8FD]">
+                              <div className="flex gap-0.5">
+                                <input type="number" value={p.yieldPerHour || ''} onChange={(e) => updateProc(part.id, pn, { yieldPerHour: parseFloat(e.target.value) || 0 })} className={inp} title="出来高 個/h" />
+                                <input type="number" value={p.totalHours || ''} onChange={(e) => updateProc(part.id, pn, { totalHours: parseFloat(e.target.value) || 0 })} className={inp} title="段取 h" />
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    </>
+                  )}
+                </React.Fragment>
+              );
+            })}
+
+            {/* ── Summary ── */}
+            <tr className="bg-[#F0EDE8] border-b border-[#EEEBE6]">
+              <td colSpan={parts.length + 1} className="px-2 py-1 font-black text-[#6B6057] text-[10px] sticky left-0 bg-[#F0EDE8]">▸ 集計</td>
+            </tr>
+            <tr className="border-b border-[#EEEBE6]">
+              <td className={lbl}>加工費合計/個</td>
+              {calcs.map(({ part, calc }) => (
+                <td key={part.id} className="px-2 py-1 text-right font-mono text-[#18130F] border-l border-[#EEEBE6]">{yen(calc.totalProcessCost)}</td>
+              ))}
+            </tr>
+            <tr className="border-b border-[#EEEBE6]">
+              <td className={lbl}>
+                利管費率 %
+                {parts.length >= 2 && <AlignBtn onClick={alignSga} differs={numDiffers((pt) => pt.estimate.adjustments.sgaRatePercent)} />}
+              </td>
+              {calcs.map(({ part }) => {
+                const a = part.estimate.adjustments;
+                const bad = parts.length >= 2 && numDiffers((pt) => pt.estimate.adjustments.sgaRatePercent) && Math.round(a.sgaRatePercent * 100) / 100 !== Math.round(refNum((pt) => pt.estimate.adjustments.sgaRatePercent) * 100) / 100;
+                return (
+                  <td key={part.id} className={`px-1 py-0.5 border-l border-[#EEEBE6] ${bad ? warnCell : ''}`}>
+                    <div className="flex items-center gap-0.5 justify-end">
+                      <button onClick={() => setAdjust(part.id, { sgaCalcMode: (a.sgaCalcMode || 'markup') === 'markup' ? 'margin' : 'markup' })} className={`text-[8px] font-black px-1 py-0.5 rounded border cursor-pointer ${(a.sgaCalcMode || 'markup') === 'markup' ? 'bg-[#FEF0EB] text-[#B5451B] border-[#E8C8BC]' : 'bg-[#EFF4FD] text-[#1E3A5F] border-[#B8CCE8]'}`}>
+                        {(a.sgaCalcMode || 'markup') === 'markup' ? '外' : '内'}
+                      </button>
+                      <input type="number" value={a.sgaRatePercent || ''} step="0.01" onChange={(e) => setAdjust(part.id, { sgaRatePercent: parseFloat(e.target.value) || 0 })} className="w-14 px-1 py-0.5 text-xs font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#1E3A5F] text-right" />
+                    </div>
+                  </td>
+                );
+              })}
+            </tr>
+            <tr className="border-b border-[#EEEBE6]">
+              <td className={lbl}>送料/箱 ・ 入数</td>
+              {calcs.map(({ part }) => (
+                <td key={part.id} className="px-1 py-0.5 border-l border-[#EEEBE6]">
+                  <div className="flex gap-0.5">
+                    <input type="number" value={part.estimate.logistics.freightPerBox || ''} onChange={(e) => setLogistics(part.id, { freightPerBox: parseFloat(e.target.value) || 0 })} className={inp} title="送料/箱" />
+                    <input type="number" value={part.estimate.logistics.qtyPerBox || ''} onChange={(e) => setLogistics(part.id, { qtyPerBox: parseFloat(e.target.value) || 0 })} className={inp} title="入数/箱" />
+                  </div>
+                </td>
+              ))}
+            </tr>
+            <tr className="border-b-2 border-[#D6D0C8] bg-[#EEF3FB]">
+              <td className="px-2 py-2 font-black text-[#1E3A5F] sticky left-0 bg-[#EEF3FB] z-10">積み上げ単価</td>
+              {calcs.map(({ part, calc }) => (
+                <td key={part.id} className="px-2 py-2 text-right font-mono font-black text-base text-[#1E3A5F] border-l border-[#EEEBE6]">{yen(calc.grandTotalUnitPrice)}</td>
+              ))}
+            </tr>
+            <tr className="border-b border-[#EEEBE6]">
+              <td className={lbl}>旧単価（参照）</td>
+              {calcs.map(({ part }) => (
+                <td key={part.id} className="px-1 py-0.5 border-l border-[#EEEBE6]">
+                  <input type="number" value={part.oldUnitPrice ?? ''} placeholder="—" onChange={(e) => setOldPrice(part.id, e.target.value === '' ? undefined : parseFloat(e.target.value) || 0)} className={inp} />
+                </td>
+              ))}
+            </tr>
+            <tr className="border-b border-[#EEEBE6]">
+              <td className={lbl}>改定率</td>
+              {calcs.map(({ part, calc }) => {
+                const old = part.oldUnitPrice;
+                const pct = old && old > 0 ? ((calc.grandTotalUnitPrice - old) / old) * 100 : null;
+                const cls = pct === null ? 'text-[#9C9490]' : pct > 0 ? 'text-rose-600' : 'text-emerald-700';
+                return (
+                  <td key={part.id} className={`px-2 py-1 text-right font-mono font-black border-l border-[#EEEBE6] ${cls}`}>
+                    {pct === null ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(1)}%`}
+                  </td>
+                );
+              })}
+            </tr>
+            <tr className="border-b border-[#EEEBE6]">
+              <td className={lbl}>目標単価</td>
+              {calcs.map(({ part }) => (
+                <td key={part.id} className="px-1 py-0.5 border-l border-[#EEEBE6]">
+                  <input type="number" value={part.estimate.adjustments.targetUnitPrice || ''} onChange={(e) => setAdjust(part.id, { targetUnitPrice: parseFloat(e.target.value) || 0 })} className={inp} />
+                </td>
+              ))}
+            </tr>
+            <tr className={internalMode ? 'border-b border-[#EEEBE6]' : ''}>
+              <td className={lbl}>積み上げ vs 目標</td>
+              {calcs.map(({ part, calc }) => {
+                const t = part.estimate.adjustments.targetUnitPrice;
+                const diff = t > 0 ? calc.grandTotalUnitPrice - t : null;
+                const balanced = diff !== null && Math.abs(diff) < 0.5;
+                const cls = diff === null ? 'text-[#9C9490]' : balanced ? 'text-emerald-700' : diff > 0 ? 'text-rose-600' : 'text-amber-700';
+                return (
+                  <td key={part.id} className={`px-2 py-1 text-right font-mono font-bold border-l border-[#EEEBE6] ${cls}`}>
+                    {diff === null ? '—' : balanced ? '✓ 整合' : `${diff > 0 ? '+' : ''}${diff.toFixed(2)}`}
+                  </td>
+                );
+              })}
+            </tr>
+
+            {/* 🔒 実利益率 internal only */}
+            {internalMode && (
+              <tr>
+                <td className="px-2 py-1.5 font-bold text-rose-600 sticky left-0 bg-rose-50 z-10">実利益率 🔒</td>
+                {calcs.map(({ part, calc }) => {
+                  const cost = part.estimate.adjustments.actualPurchasePrice > 0 ? part.estimate.adjustments.actualPurchasePrice : calc.actualTotalCost;
+                  const sell = calc.grandTotalUnitPrice;
+                  const rate = cost > 0 && sell > 0 ? rateFromCostSell(cost, sell, 'margin') : null;
+                  const cls = rate === null ? 'text-[#9C9490]' : rate >= 15 ? 'text-emerald-700' : rate >= 5 ? 'text-amber-700' : 'text-rose-600';
+                  return (
+                    <td key={part.id} className={`px-2 py-1.5 text-right font-mono font-bold border-l border-[#EEEBE6] bg-rose-50 ${cls}`}>
+                      {rate === null ? '—' : `${rate.toFixed(1)}%`}
+                    </td>
+                  );
+                })}
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );
