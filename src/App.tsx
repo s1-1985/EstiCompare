@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { DetailedEstimate, ComparisonResult, Scenario, QuantityPattern } from './types';
+import { DetailedEstimate, ComparisonResult, Scenario, QuantityPattern, BatchPart } from './types';
 import { createEmptyEstimate } from './data/samples';
 import { ExcelGrid } from './components/ExcelGrid';
 import { CompareResults } from './components/CompareResults';
@@ -52,6 +52,7 @@ export default function App() {
     JSON.parse(JSON.stringify(createEmptyEstimate()))
   );
   const [quantityPatterns, setQuantityPatterns] = useState<QuantityPattern[]>([]);
+  const [batchParts, setBatchParts] = useState<BatchPart[]>([]);
 
   const [activeSheetTab, setActiveSheetTab] = useState<'workspace' | 'compare' | 'print'>('workspace');
   const [comparisonResult, setComparisonResult] = useState<ComparisonResult | null>(null);
@@ -91,6 +92,30 @@ export default function App() {
     );
     return unsub;
   }, [user]);
+
+  // Restore the 複数品番同時比較 working set (per user) from localStorage on login.
+  // batchParts is self-contained (each part holds its full estimate), so this is
+  // a safe local scratchpad that survives a page refresh without Firestore.
+  const batchHydratedRef = useRef(false);
+  useEffect(() => {
+    if (!user) return;
+    try {
+      const raw = localStorage.getItem(`esticompare:batch:${user.uid}`);
+      setBatchParts(raw ? JSON.parse(raw) : []);
+    } catch {
+      setBatchParts([]);
+    }
+    batchHydratedRef.current = true;
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || !batchHydratedRef.current) return;
+    try {
+      localStorage.setItem(`esticompare:batch:${user.uid}`, JSON.stringify(batchParts));
+    } catch {
+      /* quota or serialization error — ignore, working set is non-critical */
+    }
+  }, [batchParts, user]);
 
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
@@ -141,6 +166,7 @@ export default function App() {
       setQuantityPatterns(saved.quantityPatterns ? JSON.parse(JSON.stringify(saved.quantityPatterns)) : []);
       setComparisonResult(saved.comparisonResult);
     } else {
+      if (quantityPatterns.length > 0 && !window.confirm(`未保存の数量パターンが${quantityPatterns.length}件あります。リセットすると削除されます。続けますか？`)) return;
       const emptyEst = createEmptyEstimate();
       setNewEstimate(JSON.parse(JSON.stringify(emptyEst)));
       setOldEstimate(JSON.parse(JSON.stringify(emptyEst)));
@@ -152,6 +178,7 @@ export default function App() {
   };
 
   const handleCreateNewSheet = () => {
+    if (quantityPatterns.length > 0 && !window.confirm(`未保存の数量パターンが${quantityPatterns.length}件あります。新規作成すると削除されます。続けますか？`)) return;
     const emptyEst = createEmptyEstimate();
     setActiveScenarioId('new-custom-sheet');
     setOldEstimate(JSON.parse(JSON.stringify(emptyEst)));
@@ -837,10 +864,17 @@ export default function App() {
                   ? 'bg-[#1E3A5F] text-white border-[#16293F] hover:bg-[#2A4A7F]'
                   : 'bg-white hover:bg-[#EFF4FD] text-[#1E3A5F] border-[#D6D0C8] hover:border-[#B8CCE8]'
               }`}
-              title="保存済み複数品番を同時に並べて整合性チェック（一斉単価改定向け）"
+              title="複数品番を横並びに編集しながら整合（一斉単価改定向け／直接入力・ライブラリ取込）"
             >
               <Layers3 className="w-3 h-3 shrink-0" />
               <span>複数品番同時比較</span>
+              {batchParts.length > 0 && (
+                <span className={`ml-auto text-[8px] font-black rounded-full px-1.5 py-0.5 leading-none ${
+                  activeView === 'batch' ? 'bg-white/20 text-white' : 'bg-[#1E3A5F] text-white'
+                }`}>
+                  {batchParts.length}
+                </span>
+              )}
             </button>
 
             <button
@@ -1770,6 +1804,8 @@ export default function App() {
               />
             ) : activeView === 'batch' ? (
               <BatchCompareSheet
+                parts={batchParts}
+                onPartsChange={setBatchParts}
                 scenarios={customScenarios}
                 onBack={() => setActiveView('workspace')}
               />

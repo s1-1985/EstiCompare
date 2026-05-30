@@ -134,3 +134,15 @@ export interface Scenario {
   updatedAt?: any;
 }
 
+// ─── 複数品番同時比較（Goal 2） ──────────────────────────────────────────────
+// 客先の一斉価格改定で、複数品番を横並びに「編集しながら」整合させるためのワーク。
+// 各品番は1つの（新／改定）見積を持ち、旧単価を参照に改定率を表示する。
+// ライブラリ取込でも直接入力でも作成でき、材料建値・賃率・SGA率などを
+// 横断的に揃える作業を支援する。
+export interface BatchPart {
+  id: string;
+  estimate: DetailedEstimate;   // 改定後（新）見積。フル編集可
+  oldUnitPrice?: number;         // 旧単価（改定率の基準。任意）
+  sourceScenarioId?: string;     // ライブラリ取込元（任意）
+}
+

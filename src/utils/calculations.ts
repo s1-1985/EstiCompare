@@ -62,7 +62,7 @@ export function applyPatternOverride(base: DetailedEstimate, pattern: QuantityPa
   });
   return {
     ...base,
-    baseLotSize: pattern.baseLotSize || base.baseLotSize,
+    baseLotSize: pattern.baseLotSize > 0 ? pattern.baseLotSize : base.baseLotSize,
     lotUnit: pattern.lotUnit || base.lotUnit,
     processes,
     logistics: {
@@ -79,6 +79,41 @@ export function applyPatternOverride(base: DetailedEstimate, pattern: QuantityPa
       otherAdjustment: pattern.otherAdjustment,
     },
   };
+}
+
+/**
+ * 1工程あたりの加工費/個を「サイクル費」と「段取費」に分解する。
+ *  - standard: サイクル費 = 賃率 ÷ 出来高（ロット非依存）
+ *              段取費   = 賃率 × 段取時間 ÷ ロット数（ロットで逓減 ＝ 数量で変動する本体）
+ *  - kg/lump/direct: 段取の概念がないため全額をサイクル費として扱う
+ * 複数数量パターンで「なぜ小ロットが高いか」を可視化するために使用する。
+ */
+export interface ProcessCostBreakdown {
+  cycle: number;  // サイクル費/個
+  setup: number;  // 段取費/個（ロットで逓減する変動要因）
+  total: number;  // 加工費/個
+}
+
+export function calcProcessBreakdown(proc: ProcessRow, baseLotSize: number): ProcessCostBreakdown {
+  if (!proc.processName.trim()) return { cycle: 0, setup: 0, total: 0 };
+  const mode = resolveProcessCalcMode(proc);
+  if (mode === 'direct') {
+    const t = proc.directProcessingCost || 0;
+    return { cycle: t, setup: 0, total: t };
+  }
+  if (mode === 'kg') {
+    // finishedWeight は呼び出し側で別途扱うため、ここでは kg単価ベースの近似は行わず
+    // calcClientCost と整合させるべく cycle 全額にはしない（kg は重量依存のため total を別途算出）
+    return { cycle: 0, setup: 0, total: 0 };
+  }
+  if (mode === 'lump') {
+    const t = baseLotSize > 0 ? ((proc.lumpSumPrice || 0) / baseLotSize) : 0;
+    return { cycle: 0, setup: t, total: t }; // 一式はロットで割る＝段取的な逓減
+  }
+  // standard
+  const cycle = proc.yieldPerHour > 0 ? (proc.hourlyRate || 0) / proc.yieldPerHour : 0;
+  const setup = baseLotSize > 0 ? ((proc.totalHours || 0) * (proc.hourlyRate || 0)) / baseLotSize : 0;
+  return { cycle, setup, total: cycle + setup };
 }
 
 /** ベース見積から数量パターンを1つ生成する（現在の賃率をスナップショット） */
@@ -98,7 +133,7 @@ export function createPatternFromEstimate(base: DetailedEstimate, label: string,
     baseLotSize: lotSize,
     lotUnit: base.lotUnit || '個/Lot',
     targetUnitPrice: base.adjustments.targetUnitPrice || 0,
-    sgaRatePercent: base.adjustments.sgaRatePercent || 15,
+    sgaRatePercent: base.adjustments.sgaRatePercent ?? 15,
     sgaCalcMode: base.adjustments.sgaCalcMode || 'markup',
     sgaFixedAdjustment: base.adjustments.sgaFixedAdjustment || 0,
     otherAdjustment: base.adjustments.otherAdjustment || 0,
@@ -107,16 +142,9 @@ export function createPatternFromEstimate(base: DetailedEstimate, label: string,
   };
 }
 
-function resolveCalcMode(proc: ProcessRow): ProcessCalcMode {
-  if (proc.calcMode) return proc.calcMode;
-  if (proc.isDirectInput) return 'direct';
-  if (proc.kgPrice > 0) return 'kg';
-  return 'standard';
-}
-
 function calcClientCost(proc: ProcessRow, finishedWeightG: number, baseLotSize: number): number {
   if (!proc.processName.trim()) return 0;
-  const mode = resolveCalcMode(proc);
+  const mode = resolveProcessCalcMode(proc);
   switch (mode) {
     case 'direct':
       return proc.directProcessingCost || 0;
@@ -134,7 +162,7 @@ function calcClientCost(proc: ProcessRow, finishedWeightG: number, baseLotSize: 
 
 function calcActualCost(proc: ProcessRow, finishedWeightG: number, baseLotSize: number): number {
   if (!proc.processName.trim()) return 0;
-  const mode = resolveCalcMode(proc);
+  const mode = resolveProcessCalcMode(proc);
   switch (mode) {
     case 'direct':
       return (proc.actualDirectProcessingCost ?? proc.directProcessingCost) || 0;
