@@ -93,6 +93,30 @@ export default function App() {
     return unsub;
   }, [user]);
 
+  // Restore the 複数品番同時比較 working set (per user) from localStorage on login.
+  // batchParts is self-contained (each part holds its full estimate), so this is
+  // a safe local scratchpad that survives a page refresh without Firestore.
+  const batchHydratedRef = useRef(false);
+  useEffect(() => {
+    if (!user) return;
+    try {
+      const raw = localStorage.getItem(`esticompare:batch:${user.uid}`);
+      setBatchParts(raw ? JSON.parse(raw) : []);
+    } catch {
+      setBatchParts([]);
+    }
+    batchHydratedRef.current = true;
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || !batchHydratedRef.current) return;
+    try {
+      localStorage.setItem(`esticompare:batch:${user.uid}`, JSON.stringify(batchParts));
+    } catch {
+      /* quota or serialization error — ignore, working set is non-critical */
+    }
+  }, [batchParts, user]);
+
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
       if (isDraggingRef.current && rightPaneRef.current) {

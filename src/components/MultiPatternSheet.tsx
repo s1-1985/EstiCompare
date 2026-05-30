@@ -393,10 +393,12 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
               <th className="border-r border-[#3A3028]" />
               <th className="border-r border-[#5A4A3A]" />
               {patterns.map((p) => {
-                const mode = resolveProcessCalcMode(activeProcesses[0] || base.processes[0]);
+                // Use a uniform label only when every process shares one mode; else generic
+                const modes = new Set(activeProcesses.map((pr) => resolveProcessCalcMode(pr)));
+                const headerLabel = modes.size === 1 ? rateLabel([...modes][0] as string) : '賃率/単価';
                 return (
                   <React.Fragment key={p.id}>
-                    <th className="px-1 py-1 text-center border-l-2 border-[#B5451B] font-bold">{rateLabel(mode)}</th>
+                    <th className="px-1 py-1 text-center border-l-2 border-[#B5451B] font-bold">{headerLabel}</th>
                     <th className="px-1 py-1 text-center font-bold text-[#F8C9BB]">段取費/個</th>
                     <th className="px-1 py-1 text-center font-bold">加工費/個</th>
                   </React.Fragment>
@@ -464,6 +466,10 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
                         : mode === 'direct' ? r.directProcessingCost
                         : r.hourlyRate;
                       const bd = breakdownFor(proc.index, c);
+                      // 加工費/個 is the ACTUAL process cost (breakdown.total is 0 for kg mode)
+                      const realCost = c.calc.processCosts[c.merged.processes.findIndex((bp) => bp.index === proc.index)] || 0;
+                      // 段取費/個 is meaningful for lot-amortized modes (standard / lump)
+                      const showSetup = mode === 'standard' || mode === 'lump';
                       return (
                         <React.Fragment key={pattern.id}>
                           <td className="px-1 py-0.5 border-l-2 border-[#E8C8BC]">
@@ -475,10 +481,10 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
                             />
                           </td>
                           <td className="px-1 py-1 text-right font-mono text-[#B5451B] bg-[#FFF8F0] font-bold">
-                            {isStd ? yenFmt(bd.setup) : '—'}
+                            {showSetup ? yenFmt(bd.setup) : '—'}
                           </td>
                           <td className="px-1 py-1 text-right font-mono text-[#1E3A5F] font-bold">
-                            {yenFmt(bd.total)}
+                            {yenFmt(realCost)}
                           </td>
                         </React.Fragment>
                       );

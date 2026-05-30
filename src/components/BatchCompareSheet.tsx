@@ -146,12 +146,13 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
     onPartsChange(parts.map((pt, i) => (i === 0 ? pt : { ...pt, estimate: { ...pt.estimate, adjustments: { ...pt.estimate.adjustments, sgaRatePercent: rate, sgaCalcMode: mode } } })));
   };
   const alignProcRate = (pn: string) => {
-    if (parts.length < 2) return;
-    const refProc = parts[0].estimate.processes.find((p) => p.processName.trim() === pn);
-    if (!refProc) return;
+    const present = parts.filter((pt) => pt.estimate.processes.some((p) => p.processName.trim() === pn));
+    if (present.length < 2) return;
+    const refProc = present[0].estimate.processes.find((p) => p.processName.trim() === pn)!;
     onPartsChange(
-      parts.map((pt, i) => {
-        if (i === 0) return pt;
+      parts.map((pt) => {
+        if (pt.id === present[0].id) return pt;
+        if (!pt.estimate.processes.some((p) => p.processName.trim() === pn)) return pt; // skip parts lacking it
         return {
           ...pt,
           estimate: {
@@ -190,6 +191,16 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
   };
   const refNum = (getter: (pt: BatchPart) => number) => (parts.length ? getter(parts[0]) : 0);
 
+  // Per-process rate consistency, considering ONLY parts that actually have the process
+  // (so a process merely absent from some parts is never flagged as "differs").
+  const procRateInfo = (pn: string) => {
+    const present = parts.filter((pt) => pt.estimate.processes.some((p) => p.processName.trim() === pn));
+    const rateOf = (pt: BatchPart) => pt.estimate.processes.find((p) => p.processName.trim() === pn)?.hourlyRate ?? 0;
+    const differs = present.length >= 2 && new Set(present.map((pt) => Math.round(rateOf(pt) * 100) / 100)).size > 1;
+    const ref = present.length ? rateOf(present[0]) : 0;
+    return { differs, ref, hasRef: present.length > 0 };
+  };
+
   const inp = 'w-full px-1 py-0.5 text-xs font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#1E3A5F] text-right';
   const inpL = 'w-full px-1 py-0.5 text-xs rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#1E3A5F]';
   const warnCell = 'bg-amber-50';
@@ -227,6 +238,8 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
                 <Download className="w-4 h-4" /> ライブラリから取込
               </button>
               {importOpen && (
+                <>
+                <div className="fixed inset-0 z-20" onClick={() => setImportOpen(false)} />
                 <div className="absolute z-30 mt-1 left-0 w-64 max-h-60 overflow-y-auto bg-white border border-[#D6D0C8] rounded shadow-lg text-left">
                   {scenarios.map((s) => (
                     <button key={s.id} onClick={() => addFromScenario(s.id)} className="block w-full text-left px-3 py-1.5 text-xs hover:bg-[#FEF0EB] cursor-pointer border-b border-[#EEEBE6]">
@@ -235,6 +248,7 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
                     </button>
                   ))}
                 </div>
+                </>
               )}
             </div>
           )}
@@ -267,6 +281,8 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
                 <Download className="w-3 h-3" /> 取込
               </button>
               {importOpen && (
+                <>
+                <div className="fixed inset-0 z-20" onClick={() => setImportOpen(false)} />
                 <div className="absolute z-30 mt-1 right-0 w-64 max-h-60 overflow-y-auto bg-white border border-[#D6D0C8] rounded shadow-lg text-left">
                   {scenarios.map((s) => (
                     <button key={s.id} onClick={() => addFromScenario(s.id)} className="block w-full text-left px-3 py-1.5 text-xs hover:bg-[#FEF0EB] cursor-pointer border-b border-[#EEEBE6]">
@@ -275,6 +291,7 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
                     </button>
                   ))}
                 </div>
+                </>
               )}
             </div>
           )}
@@ -411,7 +428,7 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
               </tr>
             )}
             {processNames.map((pn) => {
-              const rateDiffers = parts.length >= 2 && numDiffers((pt) => pt.estimate.processes.find((p) => p.processName.trim() === pn)?.hourlyRate ?? NaN);
+              const rateInfo = procRateInfo(pn);
               return (
                 <React.Fragment key={pn}>
                   <tr className="border-b border-[#EEEBE6] hover:bg-[#FAFAF8]">
@@ -444,13 +461,13 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
                       <tr className="border-b border-[#EEEBE6] bg-[#F7F8FD]">
                         <td className="px-2 py-0.5 pl-5 text-[9px] text-[#6B6057] sticky left-0 bg-[#F7F8FD] z-10">
                           賃率¥/h
-                          {parts.length >= 2 && <AlignBtn onClick={() => alignProcRate(pn)} differs={rateDiffers} />}
+                          {rateInfo.differs && <AlignBtn onClick={() => alignProcRate(pn)} differs={rateInfo.differs} />}
                         </td>
                         {calcs.map(({ part }) => {
                           const p = part.estimate.processes.find((x) => x.processName.trim() === pn);
                           if (!p) return <td key={part.id} className="border-l border-[#EEEBE6] bg-[#F7F8FD]" />;
                           const mode = resolveProcessCalcMode(p);
-                          const bad = rateDiffers && Math.round((p.hourlyRate || 0) * 100) / 100 !== Math.round(refNum((pt) => pt.estimate.processes.find((q) => q.processName.trim() === pn)?.hourlyRate ?? 0) * 100) / 100;
+                          const bad = rateInfo.differs && Math.round((p.hourlyRate || 0) * 100) / 100 !== Math.round(rateInfo.ref * 100) / 100;
                           return (
                             <td key={part.id} className={`px-1 py-0.5 border-l border-[#EEEBE6] ${bad ? warnCell : 'bg-[#F7F8FD]'}`}>
                               {mode === 'standard' ? (
