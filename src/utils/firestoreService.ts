@@ -23,7 +23,8 @@ export async function saveUserScenario(
   newEstimate: Scenario['newEstimate'],
   oldEstimate: Scenario['oldEstimate'],
   comparisonResult: Scenario['comparisonResult'],
-  notes?: string
+  notes?: string,
+  quantityPatterns?: Scenario['quantityPatterns']
 ) {
   const user = auth.currentUser;
   if (!user) throw new Error('ユーザーがサインインしていません。');
@@ -44,6 +45,7 @@ export async function saveUserScenario(
         newEstimate,
         oldEstimate,
         comparisonResult: comparisonResult || null,
+        quantityPatterns: quantityPatterns && quantityPatterns.length > 0 ? quantityPatterns : null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -57,6 +59,7 @@ export async function saveUserScenario(
         newEstimate,
         oldEstimate,
         comparisonResult: comparisonResult || null,
+        quantityPatterns: quantityPatterns && quantityPatterns.length > 0 ? quantityPatterns : null,
         updatedAt: serverTimestamp(),
       });
     }
@@ -122,6 +125,7 @@ export function subscribeScenarios(
           oldEstimate: data.oldEstimate,
           comparisonResult: data.comparisonResult || null,
           aiAnalysis: data.aiAnalysis || null,
+          quantityPatterns: data.quantityPatterns || undefined,
           createdAt: data.createdAt,
           updatedAt: data.updatedAt,
         });

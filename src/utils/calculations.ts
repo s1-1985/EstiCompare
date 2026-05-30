@@ -1,4 +1,4 @@
-import { DetailedEstimate, ProcessRow, ProcessCalcMode } from '../types';
+import { DetailedEstimate, ProcessRow, ProcessCalcMode, QuantityPattern, PatternProcessRate } from '../types';
 
 // ─── 外掛け / 内掛け の正準定義（bizmemo準拠） ────────────────────────────────
 // 外掛け(markup): 率は「売価」基準。 率 = (売価−原価)/売価、 売価 = 原価 ÷ (1 − 率)
@@ -33,6 +33,78 @@ export function convertRate(ratePercent: number, from: MarginMode): number {
   // 外掛けe=(s-c)/s, 内掛けi=(s-c)/c ⇒ i = e/(1-e), e = i/(1+i)
   if (from === 'markup') return r < 1 ? (r / (1 - r)) * 100 : 0; // 外→内
   return (r / (1 + r)) * 100;                                    // 内→外
+}
+
+export function resolveProcessCalcMode(proc: ProcessRow): ProcessCalcMode {
+  if (proc.calcMode) return proc.calcMode;
+  if (proc.isDirectInput) return 'direct';
+  if (proc.kgPrice > 0) return 'kg';
+  return 'standard';
+}
+
+/**
+ * ベース見積に数量パターンの値（基準数・賃率・利管費・送料）を上書きした
+ * 派生 DetailedEstimate を返す。出来高(yieldPerHour)・段取(totalHours)・
+ * 材料・完成品重量はベース共通のまま（生産前提として固定）。
+ * calculateEstimate にそのまま渡せる。
+ */
+export function applyPatternOverride(base: DetailedEstimate, pattern: QuantityPattern): DetailedEstimate {
+  const processes = base.processes.map((proc) => {
+    const r: PatternProcessRate | undefined = pattern.processRates[proc.index];
+    if (!r) return proc;
+    const mode = resolveProcessCalcMode(proc);
+    const next = { ...proc };
+    if (mode === 'standard' && typeof r.hourlyRate === 'number') next.hourlyRate = r.hourlyRate;
+    else if (mode === 'kg' && typeof r.kgPrice === 'number') next.kgPrice = r.kgPrice;
+    else if (mode === 'lump' && typeof r.lumpSumPrice === 'number') next.lumpSumPrice = r.lumpSumPrice;
+    else if (mode === 'direct' && typeof r.directProcessingCost === 'number') next.directProcessingCost = r.directProcessingCost;
+    return next;
+  });
+  return {
+    ...base,
+    baseLotSize: pattern.baseLotSize || base.baseLotSize,
+    lotUnit: pattern.lotUnit || base.lotUnit,
+    processes,
+    logistics: {
+      ...base.logistics,
+      freightPerBox: typeof pattern.freightPerBox === 'number' ? pattern.freightPerBox : base.logistics.freightPerBox,
+    },
+    adjustments: {
+      ...base.adjustments,
+      targetUnitPrice: pattern.targetUnitPrice,
+      targetPriceLocked: pattern.targetPriceLocked,
+      sgaRatePercent: pattern.sgaRatePercent,
+      sgaCalcMode: pattern.sgaCalcMode || base.adjustments.sgaCalcMode,
+      sgaFixedAdjustment: pattern.sgaFixedAdjustment,
+      otherAdjustment: pattern.otherAdjustment,
+    },
+  };
+}
+
+/** ベース見積から数量パターンを1つ生成する（現在の賃率をスナップショット） */
+export function createPatternFromEstimate(base: DetailedEstimate, label: string, lotSize: number): QuantityPattern {
+  const processRates: Record<number, PatternProcessRate> = {};
+  base.processes.forEach((proc) => {
+    if (!proc.processName.trim()) return;
+    const mode = resolveProcessCalcMode(proc);
+    if (mode === 'standard') processRates[proc.index] = { hourlyRate: proc.hourlyRate };
+    else if (mode === 'kg') processRates[proc.index] = { kgPrice: proc.kgPrice };
+    else if (mode === 'lump') processRates[proc.index] = { lumpSumPrice: proc.lumpSumPrice || 0 };
+    else if (mode === 'direct') processRates[proc.index] = { directProcessingCost: proc.directProcessingCost };
+  });
+  return {
+    id: `qp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    label,
+    baseLotSize: lotSize,
+    lotUnit: base.lotUnit || '個/Lot',
+    targetUnitPrice: base.adjustments.targetUnitPrice || 0,
+    sgaRatePercent: base.adjustments.sgaRatePercent || 15,
+    sgaCalcMode: base.adjustments.sgaCalcMode || 'markup',
+    sgaFixedAdjustment: base.adjustments.sgaFixedAdjustment || 0,
+    otherAdjustment: base.adjustments.otherAdjustment || 0,
+    processRates,
+    freightPerBox: base.logistics.freightPerBox,
+  };
 }
 
 function resolveCalcMode(proc: ProcessRow): ProcessCalcMode {

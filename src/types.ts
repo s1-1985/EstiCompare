@@ -91,6 +91,34 @@ export interface ComparisonResult {
   categoryAnalysisPoints: CategoryAnalysisPoint[];
 }
 
+// ─── 複数数量パターン見積（Goal 1） ──────────────────────────────────────────
+// 1つの品番に対して見積数量が複数（例: ロット100/300/1000）ある場合、
+// 出来高(yieldPerHour)・段取(totalHours)は全パターン共通（生産前提）。
+// 賃率(hourlyRate)・kg単価・一式・直接費・利管費・送料は数量により変動可。
+
+export interface PatternProcessRate {
+  hourlyRate?: number;          // 客提示用賃率 (円/h) — standard
+  kgPrice?: number;             // kg単価 — kg
+  lumpSumPrice?: number;        // 一式金額 — lump
+  directProcessingCost?: number; // 直接加工費 — direct
+}
+
+export interface QuantityPattern {
+  id: string;
+  label: string;                // 表示名（例: "100個", "量産1000"）
+  baseLotSize: number;          // このパターンの見積基準数
+  lotUnit: string;              // 基準数単位
+  targetUnitPrice: number;      // このパターンの目標単価
+  targetPriceLocked?: boolean;
+  sgaRatePercent: number;       // このパターンの利管費率
+  sgaCalcMode?: 'markup' | 'margin';
+  sgaFixedAdjustment: number;
+  otherAdjustment: number;
+  processRates: Record<number, PatternProcessRate>; // 工程index(1始まり) → 賃率
+  freightPerBox?: number;       // このパターンの1箱運賃（未設定はbase流用）
+  notes?: string;
+}
+
 export interface Scenario {
   id: string;
   userId: string;
@@ -100,6 +128,8 @@ export interface Scenario {
   oldEstimate: DetailedEstimate;
   comparisonResult: ComparisonResult | null;
   aiAnalysis?: string | null;
+  quantityPatterns?: QuantityPattern[]; // Goal 1: 複数数量パターン（任意）
+  supplierGroup?: string;               // Goal 2: 複数品番同時比較のサプライヤーグループ名（任意）
   createdAt?: any;
   updatedAt?: any;
 }
