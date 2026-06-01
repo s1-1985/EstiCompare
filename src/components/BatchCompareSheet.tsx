@@ -1,24 +1,31 @@
 import React, { useMemo, useState } from 'react';
-import { BatchPart, Scenario, ProcessRow, DetailedEstimate } from '../types';
+import { BatchPart, ProcessRow, DetailedEstimate, ImportSource, ProcessCalcMode } from '../types';
 import { createEmptyEstimate } from '../data/samples';
 import { calculateEstimate, resolveProcessCalcMode, rateFromCostSell } from '../utils/calculations';
 import {
   ArrowLeft, Layers3, Plus, Trash2, Download, Lock, Unlock,
-  ChevronDown, ChevronRight, ArrowLeftRight, AlertTriangle,
+  ChevronDown, ChevronRight, ArrowLeftRight, FilePlus,
 } from 'lucide-react';
 
 interface BatchCompareSheetProps {
   parts: BatchPart[];
   onPartsChange: (parts: BatchPart[]) => void;
-  scenarios: Scenario[];
+  importSources?: ImportSource[];
   onBack: () => void;
+  onNew?: () => void;
 }
 
 const MAX_PARTS = 10;
+const MODES: ProcessCalcMode[] = ['standard', 'kg', 'lump', 'direct'];
 const rand = () => Math.random().toString(36).slice(2, 7);
 const yen = (v: number) => `¥${v.toLocaleString('ja-JP', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const modeBadge = (mode: string) =>
+  mode === 'kg' ? 'kg単価' : mode === 'lump' ? '一式' : mode === 'direct' ? '直接費' : '賃率';
 
-export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onPartsChange, scenarios, onBack }) => {
+const blankProc = (index: number, name: string): ProcessRow =>
+  ({ index, processName: name, workContent: '', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 });
+
+export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onPartsChange, importSources = [], onBack, onNew }) => {
   const [internalMode, setInternalMode] = useState(true);
   const [showProcDetail, setShowProcDetail] = useState(true);
   const [importOpen, setImportOpen] = useState(false);
@@ -45,6 +52,9 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
       processes: e.processes.map((p) => (p.processName.trim() === pn ? { ...p, ...patch } : p)),
     }));
 
+  const cycleProcMode = (id: string, pn: string, current: ProcessCalcMode) =>
+    updateProc(id, pn, { calcMode: MODES[(MODES.indexOf(current) + 1) % MODES.length] });
+
   // add a (named) process to a single part that doesn't yet have it
   const updateProcAdd = (partId: string, pn: string) =>
     patchEstimate(partId, (e) => {
@@ -52,7 +62,7 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
       const slot = e.processes.findIndex((p) => !p.processName.trim());
       const processes = slot >= 0
         ? e.processes.map((p, i) => (i === slot ? { ...p, processName: pn } : p))
-        : [...e.processes, { index: e.processes.length + 1, processName: pn, workContent: '', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 }];
+        : [...e.processes, blankProc(e.processes.length + 1, pn)];
       return { ...e, processes };
     });
 
@@ -65,18 +75,15 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
     onPartsChange([...parts, { id: `bp-${Date.now()}-${rand()}`, estimate: JSON.parse(JSON.stringify(createEmptyEstimate())) }]);
   };
 
-  const addFromScenario = (sid: string) => {
+  const addFromSource = (src: ImportSource) => {
     if (parts.length >= MAX_PARTS) { alert(`品番は最大${MAX_PARTS}件までです。`); return; }
-    const s = scenarios.find((x) => x.id === sid);
-    if (!s) return;
-    const oldCalc = calculateEstimate(s.oldEstimate);
     onPartsChange([
       ...parts,
       {
         id: `bp-${Date.now()}-${rand()}`,
-        estimate: JSON.parse(JSON.stringify(s.newEstimate)),
-        oldUnitPrice: oldCalc.grandTotalUnitPrice > 0 ? oldCalc.grandTotalUnitPrice : undefined,
-        sourceScenarioId: s.id,
+        estimate: JSON.parse(JSON.stringify(src.estimate)),
+        oldUnitPrice: src.oldUnitPrice && src.oldUnitPrice > 0 ? src.oldUnitPrice : undefined,
+        sourceScenarioId: src.sourceScenarioId,
       },
     ]);
     setImportOpen(false);
@@ -103,15 +110,9 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
       parts.map((pt) => {
         if (pt.estimate.processes.some((p) => p.processName.trim() === name)) return pt;
         const slot = pt.estimate.processes.findIndex((p) => !p.processName.trim());
-        let processes;
-        if (slot >= 0) {
-          processes = pt.estimate.processes.map((p, i) => (i === slot ? { ...p, processName: name } : p));
-        } else {
-          processes = [
-            ...pt.estimate.processes,
-            { index: pt.estimate.processes.length + 1, processName: name, workContent: '', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
-          ];
-        }
+        const processes = slot >= 0
+          ? pt.estimate.processes.map((p, i) => (i === slot ? { ...p, processName: name } : p))
+          : [...pt.estimate.processes, blankProc(pt.estimate.processes.length + 1, name)];
         return { ...pt, estimate: { ...pt.estimate, processes } };
       }),
     );
@@ -125,7 +126,7 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
           ...pt.estimate,
           processes: pt.estimate.processes.map((p) =>
             p.processName.trim() === pn
-              ? { ...p, processName: '', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, lumpSumPrice: 0, directProcessingCost: 0 }
+              ? { ...p, processName: '', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, lumpSumPrice: 0, directProcessingCost: 0, calcMode: undefined }
               : p,
           ),
         },
@@ -152,14 +153,14 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
     onPartsChange(
       parts.map((pt) => {
         if (pt.id === present[0].id) return pt;
-        if (!pt.estimate.processes.some((p) => p.processName.trim() === pn)) return pt; // skip parts lacking it
+        if (!pt.estimate.processes.some((p) => p.processName.trim() === pn)) return pt;
         return {
           ...pt,
           estimate: {
             ...pt.estimate,
             processes: pt.estimate.processes.map((p) =>
               p.processName.trim() === pn
-                ? { ...p, hourlyRate: refProc.hourlyRate, kgPrice: refProc.kgPrice, lumpSumPrice: refProc.lumpSumPrice, directProcessingCost: refProc.directProcessingCost }
+                ? { ...p, calcMode: refProc.calcMode, hourlyRate: refProc.hourlyRate, yieldPerHour: refProc.yieldPerHour, totalHours: refProc.totalHours, kgPrice: refProc.kgPrice, lumpSumPrice: refProc.lumpSumPrice, directProcessingCost: refProc.directProcessingCost }
                 : p,
             ),
           },
@@ -192,17 +193,16 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
   const refNum = (getter: (pt: BatchPart) => number) => (parts.length ? getter(parts[0]) : 0);
 
   // Per-process rate consistency, considering ONLY parts that actually have the process
-  // (so a process merely absent from some parts is never flagged as "differs").
   const procRateInfo = (pn: string) => {
     const present = parts.filter((pt) => pt.estimate.processes.some((p) => p.processName.trim() === pn));
     const rateOf = (pt: BatchPart) => pt.estimate.processes.find((p) => p.processName.trim() === pn)?.hourlyRate ?? 0;
     const differs = present.length >= 2 && new Set(present.map((pt) => Math.round(rateOf(pt) * 100) / 100)).size > 1;
-    const ref = present.length ? rateOf(present[0]) : 0;
-    return { differs, ref, hasRef: present.length > 0 };
+    return { differs };
   };
 
   const inp = 'w-full px-1 py-0.5 text-xs font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#1E3A5F] text-right';
   const inpL = 'w-full px-1 py-0.5 text-xs rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#1E3A5F]';
+  const miniInp = 'w-full px-1 py-0.5 text-[10px] font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#1E3A5F] text-right';
   const warnCell = 'bg-amber-50';
   const lbl = 'px-2 py-1 font-bold text-[#6B6057] sticky left-0 bg-white z-10';
 
@@ -218,6 +218,23 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
     </button>
   );
 
+  const ImportMenu: React.FC<{ align: 'left' | 'right' }> = ({ align }) => (
+    <>
+      <div className="fixed inset-0 z-20" onClick={() => setImportOpen(false)} />
+      <div className={`absolute z-30 mt-1 ${align === 'right' ? 'right-0' : 'left-0'} w-72 max-h-72 overflow-y-auto bg-white border border-[#D6D0C8] rounded shadow-lg text-left`}>
+        {importSources.length === 0 ? (
+          <div className="px-3 py-2 text-[10px] text-[#9C9490]">取込可能な品番データがありません。</div>
+        ) : importSources.map((src) => (
+          <button key={src.id} onClick={() => addFromSource(src)} className="block w-full text-left px-3 py-1.5 text-xs hover:bg-[#FEF0EB] cursor-pointer border-b border-[#EEEBE6]">
+            <span className="text-[8px] font-black text-[#1E3A5F] bg-[#EFF4FD] rounded px-1 mr-1">{src.group}</span>
+            <span className="font-bold text-[#18130F]">{src.label || '(品番未設定)'}</span>
+            {src.subLabel && <span className="block text-[#9C9490] truncate">{src.subLabel}</span>}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+
   // ── empty state ─────────────────────────────────────────────────────────────
   if (parts.length === 0) {
     return (
@@ -226,32 +243,18 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
         <h2 className="text-lg font-black text-[#18130F] mb-2">複数品番同時比較</h2>
         <p className="text-sm text-[#6B6057] leading-relaxed mb-4">
           客先の一斉価格改定などで、複数品番を横並びに<strong className="text-[#B5451B]">編集しながら</strong>整合させるワークシートです。
-          同一サプライヤーの材料建値・賃率・SGA率を「揃える」ボタンで横断的に統一し、各品番の辻褄をリアルタイムで確認できます。
+          各品番は新旧比較と同じ工程・材料・利管費の詳細編集ができ、「揃える」ボタンで横断的に統一できます。
         </p>
         <div className="flex flex-col sm:flex-row gap-2 justify-center items-center">
           <button onClick={addBlank} className="bg-[#B5451B] hover:bg-[#9A3A16] text-white px-5 py-2.5 rounded-lg font-black text-sm inline-flex items-center gap-2 cursor-pointer">
             <Plus className="w-4 h-4" /> 空の品番を追加（直接入力）
           </button>
-          {scenarios.length > 0 && (
-            <div className="relative">
-              <button onClick={() => setImportOpen((v) => !v)} className="bg-white border border-[#1E3A5F] text-[#1E3A5F] hover:bg-[#EFF4FD] px-5 py-2.5 rounded-lg font-black text-sm inline-flex items-center gap-2 cursor-pointer">
-                <Download className="w-4 h-4" /> ライブラリから取込
-              </button>
-              {importOpen && (
-                <>
-                <div className="fixed inset-0 z-20" onClick={() => setImportOpen(false)} />
-                <div className="absolute z-30 mt-1 left-0 w-64 max-h-60 overflow-y-auto bg-white border border-[#D6D0C8] rounded shadow-lg text-left">
-                  {scenarios.map((s) => (
-                    <button key={s.id} onClick={() => addFromScenario(s.id)} className="block w-full text-left px-3 py-1.5 text-xs hover:bg-[#FEF0EB] cursor-pointer border-b border-[#EEEBE6]">
-                      <span className="font-bold text-[#18130F]">{s.newEstimate.partNumber || '(品番未設定)'}</span>
-                      <span className="block text-[#9C9490] truncate">{s.name}</span>
-                    </button>
-                  ))}
-                </div>
-                </>
-              )}
-            </div>
-          )}
+          <div className="relative">
+            <button onClick={() => setImportOpen((v) => !v)} className="bg-white border border-[#1E3A5F] text-[#1E3A5F] hover:bg-[#EFF4FD] px-5 py-2.5 rounded-lg font-black text-sm inline-flex items-center gap-2 cursor-pointer">
+              <Download className="w-4 h-4" /> 他機能・ライブラリから取込
+            </button>
+            {importOpen && <ImportMenu align="left" />}
+          </div>
         </div>
         <div className="mt-4">
           <button onClick={onBack} className="text-xs text-[#6B6057] hover:text-[#B5451B] font-bold underline cursor-pointer">ワークスペースへ戻る</button>
@@ -272,29 +275,20 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
         <span className="text-[10px] text-[#9C9490] font-mono">{parts.length}品番</span>
 
         <div className="ml-auto flex items-center gap-1.5">
+          {onNew && (
+            <button onClick={onNew} className="text-[10px] font-bold px-2 py-1 rounded border border-[#D6D0C8] text-[#6B6057] hover:bg-[#F0EDE8] cursor-pointer inline-flex items-center gap-1" title="複数品番比較を白紙から新規作成">
+              <FilePlus className="w-3 h-3" /> 新規作成
+            </button>
+          )}
           <button onClick={addBlank} className="text-[10px] font-bold px-2 py-1 rounded border border-[#B5451B] text-[#B5451B] hover:bg-[#FEF0EB] cursor-pointer inline-flex items-center gap-1">
             <Plus className="w-3 h-3" /> 品番追加
           </button>
-          {scenarios.length > 0 && (
-            <div className="relative">
-              <button onClick={() => setImportOpen((v) => !v)} className="text-[10px] font-bold px-2 py-1 rounded border border-[#1E3A5F] text-[#1E3A5F] hover:bg-[#EFF4FD] cursor-pointer inline-flex items-center gap-1">
-                <Download className="w-3 h-3" /> 取込
-              </button>
-              {importOpen && (
-                <>
-                <div className="fixed inset-0 z-20" onClick={() => setImportOpen(false)} />
-                <div className="absolute z-30 mt-1 right-0 w-64 max-h-60 overflow-y-auto bg-white border border-[#D6D0C8] rounded shadow-lg text-left">
-                  {scenarios.map((s) => (
-                    <button key={s.id} onClick={() => addFromScenario(s.id)} className="block w-full text-left px-3 py-1.5 text-xs hover:bg-[#FEF0EB] cursor-pointer border-b border-[#EEEBE6]">
-                      <span className="font-bold text-[#18130F]">{s.newEstimate.partNumber || '(品番未設定)'}</span>
-                      <span className="block text-[#9C9490] truncate">{s.name}</span>
-                    </button>
-                  ))}
-                </div>
-                </>
-              )}
-            </div>
-          )}
+          <div className="relative">
+            <button onClick={() => setImportOpen((v) => !v)} className="text-[10px] font-bold px-2 py-1 rounded border border-[#1E3A5F] text-[#1E3A5F] hover:bg-[#EFF4FD] cursor-pointer inline-flex items-center gap-1">
+              <Download className="w-3 h-3" /> 取込
+            </button>
+            {importOpen && <ImportMenu align="right" />}
+          </div>
           <button onClick={() => setShowProcDetail((v) => !v)} className={`text-[10px] font-bold px-2 py-1 rounded border cursor-pointer inline-flex items-center gap-1 ${showProcDetail ? 'bg-[#EFF4FD] border-[#B8CCE8] text-[#1E3A5F]' : 'border-[#D6D0C8] text-[#6B6057] hover:bg-[#F0EDE8]'}`}>
             {showProcDetail ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}工程詳細
           </button>
@@ -320,7 +314,7 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
             <tr className="bg-[#18130F] text-white">
               <th className="px-2 py-1.5 text-left font-black sticky left-0 bg-[#18130F] z-20 min-w-[150px]">項目</th>
               {calcs.map(({ part }, i) => (
-                <th key={part.id} className="px-2 py-1.5 text-center font-black border-l border-[#3A3028] min-w-[150px]">
+                <th key={part.id} className="px-2 py-1.5 text-center font-black border-l border-[#3A3028] min-w-[160px]">
                   <div className="flex items-center justify-center gap-1">
                     {i === 0 && <span className="text-[8px] bg-[#B5451B] px-1 rounded">基準</span>}
                     <input
@@ -345,6 +339,7 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
                       value={part.estimate.baseLotSize || ''}
                       onChange={(e) => setPartField(part.id, { baseLotSize: parseFloat(e.target.value) || 0 })}
                       className="w-14 bg-[#2A2018] text-white text-center font-mono text-[9px] rounded outline-none px-1"
+                      title="見積基準数（ロット）"
                     />
                     <input
                       value={part.estimate.lotUnit}
@@ -384,10 +379,13 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
               })}
             </tr>
             <tr className="border-b border-[#EEEBE6]">
-              <td className={lbl}>投入量 g</td>
+              <td className={lbl}>投入量 g / 完成品 g</td>
               {calcs.map(({ part }) => (
                 <td key={part.id} className="px-1 py-0.5 border-l border-[#EEEBE6]">
-                  <input type="number" value={part.estimate.material.inputWeightG || ''} onChange={(e) => setMaterial(part.id, { inputWeightG: parseFloat(e.target.value) || 0 })} className={inp} />
+                  <div className="flex gap-0.5">
+                    <input type="number" value={part.estimate.material.inputWeightG || ''} onChange={(e) => setMaterial(part.id, { inputWeightG: parseFloat(e.target.value) || 0 })} className={inp} title="材料投入量 g" />
+                    <input type="number" value={part.estimate.finishedWeightG || ''} onChange={(e) => setPartField(part.id, { finishedWeightG: parseFloat(e.target.value) || 0 })} className={inp} title="完成品重量 g（kg単価工程で使用）" />
+                  </div>
                 </td>
               ))}
             </tr>
@@ -413,7 +411,7 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
             <tr className="bg-[#EFF4FD] border-b border-[#EEEBE6]">
               <td colSpan={parts.length + 1} className="px-2 py-1 sticky left-0 bg-[#EFF4FD]">
                 <div className="flex items-center justify-between">
-                  <span className="font-black text-[#1E3A5F] text-[10px]">▸ 工程別加工費</span>
+                  <span className="font-black text-[#1E3A5F] text-[10px]">▸ 工程別加工費（新旧比較と同じ詳細編集）</span>
                   <button onClick={addProcessAll} className="text-[9px] font-bold text-[#1E3A5F] hover:underline cursor-pointer inline-flex items-center gap-0.5">
                     <Plus className="w-2.5 h-2.5" /> 工程を全品番に追加
                   </button>
@@ -423,7 +421,7 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
             {processNames.length === 0 && (
               <tr className="border-b border-[#EEEBE6]">
                 <td colSpan={parts.length + 1} className="px-2 py-3 text-center text-[#9C9490] text-[10px]">
-                  工程がありません。「工程を全品番に追加」で作成するか、ライブラリから取り込んでください。
+                  工程がありません。「工程を全品番に追加」で作成するか、取込で他機能・ライブラリから読み込んでください。
                 </td>
               </tr>
             )}
@@ -435,9 +433,12 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
                     <td className="px-2 py-1 font-bold text-[#18130F] sticky left-0 bg-white z-10">
                       <div className="flex items-center justify-between gap-1">
                         <span className="truncate">{pn}</span>
-                        <button onClick={() => removeProcessAll(pn)} className="text-[#C8C2B8] hover:text-rose-500 cursor-pointer shrink-0" title="全品番からこの工程を削除">
-                          <Trash2 className="w-2.5 h-2.5" />
-                        </button>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {rateInfo.differs && <AlignBtn onClick={() => alignProcRate(pn)} differs={rateInfo.differs} />}
+                          <button onClick={() => removeProcessAll(pn)} className="text-[#C8C2B8] hover:text-rose-500 cursor-pointer" title="全品番からこの工程を削除">
+                            <Trash2 className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
                       </div>
                     </td>
                     {calcs.map(({ part, costByName }) => {
@@ -456,48 +457,55 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
                   </tr>
 
                   {showProcDetail && (
-                    <>
-                      {/* 賃率 (alignable) */}
-                      <tr className="border-b border-[#EEEBE6] bg-[#F7F8FD]">
-                        <td className="px-2 py-0.5 pl-5 text-[9px] text-[#6B6057] sticky left-0 bg-[#F7F8FD] z-10">
-                          賃率¥/h
-                          {rateInfo.differs && <AlignBtn onClick={() => alignProcRate(pn)} differs={rateInfo.differs} />}
-                        </td>
-                        {calcs.map(({ part }) => {
-                          const p = part.estimate.processes.find((x) => x.processName.trim() === pn);
-                          if (!p) return <td key={part.id} className="border-l border-[#EEEBE6] bg-[#F7F8FD]" />;
-                          const mode = resolveProcessCalcMode(p);
-                          const bad = rateInfo.differs && Math.round((p.hourlyRate || 0) * 100) / 100 !== Math.round(rateInfo.ref * 100) / 100;
-                          return (
-                            <td key={part.id} className={`px-1 py-0.5 border-l border-[#EEEBE6] ${bad ? warnCell : 'bg-[#F7F8FD]'}`}>
-                              {mode === 'standard' ? (
-                                <input type="number" value={p.hourlyRate || ''} onChange={(e) => updateProc(part.id, pn, { hourlyRate: parseFloat(e.target.value) || 0 })} className={inp} />
-                              ) : (
-                                <span className="block text-center text-[8px] text-[#9C9490]">[{mode}]</span>
+                    <tr className="border-b border-[#EEEBE6] bg-[#F7F8FD]">
+                      <td className="px-2 py-1 pl-5 text-[9px] text-[#6B6057] sticky left-0 bg-[#F7F8FD] z-10 align-top">内訳（モード別）</td>
+                      {calcs.map(({ part }) => {
+                        const p = part.estimate.processes.find((x) => x.processName.trim() === pn);
+                        if (!p) return <td key={part.id} className="border-l border-[#EEEBE6] bg-[#F7F8FD]" />;
+                        const mode = resolveProcessCalcMode(p);
+                        return (
+                          <td key={part.id} className="px-1 py-1 border-l border-[#EEEBE6] bg-[#F7F8FD] align-top">
+                            <div className="space-y-0.5">
+                              <button
+                                onClick={() => cycleProcMode(part.id, pn, mode)}
+                                className="w-full text-[8px] font-black px-1 py-0.5 rounded border border-[#B8CCE8] bg-[#EFF4FD] text-[#1E3A5F] hover:bg-[#E0EAF8] cursor-pointer"
+                                title="計算モード切替（賃率/kg単価/一式/直接費）"
+                              >
+                                {modeBadge(mode)}モード ⇄
+                              </button>
+                              {mode === 'standard' && (
+                                <>
+                                  <label className="flex items-center gap-1"><span className="text-[8px] text-[#9C9490] w-8 shrink-0">賃率</span>
+                                    <input type="number" value={p.hourlyRate || ''} onChange={(e) => updateProc(part.id, pn, { hourlyRate: parseFloat(e.target.value) || 0 })} className={miniInp} title="賃率 ¥/h" />
+                                  </label>
+                                  <label className="flex items-center gap-1"><span className="text-[8px] text-[#9C9490] w-8 shrink-0">出来高</span>
+                                    <input type="number" value={p.yieldPerHour || ''} onChange={(e) => updateProc(part.id, pn, { yieldPerHour: parseFloat(e.target.value) || 0 })} className={miniInp} title="出来高 個/h" />
+                                  </label>
+                                  <label className="flex items-center gap-1"><span className="text-[8px] text-[#9C9490] w-8 shrink-0">段取h</span>
+                                    <input type="number" value={p.totalHours || ''} onChange={(e) => updateProc(part.id, pn, { totalHours: parseFloat(e.target.value) || 0 })} className={miniInp} title="段取時間 h" />
+                                  </label>
+                                </>
                               )}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                      {/* 出来高 / 段取 */}
-                      <tr className="border-b border-[#EEEBE6] bg-[#F7F8FD]">
-                        <td className="px-2 py-0.5 pl-5 text-[9px] text-[#6B6057] sticky left-0 bg-[#F7F8FD] z-10">出来高(個/h) / 段取(h)</td>
-                        {calcs.map(({ part }) => {
-                          const p = part.estimate.processes.find((x) => x.processName.trim() === pn);
-                          if (!p) return <td key={part.id} className="border-l border-[#EEEBE6] bg-[#F7F8FD]" />;
-                          const mode = resolveProcessCalcMode(p);
-                          if (mode !== 'standard') return <td key={part.id} className="border-l border-[#EEEBE6] bg-[#F7F8FD]" />;
-                          return (
-                            <td key={part.id} className="px-1 py-0.5 border-l border-[#EEEBE6] bg-[#F7F8FD]">
-                              <div className="flex gap-0.5">
-                                <input type="number" value={p.yieldPerHour || ''} onChange={(e) => updateProc(part.id, pn, { yieldPerHour: parseFloat(e.target.value) || 0 })} className={inp} title="出来高 個/h" />
-                                <input type="number" value={p.totalHours || ''} onChange={(e) => updateProc(part.id, pn, { totalHours: parseFloat(e.target.value) || 0 })} className={inp} title="段取 h" />
-                              </div>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    </>
+                              {mode === 'kg' && (
+                                <label className="flex items-center gap-1"><span className="text-[8px] text-[#9C9490] w-8 shrink-0">kg単価</span>
+                                  <input type="number" value={p.kgPrice || ''} onChange={(e) => updateProc(part.id, pn, { kgPrice: parseFloat(e.target.value) || 0 })} className={miniInp} title="kg単価 ¥/kg（完成品重量×単価）" />
+                                </label>
+                              )}
+                              {mode === 'lump' && (
+                                <label className="flex items-center gap-1"><span className="text-[8px] text-[#9C9490] w-8 shrink-0">一式</span>
+                                  <input type="number" value={p.lumpSumPrice || ''} onChange={(e) => updateProc(part.id, pn, { lumpSumPrice: parseFloat(e.target.value) || 0 })} className={miniInp} title="一式金額 ¥/lot（ロットで按分）" />
+                                </label>
+                              )}
+                              {mode === 'direct' && (
+                                <label className="flex items-center gap-1"><span className="text-[8px] text-[#9C9490] w-8 shrink-0">直接費</span>
+                                  <input type="number" value={p.directProcessingCost || ''} onChange={(e) => updateProc(part.id, pn, { directProcessingCost: parseFloat(e.target.value) || 0 })} className={miniInp} title="直接加工費 ¥/個" />
+                                </label>
+                              )}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
                   )}
                 </React.Fragment>
               );
@@ -548,6 +556,14 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
               <td className="px-2 py-2 font-black text-[#1E3A5F] sticky left-0 bg-[#EEF3FB] z-10">積み上げ単価</td>
               {calcs.map(({ part, calc }) => (
                 <td key={part.id} className="px-2 py-2 text-right font-mono font-black text-base text-[#1E3A5F] border-l border-[#EEEBE6]">{yen(calc.grandTotalUnitPrice)}</td>
+              ))}
+            </tr>
+            <tr className="border-b border-[#EEEBE6]">
+              <td className={lbl}>仕入実費/個</td>
+              {calcs.map(({ part, calc }) => (
+                <td key={part.id} className="px-1 py-0.5 border-l border-[#EEEBE6]">
+                  <input type="number" value={part.estimate.adjustments.actualPurchasePrice || ''} placeholder={calc.actualTotalCost > 0 ? calc.actualTotalCost.toFixed(2) : '実態原価'} onChange={(e) => setAdjust(part.id, { actualPurchasePrice: parseFloat(e.target.value) || 0 })} className={inp} title="仕入実費（実態原価/個）" />
+                </td>
               ))}
             </tr>
             <tr className="border-b border-[#EEEBE6]">

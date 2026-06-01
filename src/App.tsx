@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { DetailedEstimate, ComparisonResult, Scenario, QuantityPattern, BatchPart } from './types';
+import { DetailedEstimate, ComparisonResult, Scenario, QuantityPattern, BatchPart, ImportSource } from './types';
 import { createEmptyEstimate } from './data/samples';
 import { ExcelGrid } from './components/ExcelGrid';
 import { CompareResults } from './components/CompareResults';
@@ -29,7 +29,7 @@ import type { User } from 'firebase/auth';
 import { auth, loginWithGoogle, logout } from './firebase';
 import { subscribeScenarios, saveUserScenario } from './utils/firestoreService';
 import { apiPost } from './utils/apiClient';
-import { calculateEstimate, sellFromCost, costFromSell, rateFromCostSell, convertRate } from './utils/calculations';
+import { calculateEstimate, sellFromCost, costFromSell, rateFromCostSell, convertRate, createBlankPattern, createPatternFromEstimate } from './utils/calculations';
 
 type ActiveView = 'workspace' | 'library' | 'multipattern' | 'batch';
 
@@ -51,6 +51,11 @@ export default function App() {
   const [oldEstimate, setOldEstimate] = useState<DetailedEstimate>(() =>
     JSON.parse(JSON.stringify(createEmptyEstimate()))
   );
+  // 複数Lot見積は新旧比較から独立した機能。専用のベース見積を持つ（基準数は各Lotで設定するため0）。
+  const [multiPatternBase, setMultiPatternBase] = useState<DetailedEstimate>(() => ({
+    ...JSON.parse(JSON.stringify(createEmptyEstimate())),
+    baseLotSize: 0,
+  }));
   const [quantityPatterns, setQuantityPatterns] = useState<QuantityPattern[]>([]);
   const [batchParts, setBatchParts] = useState<BatchPart[]>([]);
 
@@ -117,6 +122,37 @@ export default function App() {
     }
   }, [batchParts, user]);
 
+  // 複数Lot見積も独立した作業セット（base + patterns）としてlocalStorageに保持。
+  // 新旧比較・複数品番とは別タイミングで使うため、シナリオやnewEstimateには連動させない。
+  const mpHydratedRef = useRef(false);
+  useEffect(() => {
+    if (!user) return;
+    try {
+      const raw = localStorage.getItem(`esticompare:multipattern:${user.uid}`);
+      if (raw) {
+        const data = JSON.parse(raw);
+        setMultiPatternBase(data.base || { ...createEmptyEstimate(), baseLotSize: 0 });
+        setQuantityPatterns(Array.isArray(data.patterns) ? data.patterns : []);
+      } else {
+        setMultiPatternBase({ ...JSON.parse(JSON.stringify(createEmptyEstimate())), baseLotSize: 0 });
+        setQuantityPatterns([]);
+      }
+    } catch {
+      setMultiPatternBase({ ...JSON.parse(JSON.stringify(createEmptyEstimate())), baseLotSize: 0 });
+      setQuantityPatterns([]);
+    }
+    mpHydratedRef.current = true;
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || !mpHydratedRef.current) return;
+    try {
+      localStorage.setItem(`esticompare:multipattern:${user.uid}`, JSON.stringify({ base: multiPatternBase, patterns: quantityPatterns }));
+    } catch {
+      /* non-critical working set */
+    }
+  }, [multiPatternBase, quantityPatterns, user]);
+
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
       if (isDraggingRef.current && rightPaneRef.current) {
@@ -151,39 +187,73 @@ export default function App() {
     setActiveScenarioId(id);
     setNewEstimate(JSON.parse(JSON.stringify(scen.newEstimate)));
     setOldEstimate(JSON.parse(JSON.stringify(scen.oldEstimate)));
-    setQuantityPatterns(scen.quantityPatterns ? JSON.parse(JSON.stringify(scen.quantityPatterns)) : []);
     setComparisonResult(scen.comparisonResult);
     setNewScenarioName(scen.name);
     setActiveSheetTab('workspace');
     setActiveView('workspace');
   };
 
+  // ─── 複数Lot見積（独立） — 新規・取込・入場時の初期化 ─────────────────────────
+  const seedBlankPatterns = () =>
+    [0, 1, 2].map((i) => createBlankPattern(`パターン${i + 1}`, multiPatternBase.lotUnit || '個', i));
+
+  const handleNewMultiPattern = () => {
+    setMultiPatternBase({ ...JSON.parse(JSON.stringify(createEmptyEstimate())), baseLotSize: 0 });
+    setQuantityPatterns([0, 1, 2].map((i) => createBlankPattern(`パターン${i + 1}`, '個', i)));
+  };
+
+  const handleNewBatch = () => {
+    setBatchParts([]);
+  };
+
+  // 他機能・ライブラリの品番データを複数Lotのベースに取り込む（全Lotの賃率を新ベースで再スナップショット）
+  const importIntoMultiPattern = (est: DetailedEstimate) => {
+    const cloned: DetailedEstimate = JSON.parse(JSON.stringify(est));
+    const snapshot = createPatternFromEstimate(cloned, '', cloned.baseLotSize || 0).processRates;
+    setMultiPatternBase(cloned);
+    setQuantityPatterns((prev) => {
+      const list = prev.length ? prev : seedBlankPatterns();
+      return list.map((p) => ({
+        ...p,
+        lotUnit: p.lotUnit || cloned.lotUnit,
+        processRates: JSON.parse(JSON.stringify(snapshot)),
+      }));
+    });
+    setActiveView('multipattern');
+  };
+
+  const goMultiPattern = () => {
+    if (activeView === 'multipattern') { setActiveView('workspace'); return; }
+    if (quantityPatterns.length === 0) setQuantityPatterns(seedBlankPatterns());
+    setActiveView('multipattern');
+  };
+
   const handleResetActiveSheet = () => {
+    if (activeView === 'multipattern') { handleNewMultiPattern(); return; }
+    if (activeView === 'batch') { handleNewBatch(); return; }
     const saved = customScenarios.find((s) => s.id === activeScenarioId);
     if (saved) {
       setNewEstimate(JSON.parse(JSON.stringify(saved.newEstimate)));
       setOldEstimate(JSON.parse(JSON.stringify(saved.oldEstimate)));
-      setQuantityPatterns(saved.quantityPatterns ? JSON.parse(JSON.stringify(saved.quantityPatterns)) : []);
       setComparisonResult(saved.comparisonResult);
     } else {
-      if (quantityPatterns.length > 0 && !window.confirm(`未保存の数量パターンが${quantityPatterns.length}件あります。リセットすると削除されます。続けますか？`)) return;
       const emptyEst = createEmptyEstimate();
       setNewEstimate(JSON.parse(JSON.stringify(emptyEst)));
       setOldEstimate(JSON.parse(JSON.stringify(emptyEst)));
-      setQuantityPatterns([]);
       setComparisonResult(null);
     }
     setActiveSheetTab('workspace');
     setActiveView('workspace');
   };
 
+  // 「新規作成」は現在表示中の機能に対して働く（新旧比較／複数Lot／複数品番）
   const handleCreateNewSheet = () => {
-    if (quantityPatterns.length > 0 && !window.confirm(`未保存の数量パターンが${quantityPatterns.length}件あります。新規作成すると削除されます。続けますか？`)) return;
+    if (activeView === 'multipattern') { handleNewMultiPattern(); return; }
+    if (activeView === 'batch') { handleNewBatch(); return; }
     const emptyEst = createEmptyEstimate();
     setActiveScenarioId('new-custom-sheet');
     setOldEstimate(JSON.parse(JSON.stringify(emptyEst)));
     setNewEstimate(JSON.parse(JSON.stringify(emptyEst)));
-    setQuantityPatterns([]);
     setNewScenarioName('新規カスタム見積');
     setComparisonResult(null);
     setActiveSheetTab('workspace');
@@ -208,8 +278,9 @@ export default function App() {
     setSaveModal(null);
     setIsSaving(true);
     try {
+      // 複数Lotは独立した作業セット（localStorage保持）なので、新旧比較シナリオには含めない。
       const savedId = await saveUserScenario(
-        targetId, targetName, newEstimate, oldEstimate, comparisonResult, saveModalNotes.trim() || undefined, quantityPatterns
+        targetId, targetName, newEstimate, oldEstimate, comparisonResult, saveModalNotes.trim() || undefined, undefined
       );
       if (savedId) {
         setActiveScenarioId(savedId);
@@ -707,7 +778,49 @@ export default function App() {
     ((+(oldEstimate.adjustments.sgaRatePercent || 0)) < 5 || (+(oldEstimate.adjustments.sgaRatePercent || 0)) > 30);
   const sgaWarnNew = (+(newEstimate.adjustments.sgaRatePercent || 0)) > 0 &&
     ((+(newEstimate.adjustments.sgaRatePercent || 0)) < 5 || (+(newEstimate.adjustments.sgaRatePercent || 0)) > 30);
-  const sgaWarnActive = (oldCalc.grandTotalUnitPrice > 0 || newCalc.grandTotalUnitPrice > 0) && (sgaWarnOld || sgaWarnNew);
+  // 新旧比較向けの警告なので、複数Lot・複数品番・ライブラリ表示中は出さない（workspace限定）。
+  const sgaWarnActive = activeView === 'workspace' &&
+    (oldCalc.grandTotalUnitPrice > 0 || newCalc.grandTotalUnitPrice > 0) && (sgaWarnOld || sgaWarnNew);
+
+  // ─── 機能間データ取込ソース（相互補完） ───────────────────────────────────────
+  // 新旧比較・ライブラリ・複数品番・複数Lot で作った品番データを、他機能から取り込めるようにする。
+  const hasData = (e: DetailedEstimate) =>
+    e.partNumber.trim() !== '' || e.processes.some((p) => p.processName.trim() !== '') || e.material.basePricePerKg > 0;
+
+  const workspaceSources: ImportSource[] = [];
+  if (hasData(newEstimate)) {
+    workspaceSources.push({
+      id: 'ws-new', group: '現在の新旧比較', label: newEstimate.partNumber || '(品番未設定)',
+      subLabel: `新単価${newEstimate.partName ? ' / ' + newEstimate.partName : ''}`, estimate: newEstimate,
+      oldUnitPrice: oldCalc.grandTotalUnitPrice > 0 ? oldCalc.grandTotalUnitPrice : undefined,
+    });
+  }
+  if (hasData(oldEstimate)) {
+    workspaceSources.push({
+      id: 'ws-old', group: '現在の新旧比較', label: oldEstimate.partNumber || '(品番未設定)',
+      subLabel: '旧単価', estimate: oldEstimate,
+    });
+  }
+  const librarySources: ImportSource[] = customScenarios.map((s) => {
+    const oc = calculateEstimate(s.oldEstimate);
+    return {
+      id: `lib-${s.id}`, group: 'ライブラリ', label: s.newEstimate.partNumber || '(品番未設定)',
+      subLabel: s.name, estimate: s.newEstimate,
+      oldUnitPrice: oc.grandTotalUnitPrice > 0 ? oc.grandTotalUnitPrice : undefined, sourceScenarioId: s.id,
+    };
+  });
+  const batchSources: ImportSource[] = batchParts
+    .filter((p) => hasData(p.estimate))
+    .map((p, i) => ({
+      id: `batch-${p.id}`, group: '複数品番', label: p.estimate.partNumber || `品番${i + 1}`,
+      subLabel: p.estimate.partName || undefined, estimate: p.estimate, oldUnitPrice: p.oldUnitPrice,
+    }));
+  const mpSources: ImportSource[] = hasData(multiPatternBase)
+    ? [{ id: 'mp-base', group: '複数Lot', label: multiPatternBase.partNumber || '(品番未設定)', subLabel: '複数Lotベース', estimate: multiPatternBase }]
+    : [];
+  // 複数Lotには自分以外（新旧比較/ライブラリ/複数品番）を、複数品番には自分以外を渡す。
+  const multiPatternImportSources = [...workspaceSources, ...librarySources, ...batchSources];
+  const batchImportSources = [...workspaceSources, ...librarySources, ...mpSources];
 
   // ─── Format helpers ───────────────────────────────────────────────────────────
 
@@ -818,6 +931,19 @@ export default function App() {
             <div className="text-[10px] font-black text-[#9C9490] uppercase tracking-widest px-1 pb-0.5">シナリオ操作</div>
 
             <button
+              onClick={() => { setActiveView('workspace'); setActiveSheetTab('workspace'); }}
+              className={`w-full p-1.5 border rounded font-bold flex items-center gap-1.5 cursor-pointer text-[10px] select-none transition-all ${
+                activeView === 'workspace'
+                  ? 'bg-[#18130F] text-white border-[#000] hover:bg-[#2D2219]'
+                  : 'bg-white hover:bg-[#F0EDE8] text-[#18130F] border-[#D6D0C8]'
+              }`}
+              title="おおもとの新旧比較ワークスペースを開く"
+            >
+              <FileSpreadsheet className="w-3 h-3 shrink-0" />
+              <span>新旧比較</span>
+            </button>
+
+            <button
               onClick={() => setActiveView(activeView === 'library' ? 'workspace' : 'library')}
               className={`w-full p-1.5 border rounded font-bold flex items-center gap-1.5 cursor-pointer text-[10px] select-none transition-all ${
                 activeView === 'library'
@@ -838,16 +964,16 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => setActiveView(activeView === 'multipattern' ? 'workspace' : 'multipattern')}
+              onClick={goMultiPattern}
               className={`w-full p-1.5 border rounded font-bold flex items-center gap-1.5 cursor-pointer text-[10px] select-none transition-all ${
                 activeView === 'multipattern'
                   ? 'bg-[#1E3A5F] text-white border-[#16293F] hover:bg-[#2A4A7F]'
                   : 'bg-white hover:bg-[#EFF4FD] text-[#1E3A5F] border-[#D6D0C8] hover:border-[#B8CCE8]'
               }`}
-              title="1品番・複数数量パターン（ロット別）の同時辻褄合わせシート"
+              title="1品番・複数Lot（数量別）の同時辻褄合わせシート（新旧比較とは独立）"
             >
               <Layers className="w-3 h-3 shrink-0" />
-              <span>複数数量パターン</span>
+              <span>複数Lot見積</span>
               {quantityPatterns.length > 0 && (
                 <span className={`ml-auto text-[8px] font-black rounded-full px-1.5 py-0.5 leading-none ${
                   activeView === 'multipattern' ? 'bg-white/20 text-white' : 'bg-[#1E3A5F] text-white'
@@ -880,10 +1006,18 @@ export default function App() {
             <button
               onClick={handleCreateNewSheet}
               className="w-full p-1.5 bg-white hover:bg-[#FEF0EB] text-[#B5451B] border border-[#D6D0C8] hover:border-[#F8C9BB] rounded font-bold flex items-center gap-1.5 cursor-pointer text-[10px] select-none transition-all"
-              title="シートを完全にクリアして新しい見積データを作成します。"
+              title={
+                activeView === 'multipattern' ? '複数Lot見積を白紙から新規作成します（空のLot×3）。'
+                : activeView === 'batch' ? '複数品番同時比較を白紙から新規作成します。'
+                : 'シートを完全にクリアして新しい新旧比較データを作成します。'
+              }
             >
               <FilePlus className="w-3 h-3 shrink-0" />
-              <span>新規作成</span>
+              <span>
+                {activeView === 'multipattern' ? '新規作成（複数Lot）'
+                  : activeView === 'batch' ? '新規作成（複数品番）'
+                  : '新規作成（新旧比較）'}
+              </span>
             </button>
 
             <button
@@ -1797,17 +1931,21 @@ export default function App() {
               />
             ) : activeView === 'multipattern' ? (
               <MultiPatternSheet
-                base={newEstimate}
+                base={multiPatternBase}
                 patterns={quantityPatterns}
-                onBaseChange={setNewEstimate}
+                onBaseChange={setMultiPatternBase}
                 onPatternsChange={setQuantityPatterns}
+                onNew={handleNewMultiPattern}
+                importSources={multiPatternImportSources}
+                onImport={importIntoMultiPattern}
               />
             ) : activeView === 'batch' ? (
               <BatchCompareSheet
                 parts={batchParts}
                 onPartsChange={setBatchParts}
-                scenarios={customScenarios}
+                importSources={batchImportSources}
                 onBack={() => setActiveView('workspace')}
+                onNew={handleNewBatch}
               />
             ) : (
               <section>
