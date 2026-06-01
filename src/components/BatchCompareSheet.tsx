@@ -476,7 +476,13 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
                               {mode === 'standard' && (
                                 <>
                                   <label className="flex items-center gap-1"><span className="text-[8px] text-[#9C9490] w-8 shrink-0">賃率</span>
-                                    <input type="number" value={p.hourlyRate || ''} onChange={(e) => updateProc(part.id, pn, { hourlyRate: parseFloat(e.target.value) || 0 })} className={miniInp} title="賃率 ¥/h" />
+                                    <input
+                                      type="number"
+                                      value={p.hourlyRate || ''}
+                                      onChange={(e) => updateProc(part.id, pn, { hourlyRate: parseFloat(e.target.value) || 0 })}
+                                      className={`${miniInp} ${p.hourlyRate > 0 && p.hourlyRate % 100 !== 0 ? 'border-amber-400 bg-amber-50' : ''}`}
+                                      title={p.hourlyRate > 0 && p.hourlyRate % 100 !== 0 ? '賃率は100円単位が自然です（端数は逆算で盛った証拠として客に疑われます）' : '賃率 ¥/h'}
+                                    />
                                   </label>
                                   <label className="flex items-center gap-1"><span className="text-[8px] text-[#9C9490] w-8 shrink-0">出来高</span>
                                     <input type="number" value={p.yieldPerHour || ''} onChange={(e) => updateProc(part.id, pn, { yieldPerHour: parseFloat(e.target.value) || 0 })} className={miniInp} title="出来高 個/h" />
@@ -557,6 +563,27 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
               {calcs.map(({ part, calc }) => (
                 <td key={part.id} className="px-2 py-2 text-right font-mono font-black text-base text-[#1E3A5F] border-l border-[#EEEBE6]">{yen(calc.grandTotalUnitPrice)}</td>
               ))}
+            </tr>
+            {/* 架空利管費率 — 積み上げ単価（=客に見せる原価内訳）に対し、客が逆算で読み取るSGA% */}
+            <tr className="border-b border-[#EEEBE6] bg-[#F7FAFF]">
+              <td className="px-2 py-1 font-bold text-[#1E3A5F] sticky left-0 bg-[#F7FAFF] z-10" title="材料費+加工費(=架空仕入原価)に対し、積み上げ単価が含む利管費率。客先が見積書から逆算して読み取る値。5〜25%が健全。">
+                架空利管費率（積上）
+              </td>
+              {calcs.map(({ part, calc }) => {
+                const a = part.estimate.adjustments;
+                const mode = a.sgaCalcMode || 'markup';
+                const baseSell = calc.grandTotalUnitPrice - calc.shippingCostPerUnit - (a.otherAdjustment || 0);
+                const rate = calc.primeCost > 0 && baseSell > 0 ? rateFromCostSell(calc.primeCost, baseSell, mode) : null;
+                const alt = calc.primeCost > 0 && baseSell > 0 ? rateFromCostSell(calc.primeCost, baseSell, mode === 'markup' ? 'margin' : 'markup') : null;
+                const bad = rate !== null && (rate < 5 || rate > 25);
+                const cls = rate === null ? 'text-[#9C9490]' : bad ? 'text-rose-600' : 'text-[#1E3A5F]';
+                return (
+                  <td key={part.id} className={`px-2 py-1 text-right font-mono font-bold border-l border-[#EEEBE6] ${cls}`} title="健全範囲 5〜25%">
+                    {rate === null ? '—' : `${rate.toFixed(2)}% ${mode === 'markup' ? '外' : '内'}`}
+                    {alt !== null && <span className="text-[#9C9490] text-[9px]"> / {alt.toFixed(2)}% {mode === 'markup' ? '内' : '外'}</span>}
+                  </td>
+                );
+              })}
             </tr>
             <tr className="border-b border-[#EEEBE6]">
               <td className={lbl}>仕入実費/個</td>

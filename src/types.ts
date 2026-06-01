@@ -139,15 +139,22 @@ export interface Scenario {
   userId: string;
   name: string;
   notes?: string;
+  kind?: ScenarioKind;          // どの機能で作ったデータか（既存データは 'compare' 扱い）
   newEstimate: DetailedEstimate;
   oldEstimate: DetailedEstimate;
   comparisonResult: ComparisonResult | null;
   aiAnalysis?: string | null;
-  quantityPatterns?: QuantityPattern[]; // Goal 1: 複数数量パターン（任意）
-  supplierGroup?: string;               // Goal 2: 複数品番同時比較のサプライヤーグループ名（任意）
+  multiPatternBase?: DetailedEstimate;  // kind='multilot' のベース見積
+  quantityPatterns?: QuantityPattern[]; // kind='multilot' のLotパターン
+  batchParts?: BatchPart[];             // kind='batch' の品番群
+  supplierGroup?: string;               // 複数品番同時比較のサプライヤーグループ名（任意）
   createdAt?: any;
   updatedAt?: any;
 }
+
+// 保存データの作成機能種別。マイシナリオで機能ごとにタブ分けし、
+// 読み込み時に正しい機能で開くために使う。
+export type ScenarioKind = 'compare' | 'multilot' | 'batch';
 
 // ─── 複数品番同時比較（Goal 2） ──────────────────────────────────────────────
 // 客先の一斉価格改定で、複数品番を横並びに「編集しながら」整合させるためのワーク。
