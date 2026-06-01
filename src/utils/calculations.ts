@@ -77,7 +77,27 @@ export function applyPatternOverride(base: DetailedEstimate, pattern: QuantityPa
       sgaCalcMode: pattern.sgaCalcMode || base.adjustments.sgaCalcMode,
       sgaFixedAdjustment: pattern.sgaFixedAdjustment,
       otherAdjustment: pattern.otherAdjustment,
+      // 仕入実費はLotごとに上書き可（未設定はbase流用）。実態利益率の算出に使う。
+      actualPurchasePrice: typeof pattern.actualPurchasePrice === 'number'
+        ? pattern.actualPurchasePrice
+        : base.adjustments.actualPurchasePrice,
     },
+  };
+}
+
+/** 空欄の数量パターンを1つ生成する（ロット未設定・賃率未入力の白紙Lot） */
+export function createBlankPattern(label: string, lotUnit = '個', seed = 0): QuantityPattern {
+  return {
+    id: `qp-${Date.now()}-${seed}-${Math.random().toString(36).slice(2, 7)}`,
+    label,
+    baseLotSize: 0,
+    lotUnit,
+    targetUnitPrice: 0,
+    sgaRatePercent: 15,
+    sgaCalcMode: 'markup',
+    sgaFixedAdjustment: 0,
+    otherAdjustment: 0,
+    processRates: {},
   };
 }
 

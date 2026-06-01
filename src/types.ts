@@ -91,10 +91,11 @@ export interface ComparisonResult {
   categoryAnalysisPoints: CategoryAnalysisPoint[];
 }
 
-// ─── 複数数量パターン見積（Goal 1） ──────────────────────────────────────────
+// ─── 複数Lot見積（旧称: 複数数量パターン見積 / Goal 1） ───────────────────────
 // 1つの品番に対して見積数量が複数（例: ロット100/300/1000）ある場合、
-// 出来高(yieldPerHour)・段取(totalHours)は全パターン共通（生産前提）。
-// 賃率(hourlyRate)・kg単価・一式・直接費・利管費・送料は数量により変動可。
+// 出来高(yieldPerHour)・段取(totalHours)は全Lot共通（生産前提）。
+// 賃率(hourlyRate)・kg単価・一式・直接費・利管費・送料・仕入実費は数量により変動可。
+// 新旧比較とは独立した機能で、専用のベース見積（工程・材料）を内部に持つ。
 
 export interface PatternProcessRate {
   hourlyRate?: number;          // 客提示用賃率 (円/h) — standard
@@ -116,7 +117,21 @@ export interface QuantityPattern {
   otherAdjustment: number;
   processRates: Record<number, PatternProcessRate>; // 工程index(1始まり) → 賃率
   freightPerBox?: number;       // このパターンの1箱運賃（未設定はbase流用）
+  actualPurchasePrice?: number; // このLotの仕入実費（実態原価/個）。未設定なら実態値から自動算出
   notes?: string;
+}
+
+// ─── 機能間データ取込（相互補完） ────────────────────────────────────────────
+// 新旧比較・ライブラリ・複数品番・複数Lot の各機能で作った品番データを、
+// 他の機能へ「取込」するための共通ソース表現。
+export interface ImportSource {
+  id: string;
+  group: string;                // 取込元グループ名（例: '現在の新旧比較', 'ライブラリ', '複数品番'）
+  label: string;                // 品番
+  subLabel?: string;            // 品名 / シナリオ名など
+  estimate: DetailedEstimate;   // 取り込む見積データ
+  oldUnitPrice?: number;        // 旧単価（複数品番取込時の改定率基準。任意）
+  sourceScenarioId?: string;    // ライブラリ由来の場合の元シナリオID（任意）
 }
 
 export interface Scenario {
