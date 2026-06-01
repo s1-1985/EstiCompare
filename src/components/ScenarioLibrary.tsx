@@ -1,28 +1,44 @@
 import React, { useState } from 'react';
-import { Scenario } from '../types';
+import { Scenario, ScenarioKind } from '../types';
 import { deleteUserScenario, saveScenarioAnalysis } from '../utils/firestoreService';
 import { apiPost } from '../utils/apiClient';
-import { Search, ArrowLeft, Trash2, FolderOpen, AlertCircle, Plus, BookOpen, Sparkles, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, ArrowLeft, Trash2, FolderOpen, AlertCircle, Plus, BookOpen, Sparkles, X, ChevronDown, ChevronUp, FileSpreadsheet, Layers, Layers3 } from 'lucide-react';
 
 interface Props {
   scenarios: Scenario[];
   onLoad: (id: string) => void;
   onBack: () => void;
   isLoggedIn: boolean;
-  onNewSheet: () => void;
+  onNew: (kind: ScenarioKind) => void;
 }
 
+const KIND_META: Record<ScenarioKind, { label: string; Icon: React.ComponentType<{ className?: string }>; color: string; bg: string; border: string }> = {
+  compare:  { label: '新旧比較',     Icon: FileSpreadsheet, color: '#B5451B', bg: '#FEF0EB', border: '#F8C9BB' },
+  multilot: { label: '複数Lot見積',  Icon: Layers,          color: '#1E3A5F', bg: '#EFF4FD', border: '#B8CCE8' },
+  batch:    { label: '複数品番',     Icon: Layers3,         color: '#1E3A5F', bg: '#EFF4FD', border: '#B8CCE8' },
+};
+const KIND_ORDER: ScenarioKind[] = ['compare', 'multilot', 'batch'];
+
 export const ScenarioLibrary: React.FC<Props> = ({
-  scenarios, onLoad, onBack, isLoggedIn, onNewSheet,
+  scenarios, onLoad, onBack, isLoggedIn, onNew,
 }) => {
   const [query, setQuery] = useState('');
+  const [tab, setTab] = useState<ScenarioKind>('compare');
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [analysisModal, setAnalysisModal] = useState<{ scenario: Scenario; text: string } | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  const kindOf = (s: Scenario): ScenarioKind => s.kind || 'compare';
+  const counts: Record<ScenarioKind, number> = {
+    compare: scenarios.filter((s) => kindOf(s) === 'compare').length,
+    multilot: scenarios.filter((s) => kindOf(s) === 'multilot').length,
+    batch: scenarios.filter((s) => kindOf(s) === 'batch').length,
+  };
+
+  const inTab = scenarios.filter((s) => kindOf(s) === tab);
   const filtered = query.trim()
-    ? scenarios.filter(s => {
+    ? inTab.filter(s => {
         const q = query.toLowerCase();
         return (
           s.name.toLowerCase().includes(q) ||
@@ -31,7 +47,7 @@ export const ScenarioLibrary: React.FC<Props> = ({
           s.oldEstimate.partNumber.toLowerCase().includes(q)
         );
       })
-    : scenarios;
+    : inTab;
 
   const handleDelete = async (id: string, name: string) => {
     if (!window.confirm(`「${name}」を削除しますか？この操作は取り消せません。`)) return;
@@ -51,7 +67,6 @@ export const ScenarioLibrary: React.FC<Props> = ({
       const res = await apiPost('/api/analyze-scenario', { scenario });
       const data = await res.json();
       const text: string = data.analysis || '分析結果を取得できませんでした。';
-      // 結果をFirestoreに保存（次回は再分析不要）
       try {
         await saveScenarioAnalysis(scenario.id, text);
       } catch { /* 保存失敗は無視してモーダルは表示 */ }
@@ -75,10 +90,17 @@ export const ScenarioLibrary: React.FC<Props> = ({
     }
   };
 
+  const subInfo = (s: Scenario): string => {
+    const k = kindOf(s);
+    if (k === 'multilot') return `${s.quantityPatterns?.length ?? 0} Lot`;
+    if (k === 'batch') return `${s.batchParts?.length ?? 0} 品番`;
+    return s.comparisonResult ? 'AI監査済' : '新旧比較';
+  };
+
   return (
     <div>
       {/* Header row */}
-      <div className="flex items-center justify-between mb-5 gap-3 flex-wrap">
+      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           <button
             onClick={onBack}
@@ -94,12 +116,37 @@ export const ScenarioLibrary: React.FC<Props> = ({
           </div>
         </div>
         <button
-          onClick={onNewSheet}
+          onClick={() => onNew(tab)}
           className="flex items-center gap-1.5 bg-[#B5451B] hover:bg-[#8A3215] active:bg-[#6B260F] text-white text-xs font-bold px-3 py-2 rounded border border-[#8A3215] cursor-pointer transition-all"
         >
           <Plus className="w-3.5 h-3.5" />
-          <span>新規白紙シート作成</span>
+          <span>新規作成（{KIND_META[tab].label}）</span>
         </button>
+      </div>
+
+      {/* Feature tabs */}
+      <div className="flex items-stretch gap-1 mb-4 border-b border-[#E8E4DF]">
+        {KIND_ORDER.map((k) => {
+          const m = KIND_META[k];
+          const active = tab === k;
+          return (
+            <button
+              key={k}
+              onClick={() => setTab(k)}
+              className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 text-xs font-black border-b-2 -mb-px cursor-pointer transition-all ${
+                active
+                  ? 'border-b-[#B5451B] text-[#B5451B]'
+                  : 'border-b-transparent text-[#9C9490] hover:text-[#6B6057]'
+              }`}
+            >
+              <m.Icon className="w-3.5 h-3.5" />
+              <span>{m.label}</span>
+              <span className={`text-[9px] font-black rounded-full px-1.5 py-0.5 leading-none ${active ? 'bg-[#B5451B] text-white' : 'bg-[#EEEBE6] text-[#6B6057]'}`}>
+                {counts[k]}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {!isLoggedIn ? (
@@ -126,17 +173,17 @@ export const ScenarioLibrary: React.FC<Props> = ({
           </div>
 
           <p className="text-[10px] text-[#9C9490] font-bold tracking-wider mb-3">
-            {query.trim() ? `${filtered.length} / ${scenarios.length} 件` : `${scenarios.length} 件`}
+            {query.trim() ? `${filtered.length} / ${inTab.length} 件` : `${inTab.length} 件`}
           </p>
 
           {filtered.length === 0 ? (
             <div className="bg-white border border-[#D6D0C8] rounded p-10 text-center">
               <FolderOpen className="w-8 h-8 text-[#9C9490] mx-auto mb-3" />
-              {scenarios.length === 0 ? (
+              {inTab.length === 0 ? (
                 <>
-                  <p className="text-sm font-bold text-[#18130F] mb-1.5">保存済みシナリオがありません</p>
+                  <p className="text-sm font-bold text-[#18130F] mb-1.5">{KIND_META[tab].label}の保存データがありません</p>
                   <p className="text-xs text-[#6B6057]">
-                    ワークスペースで入力後、「クラウド保存」ボタンで保存してください。
+                    {KIND_META[tab].label}で入力後、「保存」ボタンでクラウドに保存してください。
                   </p>
                 </>
               ) : (
@@ -145,7 +192,10 @@ export const ScenarioLibrary: React.FC<Props> = ({
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              {filtered.map(scenario => (
+              {filtered.map(scenario => {
+                const k = kindOf(scenario);
+                const m = KIND_META[k];
+                return (
                 <div
                   key={scenario.id}
                   className="bg-white border border-[#D6D0C8] rounded hover:border-[#F8C9BB] transition-all group"
@@ -154,14 +204,15 @@ export const ScenarioLibrary: React.FC<Props> = ({
                     {/* Info */}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider inline-flex items-center gap-1" style={{ color: m.color, background: m.bg, border: `1px solid ${m.border}` }}>
+                          <m.Icon className="w-2.5 h-2.5" />{m.label}
+                        </span>
                         <span className="font-mono text-xs font-bold text-[#B5451B] bg-[#FEF0EB] group-hover:bg-[#FEF8F5] px-2 py-0.5 rounded border border-[#F8C9BB] transition-colors">
                           {scenario.newEstimate.partNumber || '品番未設定'}
                         </span>
-                        {scenario.comparisonResult && (
-                          <span className="text-[9px] font-black bg-[#1E3A5F] text-white px-1.5 py-0.5 rounded uppercase tracking-wider">
-                            AI監査済
-                          </span>
-                        )}
+                        <span className="text-[9px] font-bold text-[#6B6057] bg-[#F0EDE8] px-1.5 py-0.5 rounded">
+                          {subInfo(scenario)}
+                        </span>
                         {scenario.aiAnalysis && (
                           <span className="text-[9px] font-black bg-purple-700 text-white px-1.5 py-0.5 rounded uppercase tracking-wider">
                             AI分析済
@@ -176,23 +227,25 @@ export const ScenarioLibrary: React.FC<Props> = ({
 
                     {/* Actions */}
                     <div className="flex items-center gap-2 shrink-0">
-                      {/* AI分析ボタン */}
-                      <button
-                        onClick={() => scenario.aiAnalysis
-                          ? setAnalysisModal({ scenario, text: scenario.aiAnalysis })
-                          : handleAnalyze(scenario)
-                        }
-                        disabled={analyzingId === scenario.id}
-                        title={scenario.aiAnalysis ? '保存済みAI分析を表示' : 'AIでこのシナリオを分析'}
-                        className={`flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded border cursor-pointer transition-all disabled:opacity-50 ${
-                          scenario.aiAnalysis
-                            ? 'bg-purple-50 text-purple-700 border-purple-300 hover:bg-purple-100'
-                            : 'bg-[#18130F] text-white border-[#2D2219] hover:bg-[#2D2219]'
-                        }`}
-                      >
-                        <Sparkles className={`w-3 h-3 ${analyzingId === scenario.id ? 'animate-spin' : ''}`} />
-                        {analyzingId === scenario.id ? '分析中...' : scenario.aiAnalysis ? '分析済み' : 'AI分析'}
-                      </button>
+                      {/* AI分析は新旧比較のみ */}
+                      {k === 'compare' && (
+                        <button
+                          onClick={() => scenario.aiAnalysis
+                            ? setAnalysisModal({ scenario, text: scenario.aiAnalysis })
+                            : handleAnalyze(scenario)
+                          }
+                          disabled={analyzingId === scenario.id}
+                          title={scenario.aiAnalysis ? '保存済みAI分析を表示' : 'AIでこのシナリオを分析'}
+                          className={`flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded border cursor-pointer transition-all disabled:opacity-50 ${
+                            scenario.aiAnalysis
+                              ? 'bg-purple-50 text-purple-700 border-purple-300 hover:bg-purple-100'
+                              : 'bg-[#18130F] text-white border-[#2D2219] hover:bg-[#2D2219]'
+                          }`}
+                        >
+                          <Sparkles className={`w-3 h-3 ${analyzingId === scenario.id ? 'animate-spin' : ''}`} />
+                          {analyzingId === scenario.id ? '分析中...' : scenario.aiAnalysis ? '分析済み' : 'AI分析'}
+                        </button>
+                      )}
                       <button
                         onClick={() => onLoad(scenario.id)}
                         className="text-xs font-bold text-white bg-[#B5451B] hover:bg-[#8A3215] active:bg-[#6B260F] px-3 py-1.5 rounded border border-[#8A3215] transition-all cursor-pointer whitespace-nowrap"
@@ -228,7 +281,8 @@ export const ScenarioLibrary: React.FC<Props> = ({
                     </div>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </>

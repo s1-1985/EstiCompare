@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { DetailedEstimate, ComparisonResult, Scenario, QuantityPattern, BatchPart, ImportSource } from './types';
+import { DetailedEstimate, ComparisonResult, Scenario, QuantityPattern, BatchPart, ImportSource, ScenarioKind } from './types';
 import { createEmptyEstimate } from './data/samples';
 import { ExcelGrid } from './components/ExcelGrid';
 import { CompareResults } from './components/CompareResults';
@@ -39,12 +39,16 @@ export default function App() {
   const [customScenarios, setCustomScenarios] = useState<Scenario[]>([]);
   const [newScenarioName, setNewScenarioName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const [saveModal, setSaveModal] = useState<{ isOverwriting: boolean } | null>(null);
+  const [saveModal, setSaveModal] = useState<{ isOverwriting: boolean; kind: ScenarioKind } | null>(null);
   const [saveModalName, setSaveModalName] = useState('');
   const [saveModalNotes, setSaveModalNotes] = useState('');
 
   const [activeView, setActiveView] = useState<ActiveView>('workspace');
   const [activeScenarioId, setActiveScenarioId] = useState('');
+  const [activeMultiPatternId, setActiveMultiPatternId] = useState('');
+  const [activeBatchId, setActiveBatchId] = useState('');
+  const [mpMarket, setMpMarket] = useState<{ price: number; basis: string } | null>(null);
+  const [mpMarketLoading, setMpMarketLoading] = useState(false);
   const [newEstimate, setNewEstimate] = useState<DetailedEstimate>(() =>
     JSON.parse(JSON.stringify(createEmptyEstimate()))
   );
@@ -181,18 +185,6 @@ export default function App() {
     };
   }, []);
 
-  const handleScenarioLoad = (id: string) => {
-    const scen = customScenarios.find((s) => s.id === id);
-    if (!scen) return;
-    setActiveScenarioId(id);
-    setNewEstimate(JSON.parse(JSON.stringify(scen.newEstimate)));
-    setOldEstimate(JSON.parse(JSON.stringify(scen.oldEstimate)));
-    setComparisonResult(scen.comparisonResult);
-    setNewScenarioName(scen.name);
-    setActiveSheetTab('workspace');
-    setActiveView('workspace');
-  };
-
   // ─── 複数Lot見積（独立） — 新規・取込・入場時の初期化 ─────────────────────────
   const seedBlankPatterns = () =>
     [0, 1, 2].map((i) => createBlankPattern(`パターン${i + 1}`, multiPatternBase.lotUnit || '個', i));
@@ -200,10 +192,41 @@ export default function App() {
   const handleNewMultiPattern = () => {
     setMultiPatternBase({ ...JSON.parse(JSON.stringify(createEmptyEstimate())), baseLotSize: 0 });
     setQuantityPatterns([0, 1, 2].map((i) => createBlankPattern(`パターン${i + 1}`, '個', i)));
+    setActiveMultiPatternId('');
+    setMpMarket(null);
   };
 
   const handleNewBatch = () => {
     setBatchParts([]);
+    setActiveBatchId('');
+  };
+
+  // マイシナリオの読込: kind に応じて正しい機能で開く（重要: 複数Lot/複数品番を新旧比較で開かない）
+  const handleScenarioLoad = (id: string) => {
+    const scen = customScenarios.find((s) => s.id === id);
+    if (!scen) return;
+    const kind = scen.kind || 'compare';
+    setNewScenarioName(scen.name);
+    if (kind === 'multilot') {
+      setMultiPatternBase(JSON.parse(JSON.stringify(scen.multiPatternBase || scen.newEstimate)));
+      setQuantityPatterns(scen.quantityPatterns && scen.quantityPatterns.length > 0
+        ? JSON.parse(JSON.stringify(scen.quantityPatterns)) : seedBlankPatterns());
+      setActiveMultiPatternId(id);
+      setActiveView('multipattern');
+      return;
+    }
+    if (kind === 'batch') {
+      setBatchParts(scen.batchParts ? JSON.parse(JSON.stringify(scen.batchParts)) : []);
+      setActiveBatchId(id);
+      setActiveView('batch');
+      return;
+    }
+    setActiveScenarioId(id);
+    setNewEstimate(JSON.parse(JSON.stringify(scen.newEstimate)));
+    setOldEstimate(JSON.parse(JSON.stringify(scen.oldEstimate)));
+    setComparisonResult(scen.comparisonResult);
+    setActiveSheetTab('workspace');
+    setActiveView('workspace');
   };
 
   // 他機能・ライブラリの品番データを複数Lotのベースに取り込む（全Lotの賃率を新ベースで再スナップショット）
@@ -229,8 +252,20 @@ export default function App() {
   };
 
   const handleResetActiveSheet = () => {
-    if (activeView === 'multipattern') { handleNewMultiPattern(); return; }
-    if (activeView === 'batch') { handleNewBatch(); return; }
+    if (activeView === 'multipattern') {
+      const savedMp = customScenarios.find((s) => s.id === activeMultiPatternId);
+      if (savedMp) {
+        setMultiPatternBase(JSON.parse(JSON.stringify(savedMp.multiPatternBase || savedMp.newEstimate)));
+        setQuantityPatterns(savedMp.quantityPatterns ? JSON.parse(JSON.stringify(savedMp.quantityPatterns)) : seedBlankPatterns());
+      } else { handleNewMultiPattern(); }
+      return;
+    }
+    if (activeView === 'batch') {
+      const savedB = customScenarios.find((s) => s.id === activeBatchId);
+      if (savedB) { setBatchParts(savedB.batchParts ? JSON.parse(JSON.stringify(savedB.batchParts)) : []); }
+      else { handleNewBatch(); }
+      return;
+    }
     const saved = customScenarios.find((s) => s.id === activeScenarioId);
     if (saved) {
       setNewEstimate(JSON.parse(JSON.stringify(saved.newEstimate)));
@@ -260,31 +295,81 @@ export default function App() {
     setActiveView('workspace');
   };
 
+  // マイシナリオの「新規作成」: タブ（機能）に応じて白紙作成し、その機能を開く
+  const handleNewByKind = (kind: ScenarioKind) => {
+    if (kind === 'multilot') { handleNewMultiPattern(); setActiveView('multipattern'); return; }
+    if (kind === 'batch') { handleNewBatch(); setActiveView('batch'); return; }
+    const emptyEst = createEmptyEstimate();
+    setActiveScenarioId('new-custom-sheet');
+    setOldEstimate(JSON.parse(JSON.stringify(emptyEst)));
+    setNewEstimate(JSON.parse(JSON.stringify(emptyEst)));
+    setNewScenarioName('新規カスタム見積');
+    setComparisonResult(null);
+    setActiveSheetTab('workspace');
+    setActiveView('workspace');
+  };
+
+  // 表示中の機能から保存種別を決める（新旧比較／複数Lot／複数品番）
+  const currentSaveKind: ScenarioKind =
+    activeView === 'multipattern' ? 'multilot' : activeView === 'batch' ? 'batch' : 'compare';
+
+  const defaultSaveName = (kind: ScenarioKind): string => {
+    if (kind === 'multilot') return multiPatternBase.partNumber ? `${multiPatternBase.partNumber} 複数Lot見積` : '複数Lot見積';
+    if (kind === 'batch') {
+      const first = batchParts.find((p) => p.estimate.partNumber.trim());
+      return `複数品番同時比較（${batchParts.length}品番${first ? ' / ' + first.estimate.partNumber : ''}）`;
+    }
+    return newScenarioName || 'マイカスタム見積シナリオ';
+  };
+
   const handleSaveScenario = (isOverwriting: boolean = false) => {
     if (!user) {
       alert('クラウド保存を利用するには右上からサインインしてください。');
       return;
     }
-    setSaveModalName(newScenarioName || 'マイカスタム見積シナリオ');
+    const kind = currentSaveKind;
+    if (kind === 'batch' && batchParts.length === 0) { alert('保存する品番がありません。先に品番を追加してください。'); return; }
+    if (kind === 'multilot' && quantityPatterns.length === 0) { alert('保存するLotがありません。先にLotを追加してください。'); return; }
+    setSaveModalName(defaultSaveName(kind));
     setSaveModalNotes('');
-    setSaveModal({ isOverwriting });
+    setSaveModal({ isOverwriting, kind });
   };
 
   const handleSaveConfirm = async () => {
     if (!saveModal) return;
-    const isOverwriting = saveModal.isOverwriting;
-    let targetId = isOverwriting && customScenarios.some(s => s.id === activeScenarioId) ? activeScenarioId : '';
-    const targetName = saveModalName.trim() || 'マイカスタム見積シナリオ';
+    const { isOverwriting, kind } = saveModal;
+    const activeId = kind === 'multilot' ? activeMultiPatternId : kind === 'batch' ? activeBatchId : activeScenarioId;
+    const targetId = isOverwriting && customScenarios.some((s) => s.id === activeId && (s.kind || 'compare') === kind) ? activeId : '';
+    const targetName = saveModalName.trim() || defaultSaveName(kind);
     setSaveModal(null);
     setIsSaving(true);
     try {
-      // 複数Lotは独立した作業セット（localStorage保持）なので、新旧比較シナリオには含めない。
-      const savedId = await saveUserScenario(
-        targetId, targetName, newEstimate, oldEstimate, comparisonResult, saveModalNotes.trim() || undefined, undefined
-      );
+      let input;
+      if (kind === 'multilot') {
+        // 一覧表示・ルール検証用にベース見積を newEstimate/oldEstimate にも入れる
+        input = {
+          id: targetId, name: targetName, kind, notes: saveModalNotes.trim() || undefined,
+          newEstimate: multiPatternBase, oldEstimate: JSON.parse(JSON.stringify(multiPatternBase)),
+          comparisonResult: null, multiPatternBase, quantityPatterns,
+        };
+      } else if (kind === 'batch') {
+        const display = batchParts[0]?.estimate || createEmptyEstimate();
+        input = {
+          id: targetId, name: targetName, kind, notes: saveModalNotes.trim() || undefined,
+          newEstimate: display, oldEstimate: JSON.parse(JSON.stringify(display)),
+          comparisonResult: null, batchParts,
+        };
+      } else {
+        input = {
+          id: targetId, name: targetName, kind, notes: saveModalNotes.trim() || undefined,
+          newEstimate, oldEstimate, comparisonResult,
+        };
+      }
+      const savedId = await saveUserScenario(input);
       if (savedId) {
-        setActiveScenarioId(savedId);
-        setNewScenarioName(targetName);
+        if (kind === 'multilot') setActiveMultiPatternId(savedId);
+        else if (kind === 'batch') setActiveBatchId(savedId);
+        else { setActiveScenarioId(savedId); setNewScenarioName(targetName); }
         setSaveToast(`「${targetName}」を保存しました`);
         setTimeout(() => setSaveToast(null), 3000);
       }
@@ -322,6 +407,40 @@ export default function App() {
     const v = key === 'inputWeightG' ? (parseFloat(value) || 0) : value;
     setOldEstimate(prev => ({ ...prev, material: { ...prev.material, [key]: v } }));
     setNewEstimate(prev => ({ ...prev, material: { ...prev.material, [key]: v } }));
+  };
+
+  // 複数Lot基本諸元（サイドバー）の編集ハンドラ — multiPatternBaseを更新
+  const updateMpField = (key: 'partNumber' | 'partName' | 'finishedWeightG', value: any) =>
+    setMultiPatternBase(prev => ({ ...prev, [key]: value }));
+  const updateMpMaterial = (key: 'materialName' | 'inputWeightG' | 'basePricePerKg' | 'actualBasePricePerKg' | 'scrapWeightG' | 'scrapPricePerKg', value: any) => {
+    if (key === 'materialName') setMpMarket(null); // 材質変更で相場結果は無効化
+    setMultiPatternBase(prev => ({ ...prev, material: { ...prev.material, [key]: value } }));
+  };
+  const updateMpMinProfit = (value: string) => {
+    const parsed = parseFloat(value);
+    setMultiPatternBase(prev => ({ ...prev, adjustments: { ...prev.adjustments, minProfitRate: isNaN(parsed) ? 0 : parsed } }));
+  };
+
+  // 材料建値の市場相場をAIで推定し、客提示建値との乖離をチェックする
+  const checkMpMarketPrice = async () => {
+    if (!user) { alert('AI相場照合はログインが必要です。'); return; }
+    const name = multiPatternBase.material.materialName.trim();
+    if (!name) { alert('先に材質・規格を入力してください。'); return; }
+    setMpMarketLoading(true);
+    setMpMarket(null);
+    try {
+      const res = await apiPost('/api/get-material-price', { materialName: name });
+      const data = await res.json();
+      if (typeof data.estimatedBasePricePerKg === 'number' && data.estimatedBasePricePerKg > 0) {
+        setMpMarket({ price: data.estimatedBasePricePerKg, basis: data.basis || '' });
+      } else {
+        alert('相場の推定に失敗しました。');
+      }
+    } catch (e: any) {
+      alert(`相場照合に失敗しました。\n${e?.message || '通信エラー'}`);
+    } finally {
+      setMpMarketLoading(false);
+    }
   };
 
   const updateOldAdj = (key: string, value: string) => {
@@ -650,7 +769,9 @@ export default function App() {
 
   // ─── Derived values ───────────────────────────────────────────────────────────
 
-  const isOverwritable = customScenarios.some(s => s.id === activeScenarioId);
+  const overwriteTargetId = currentSaveKind === 'multilot' ? activeMultiPatternId
+    : currentSaveKind === 'batch' ? activeBatchId : activeScenarioId;
+  const isOverwritable = customScenarios.some(s => s.id === overwriteTargetId && (s.kind || 'compare') === currentSaveKind);
   const oldCalc = calculateEstimate(oldEstimate);
   const newCalc = calculateEstimate(newEstimate);
 
@@ -1057,6 +1178,84 @@ export default function App() {
             )}
           </div>
 
+          {activeView === 'multipattern' ? (
+            // 複数Lot見積を開いている間は、共通諸元以下を複数Lotの基本諸元に置き換える
+            <div className="border-b border-[#D6D0C8] p-2 space-y-1.5" style={{ borderTop: '3px solid #1E3A5F' }}>
+              <div className="text-[10px] font-black uppercase tracking-widest px-1 pb-0.5" style={{ color: '#1E3A5F' }}>複数Lot 基本諸元（全Lot共通）</div>
+              <div>
+                <label className="block text-xs font-bold text-[#18130F] mb-0.5">品番</label>
+                <input type="text" value={multiPatternBase.partNumber} onChange={(e) => updateMpField('partNumber', e.target.value)} placeholder="例: 66-13401-09" className={sideInp} />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-[#18130F] mb-0.5">品名</label>
+                <input type="text" value={multiPatternBase.partName ?? ''} onChange={(e) => updateMpField('partName', e.target.value)} placeholder="例: 板金プレス" className={sideInp} />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-[#18130F] mb-0.5">材質・規格</label>
+                <input type="text" value={multiPatternBase.material.materialName} onChange={(e) => updateMpMaterial('materialName', e.target.value)} placeholder="例: SPCC t2.0" className={sideInp} />
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <div>
+                  <label className="block text-xs font-bold text-[#18130F] mb-0.5">投入量 g</label>
+                  <input type="number" value={multiPatternBase.material.inputWeightG || ''} onChange={(e) => updateMpMaterial('inputWeightG', parseFloat(e.target.value) || 0)} className={sideInp} />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#18130F] mb-0.5">完成品 g</label>
+                  <input type="number" value={multiPatternBase.finishedWeightG || ''} onChange={(e) => updateMpField('finishedWeightG', parseFloat(e.target.value) || 0)} className={sideInp} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <div>
+                  <label className="block text-xs font-bold text-[#18130F] mb-0.5">材料建値 ¥/kg</label>
+                  <input type="number" value={multiPatternBase.material.basePricePerKg || ''} onChange={(e) => updateMpMaterial('basePricePerKg', parseFloat(e.target.value) || 0)} className={sideInp} />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#18130F] mb-0.5">実態建値 ¥/kg</label>
+                  <input type="number" value={multiPatternBase.material.actualBasePricePerKg ?? ''} placeholder={String(multiPatternBase.material.basePricePerKg || 0)} onChange={(e) => updateMpMaterial('actualBasePricePerKg', e.target.value === '' ? undefined : parseFloat(e.target.value) || 0)} className={sideInp} />
+                </div>
+              </div>
+              <div>
+                <button
+                  onClick={checkMpMarketPrice}
+                  disabled={mpMarketLoading}
+                  className="w-full p-1 bg-white border border-[#1E3A5F] text-[#1E3A5F] hover:bg-[#EFF4FD] rounded font-bold text-[10px] cursor-pointer transition-all disabled:opacity-50 inline-flex items-center justify-center gap-1"
+                  title="材質・規格からAIで建値の市場相場を推定し、客提示建値との乖離を確認します"
+                >
+                  <Zap className="w-3 h-3" /> {mpMarketLoading ? '相場照合中...' : 'AIで建値相場を照合'}
+                </button>
+                {mpMarket && (() => {
+                  const base = multiPatternBase.material.basePricePerKg || 0;
+                  const dev = base > 0 ? ((base - mpMarket.price) / mpMarket.price) * 100 : null;
+                  const bad = dev !== null && Math.abs(dev) > 20;
+                  return (
+                    <div className={`mt-1 text-[9px] leading-tight rounded p-1 border ${bad ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-[#F0F5FF] border-[#B8CCE8] text-[#1E3A5F]'}`}>
+                      <div className="font-bold">相場目安 ¥{mpMarket.price.toLocaleString()}/kg
+                        {dev !== null && <span> ／ 客提示 {dev > 0 ? '+' : ''}{dev.toFixed(0)}%</span>}
+                      </div>
+                      {bad && <div className="font-bold">⚠ 相場との乖離が大きく、客先に疑われる恐れ</div>}
+                      {mpMarket.basis && <div className="text-[#6B6057] mt-0.5">{mpMarket.basis}</div>}
+                    </div>
+                  );
+                })()}
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <div>
+                  <label className="block text-xs font-bold text-[#18130F] mb-0.5">スクラップ g</label>
+                  <input type="number" value={multiPatternBase.material.scrapWeightG || ''} onChange={(e) => updateMpMaterial('scrapWeightG', parseFloat(e.target.value) || 0)} className={sideInp} />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#18130F] mb-0.5">スク単価 ¥/kg</label>
+                  <input type="number" value={multiPatternBase.material.scrapPricePerKg || ''} onChange={(e) => updateMpMaterial('scrapPricePerKg', parseFloat(e.target.value) || 0)} className={sideInp} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold mb-0.5" style={{ color: '#B5451B' }}>下限利益率 (%)</label>
+                <input type="number" step="0.1" value={multiPatternBase.adjustments.minProfitRate || ''} onChange={(e) => updateMpMinProfit(e.target.value)} placeholder="例: 15" className={`${sideInp} border-[#F8C9BB]`} />
+                <p className="text-[9px] text-[#9C9490] mt-0.5 leading-tight">実態利益率がこれを下回るLotを赤く警告します。</p>
+              </div>
+            </div>
+          ) : (
+          <>
           {/* 共通諸元 inputs — 見積ロットは各列で設定するため除外 */}
           <div className="border-b border-[#D6D0C8] p-2 space-y-1.5">
             <div className="text-[10px] font-black text-[#9C9490] uppercase tracking-widest px-1 pb-0.5">共通諸元</div>
@@ -1426,6 +1625,8 @@ export default function App() {
               </div>
             </div>
           </div>
+          </>
+          )}
 
         </aside>
 
@@ -1927,7 +2128,7 @@ export default function App() {
                 onLoad={handleScenarioLoad}
                 onBack={() => setActiveView('workspace')}
                 isLoggedIn={!!user}
-                onNewSheet={handleCreateNewSheet}
+                onNew={handleNewByKind}
               />
             ) : activeView === 'multipattern' ? (
               <MultiPatternSheet

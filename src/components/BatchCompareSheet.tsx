@@ -1,10 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { BatchPart, ProcessRow, DetailedEstimate, ImportSource, ProcessCalcMode } from '../types';
 import { createEmptyEstimate } from '../data/samples';
-import { calculateEstimate, resolveProcessCalcMode, rateFromCostSell } from '../utils/calculations';
+import { calculateEstimate, resolveProcessCalcMode, rateFromCostSell, costFromSell } from '../utils/calculations';
 import {
   ArrowLeft, Layers3, Plus, Trash2, Download, Lock, Unlock,
-  ChevronDown, ChevronRight, ArrowLeftRight, FilePlus,
+  ChevronDown, ChevronRight, ArrowLeftRight, FilePlus, Zap, AlertTriangle,
 } from 'lucide-react';
 
 interface BatchCompareSheetProps {
@@ -25,14 +25,68 @@ const modeBadge = (mode: string) =>
 const blankProc = (index: number, name: string): ProcessRow =>
   ({ index, processName: name, workContent: '', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 });
 
+const SGA_MIN = 5;
+const SGA_MAX = 25;
+
+// 1品番の客提示賃率を目標単価に合わせて比例調整し、利管費率で端数を消し込む（新旧比較の一発整合と同等）。
+// 出来高・段取は生産前提として固定。賃率は100円単位に丸める。
+function reconcilePart(est: DetailedEstimate): { estimate: DetailedEstimate; residual: number } {
+  const calc = calculateEstimate(est);
+  const target = est.adjustments.targetUnitPrice || 0;
+  if (target <= 0) return { estimate: est, residual: NaN };
+  const mode = est.adjustments.sgaCalcMode || 'markup';
+  const shipping = calc.shippingCostPerUnit;
+  const other = est.adjustments.otherAdjustment || 0;
+  const sgaFixed = est.adjustments.sgaFixedAdjustment || 0;
+  const Y = target - shipping - other - sgaFixed;
+  if (Y <= 0) return { estimate: est, residual: target - calc.grandTotalUnitPrice };
+
+  const materialCost = calc.netMaterialCost;
+  let sgaPercent = Math.min(SGA_MAX, Math.max(SGA_MIN, est.adjustments.sgaRatePercent ?? 15));
+  const targetPrimeCost = costFromSell(Y, sgaPercent, mode);
+  const targetProcessCost = Math.max(0, targetPrimeCost - materialCost);
+  const currentProcessCost = calc.totalProcessCost;
+
+  let processes = est.processes;
+  if (currentProcessCost > 0 && targetProcessCost > 0) {
+    const mult = Math.max(0.1, targetProcessCost / currentProcessCost);
+    processes = est.processes.map((proc) => {
+      if (!proc.processName.trim()) return proc;
+      const m = resolveProcessCalcMode(proc);
+      if (m === 'standard') {
+        let r = Math.round((proc.hourlyRate * mult) / 100) * 100;
+        if (r < 1000 && proc.hourlyRate > 0) r = 1000;
+        return { ...proc, hourlyRate: r };
+      }
+      if (m === 'kg') return { ...proc, kgPrice: parseFloat((proc.kgPrice * mult).toFixed(2)) };
+      if (m === 'lump') return { ...proc, lumpSumPrice: parseFloat(((proc.lumpSumPrice || 0) * mult).toFixed(2)) };
+      if (m === 'direct') return { ...proc, directProcessingCost: parseFloat((proc.directProcessingCost * mult).toFixed(2)) };
+      return proc;
+    });
+  }
+  const recalc = calculateEstimate({ ...est, processes });
+  if (recalc.primeCost > 0) {
+    const rawSga = Math.round(rateFromCostSell(recalc.primeCost, Y, mode) * 100) / 100;
+    sgaPercent = Math.min(SGA_MAX, Math.max(SGA_MIN, rawSga));
+  }
+  const finalEst: DetailedEstimate = { ...est, processes, adjustments: { ...est.adjustments, sgaRatePercent: sgaPercent } };
+  const finalCalc = calculateEstimate(finalEst);
+  return { estimate: finalEst, residual: finalCalc.grandTotalUnitPrice - target };
+}
+
 export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onPartsChange, importSources = [], onBack, onNew }) => {
   const [internalMode, setInternalMode] = useState(true);
   const [showProcDetail, setShowProcDetail] = useState(true);
   const [importOpen, setImportOpen] = useState(false);
+  const [warnings, setWarnings] = useState<Record<string, number>>({});
+
+  const clearWarnings = () => setWarnings((w) => (Object.keys(w).length ? {} : w));
 
   // ── part mutation helpers ──────────────────────────────────────────────────
-  const patchEstimate = (id: string, updater: (e: DetailedEstimate) => DetailedEstimate) =>
+  const patchEstimate = (id: string, updater: (e: DetailedEstimate) => DetailedEstimate) => {
+    clearWarnings();
     onPartsChange(parts.map((pt) => (pt.id === id ? { ...pt, estimate: updater(pt.estimate) } : pt)));
+  };
 
   const setPartField = (id: string, patch: Partial<DetailedEstimate>) =>
     patchEstimate(id, (e) => ({ ...e, ...patch }));
@@ -184,6 +238,31 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
     [parts],
   );
 
+  // ── per-part 一発整合（目標単価への辻褄合わせ） ─────────────────────────────
+  const reconcileOne = (id: string) => {
+    const part = parts.find((p) => p.id === id);
+    if (!part) return;
+    if ((part.estimate.adjustments.targetUnitPrice || 0) <= 0) {
+      setWarnings((w) => ({ ...w, [id]: NaN }));
+      return;
+    }
+    const { estimate, residual } = reconcilePart(part.estimate);
+    onPartsChange(parts.map((p) => (p.id === id ? { ...p, estimate } : p)));
+    setWarnings((w) => ({ ...w, [id]: residual }));
+  };
+
+  const reconcileAll = () => {
+    const nextWarn: Record<string, number> = {};
+    const next = parts.map((p) => {
+      if ((p.estimate.adjustments.targetUnitPrice || 0) <= 0) { nextWarn[p.id] = NaN; return p; }
+      const { estimate, residual } = reconcilePart(p.estimate);
+      nextWarn[p.id] = residual;
+      return { ...p, estimate };
+    });
+    onPartsChange(next);
+    setWarnings(nextWarn);
+  };
+
   // inconsistency detection across all parts (for alignable rows)
   const numDiffers = (getter: (pt: BatchPart) => number): boolean => {
     if (parts.length < 2) return false;
@@ -282,6 +361,9 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
           )}
           <button onClick={addBlank} className="text-[10px] font-bold px-2 py-1 rounded border border-[#B5451B] text-[#B5451B] hover:bg-[#FEF0EB] cursor-pointer inline-flex items-center gap-1">
             <Plus className="w-3 h-3" /> 品番追加
+          </button>
+          <button onClick={reconcileAll} className="text-[10px] font-black px-2 py-1 rounded bg-[#18130F] hover:bg-[#B5451B] text-white cursor-pointer inline-flex items-center gap-1" title="各品番の賃率を目標単価へ自動つじつま合わせ（賃率は100円単位に丸め）">
+            <Zap className="w-3 h-3 text-[#F8C9BB]" /> 全品番整合
           </button>
           <div className="relative">
             <button onClick={() => setImportOpen((v) => !v)} className="text-[10px] font-bold px-2 py-1 rounded border border-[#1E3A5F] text-[#1E3A5F] hover:bg-[#EFF4FD] cursor-pointer inline-flex items-center gap-1">
@@ -476,7 +558,13 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
                               {mode === 'standard' && (
                                 <>
                                   <label className="flex items-center gap-1"><span className="text-[8px] text-[#9C9490] w-8 shrink-0">賃率</span>
-                                    <input type="number" value={p.hourlyRate || ''} onChange={(e) => updateProc(part.id, pn, { hourlyRate: parseFloat(e.target.value) || 0 })} className={miniInp} title="賃率 ¥/h" />
+                                    <input
+                                      type="number"
+                                      value={p.hourlyRate || ''}
+                                      onChange={(e) => updateProc(part.id, pn, { hourlyRate: parseFloat(e.target.value) || 0 })}
+                                      className={`${miniInp} ${p.hourlyRate > 0 && p.hourlyRate % 100 !== 0 ? 'border-amber-400 bg-amber-50' : ''}`}
+                                      title={p.hourlyRate > 0 && p.hourlyRate % 100 !== 0 ? '賃率は100円単位が自然です（端数は逆算で盛った証拠として客に疑われます）' : '賃率 ¥/h'}
+                                    />
                                   </label>
                                   <label className="flex items-center gap-1"><span className="text-[8px] text-[#9C9490] w-8 shrink-0">出来高</span>
                                     <input type="number" value={p.yieldPerHour || ''} onChange={(e) => updateProc(part.id, pn, { yieldPerHour: parseFloat(e.target.value) || 0 })} className={miniInp} title="出来高 個/h" />
@@ -501,6 +589,13 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
                                   <input type="number" value={p.directProcessingCost || ''} onChange={(e) => updateProc(part.id, pn, { directProcessingCost: parseFloat(e.target.value) || 0 })} className={miniInp} title="直接加工費 ¥/個" />
                                 </label>
                               )}
+                              <input
+                                value={p.changeReason || ''}
+                                onChange={(e) => updateProc(part.id, pn, { changeReason: e.target.value })}
+                                placeholder="変更理由（客先説明用）"
+                                className="w-full px-1 py-0.5 text-[9px] rounded border border-[#E8E4DF] bg-[#FCFBF9] outline-none focus:ring-1 focus:border-[#1E3A5F] placeholder:text-[#C8C2B8]"
+                                title="賃率改定の根拠（例: エネルギーコスト増・人件費上昇）。客先からの根拠説明要求に備えます。"
+                              />
                             </div>
                           </td>
                         );
@@ -558,6 +653,27 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
                 <td key={part.id} className="px-2 py-2 text-right font-mono font-black text-base text-[#1E3A5F] border-l border-[#EEEBE6]">{yen(calc.grandTotalUnitPrice)}</td>
               ))}
             </tr>
+            {/* 架空利管費率 — 積み上げ単価（=客に見せる原価内訳）に対し、客が逆算で読み取るSGA% */}
+            <tr className="border-b border-[#EEEBE6] bg-[#F7FAFF]">
+              <td className="px-2 py-1 font-bold text-[#1E3A5F] sticky left-0 bg-[#F7FAFF] z-10" title="材料費+加工費(=架空仕入原価)に対し、積み上げ単価が含む利管費率。客先が見積書から逆算して読み取る値。5〜25%が健全。">
+                架空利管費率（積上）
+              </td>
+              {calcs.map(({ part, calc }) => {
+                const a = part.estimate.adjustments;
+                const mode = a.sgaCalcMode || 'markup';
+                const baseSell = calc.grandTotalUnitPrice - calc.shippingCostPerUnit - (a.otherAdjustment || 0);
+                const rate = calc.primeCost > 0 && baseSell > 0 ? rateFromCostSell(calc.primeCost, baseSell, mode) : null;
+                const alt = calc.primeCost > 0 && baseSell > 0 ? rateFromCostSell(calc.primeCost, baseSell, mode === 'markup' ? 'margin' : 'markup') : null;
+                const bad = rate !== null && (rate < 5 || rate > 25);
+                const cls = rate === null ? 'text-[#9C9490]' : bad ? 'text-rose-600' : 'text-[#1E3A5F]';
+                return (
+                  <td key={part.id} className={`px-2 py-1 text-right font-mono font-bold border-l border-[#EEEBE6] ${cls}`} title="健全範囲 5〜25%">
+                    {rate === null ? '—' : `${rate.toFixed(2)}% ${mode === 'markup' ? '外' : '内'}`}
+                    {alt !== null && <span className="text-[#9C9490] text-[9px]"> / {alt.toFixed(2)}% {mode === 'markup' ? '内' : '外'}</span>}
+                  </td>
+                );
+              })}
+            </tr>
             <tr className="border-b border-[#EEEBE6]">
               <td className={lbl}>仕入実費/個</td>
               {calcs.map(({ part, calc }) => (
@@ -595,7 +711,7 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
                 </td>
               ))}
             </tr>
-            <tr className={internalMode ? 'border-b border-[#EEEBE6]' : ''}>
+            <tr className="border-b border-[#EEEBE6]">
               <td className={lbl}>積み上げ vs 目標</td>
               {calcs.map(({ part, calc }) => {
                 const t = part.estimate.adjustments.targetUnitPrice;
@@ -605,6 +721,32 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
                 return (
                   <td key={part.id} className={`px-2 py-1 text-right font-mono font-bold border-l border-[#EEEBE6] ${cls}`}>
                     {diff === null ? '—' : balanced ? '✓ 整合' : `${diff > 0 ? '+' : ''}${diff.toFixed(2)}`}
+                  </td>
+                );
+              })}
+            </tr>
+
+            {/* 辻褄合わせ: 各品番を目標単価へ一発整合 */}
+            <tr className={internalMode ? 'border-b border-[#EEEBE6]' : ''}>
+              <td className={lbl}>辻褄合わせ</td>
+              {calcs.map(({ part }) => {
+                const w = warnings[part.id];
+                return (
+                  <td key={part.id} className="px-1 py-1 border-l border-[#EEEBE6]">
+                    <button onClick={() => reconcileOne(part.id)} className="w-full bg-[#18130F] hover:bg-[#B5451B] text-white font-black text-[10px] py-1 rounded inline-flex items-center justify-center gap-1 cursor-pointer transition-all" title="この品番の賃率を目標単価へ自動調整（100円単位に丸め、残差は利管費率で消込）">
+                      <Zap className="w-3 h-3 text-[#F8C9BB]" /> 一発整合
+                    </button>
+                    {w !== undefined && (
+                      Number.isNaN(w) ? (
+                        <div className="mt-0.5 text-[8px] text-rose-600 font-bold text-center">目標単価を入力してください</div>
+                      ) : Math.abs(w) >= 1 ? (
+                        <div className="mt-0.5 text-[8px] text-amber-700 font-bold text-center flex items-center justify-center gap-0.5">
+                          <AlertTriangle className="w-2.5 h-2.5" />残差{w > 0 ? '+' : ''}{w.toFixed(1)}円 — 前提見直し
+                        </div>
+                      ) : (
+                        <div className="mt-0.5 text-[8px] text-emerald-700 font-bold text-center">✓ 整合済</div>
+                      )
+                    )}
                   </td>
                 );
               })}

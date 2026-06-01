@@ -11,57 +11,56 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
-import { Scenario } from '../types';
+import { Scenario, ScenarioKind } from '../types';
+
+export interface SaveScenarioInput {
+  id: string;
+  name: string;
+  kind: ScenarioKind;
+  newEstimate: Scenario['newEstimate'];   // 一覧表示・ルール検証用。multilot/batchでも有効なmapを渡す
+  oldEstimate: Scenario['oldEstimate'];
+  comparisonResult?: Scenario['comparisonResult'];
+  notes?: string;
+  multiPatternBase?: Scenario['multiPatternBase'];
+  quantityPatterns?: Scenario['quantityPatterns'];
+  batchParts?: Scenario['batchParts'];
+}
 
 /**
- * Saves or updates a comparative scenario in Firestore.
- * Creates a new document when id is empty, updates the existing one otherwise.
+ * Saves or updates a scenario in Firestore. Stores the feature `kind` and the
+ * feature-specific payload (multilot base+patterns / batch parts) alongside the
+ * compare estimates. Creates a new document when id is empty, updates otherwise.
  */
-export async function saveUserScenario(
-  id: string,
-  name: string,
-  newEstimate: Scenario['newEstimate'],
-  oldEstimate: Scenario['oldEstimate'],
-  comparisonResult: Scenario['comparisonResult'],
-  notes?: string,
-  quantityPatterns?: Scenario['quantityPatterns']
-) {
+export async function saveUserScenario(input: SaveScenarioInput) {
   const user = auth.currentUser;
   if (!user) throw new Error('ユーザーがサインインしていません。');
 
-  const isNew = !id;
-  const docId = isNew ? doc(collection(db, 'scenarios')).id : id;
+  const isNew = !input.id;
+  const docId = isNew ? doc(collection(db, 'scenarios')).id : input.id;
   const docRef = doc(db, 'scenarios', docId);
   const path = `scenarios/${docId}`;
+
+  const payload = {
+    id: docId,
+    userId: user.uid,
+    name: input.name,
+    kind: input.kind || 'compare',
+    notes: input.notes || null,
+    newEstimate: input.newEstimate,
+    oldEstimate: input.oldEstimate,
+    comparisonResult: input.comparisonResult || null,
+    multiPatternBase: input.multiPatternBase || null,
+    quantityPatterns: input.quantityPatterns && input.quantityPatterns.length > 0 ? input.quantityPatterns : null,
+    batchParts: input.batchParts && input.batchParts.length > 0 ? input.batchParts : null,
+  };
 
   try {
     if (isNew) {
       // CREATE: include createdAt so Firestore rules pass
-      await setDoc(docRef, {
-        id: docId,
-        userId: user.uid,
-        name,
-        notes: notes || null,
-        newEstimate,
-        oldEstimate,
-        comparisonResult: comparisonResult || null,
-        quantityPatterns: quantityPatterns && quantityPatterns.length > 0 ? quantityPatterns : null,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      await setDoc(docRef, { ...payload, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
     } else {
       // UPDATE: use updateDoc so createdAt is not touched (rules verify it hasn't changed)
-      await updateDoc(docRef, {
-        id: docId,
-        userId: user.uid,
-        name,
-        notes: notes || null,
-        newEstimate,
-        oldEstimate,
-        comparisonResult: comparisonResult || null,
-        quantityPatterns: quantityPatterns && quantityPatterns.length > 0 ? quantityPatterns : null,
-        updatedAt: serverTimestamp(),
-      });
+      await updateDoc(docRef, { ...payload, updatedAt: serverTimestamp() });
     }
     return docId;
   } catch (error) {
@@ -121,11 +120,14 @@ export function subscribeScenarios(
           id: data.id,
           userId: data.userId,
           name: data.name,
+          kind: data.kind || 'compare',
           newEstimate: data.newEstimate,
           oldEstimate: data.oldEstimate,
           comparisonResult: data.comparisonResult || null,
           aiAnalysis: data.aiAnalysis || null,
+          multiPatternBase: data.multiPatternBase || undefined,
           quantityPatterns: data.quantityPatterns || undefined,
+          batchParts: data.batchParts || undefined,
           createdAt: data.createdAt,
           updatedAt: data.updatedAt,
         });

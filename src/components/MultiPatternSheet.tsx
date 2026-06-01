@@ -114,13 +114,8 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
   const clearWarn = (id: string) =>
     setWarnings((w) => { const n = { ...w }; delete n[id]; return n; });
 
-  // ── base (品番・材料・諸元) editing ──────────────────────────────────────────
-  const updateBaseField = (key: 'partNumber' | 'partName' | 'finishedWeightG' | 'lotUnit', value: string | number) =>
-    onBaseChange((prev) => ({ ...prev, [key]: value }));
-  const updateBaseMaterial = (key: keyof DetailedEstimate['material'], value: number | string) =>
-    onBaseChange((prev) => ({ ...prev, material: { ...prev.material, [key]: value } }));
-  const updateBaseAdj = (key: keyof DetailedEstimate['adjustments'], value: number) =>
-    onBaseChange((prev) => ({ ...prev, adjustments: { ...prev.adjustments, [key]: value } }));
+  // 品番・材料・下限利益率はサイドバー側（共通諸元の置換）で編集する。
+  // 工程（出来高・段取・賃率・モード）はこのシート内で直接編集する。
 
   const updatePattern = (id: string, patch: Partial<QuantityPattern>) => {
     clearWarn(id);
@@ -237,7 +232,6 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
   };
 
   const inp = 'w-full px-1 py-0.5 text-xs font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#1E3A5F] text-right';
-  const baseInp = 'w-full px-1.5 py-1 text-xs font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#1E3A5F] text-right';
 
   // merged estimate per pattern (gives per-pattern overridden rates) + full calc
   const calcs = patterns.map((p) => {
@@ -347,47 +341,7 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
         </div>
       </div>
 
-      {/* 基本諸元（品番・材料・下限利益率） — この機能だけで完結する独立入力 */}
-      <div className="bg-white border border-[#D6D0C8] rounded p-2.5">
-        <div className="text-[10px] font-black text-[#9C9490] uppercase tracking-widest mb-1.5">基本諸元（全Lot共通）</div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
-          <label className="block">
-            <span className="text-[9px] text-[#6B6057] font-bold">品番</span>
-            <input value={base.partNumber} onChange={(e) => updateBaseField('partNumber', e.target.value)} placeholder="品番" className="w-full px-1.5 py-1 text-xs rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#1E3A5F]" />
-          </label>
-          <label className="block">
-            <span className="text-[9px] text-[#6B6057] font-bold">品名</span>
-            <input value={base.partName ?? ''} onChange={(e) => updateBaseField('partName', e.target.value)} placeholder="品名" className="w-full px-1.5 py-1 text-xs rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#1E3A5F]" />
-          </label>
-          <label className="block">
-            <span className="text-[9px] text-[#6B6057] font-bold">完成品重量 g</span>
-            <input type="number" value={base.finishedWeightG || ''} onChange={(e) => updateBaseField('finishedWeightG', parseFloat(e.target.value) || 0)} className={baseInp} />
-          </label>
-          <label className="block">
-            <span className="text-[9px] text-[#6B6057] font-bold">材料建値 ¥/kg</span>
-            <input type="number" value={base.material.basePricePerKg || ''} onChange={(e) => updateBaseMaterial('basePricePerKg', parseFloat(e.target.value) || 0)} className={baseInp} />
-          </label>
-          <label className="block">
-            <span className="text-[9px] text-[#6B6057] font-bold">実態建値 ¥/kg</span>
-            <input type="number" value={base.material.actualBasePricePerKg ?? ''} placeholder={String(base.material.basePricePerKg || 0)} onChange={(e) => updateBaseMaterial('actualBasePricePerKg', e.target.value === '' ? (undefined as any) : parseFloat(e.target.value) || 0)} className={baseInp} />
-          </label>
-          <label className="block">
-            <span className="text-[9px] text-[#6B6057] font-bold">投入量 g</span>
-            <input type="number" value={base.material.inputWeightG || ''} onChange={(e) => updateBaseMaterial('inputWeightG', parseFloat(e.target.value) || 0)} className={baseInp} />
-          </label>
-          <label className="block">
-            <span className="text-[9px] text-[#6B6057] font-bold">スクラップ g / ¥kg</span>
-            <div className="flex gap-0.5">
-              <input type="number" value={base.material.scrapWeightG || ''} onChange={(e) => updateBaseMaterial('scrapWeightG', parseFloat(e.target.value) || 0)} className={baseInp} title="スクラップ重量g" />
-              <input type="number" value={base.material.scrapPricePerKg || ''} onChange={(e) => updateBaseMaterial('scrapPricePerKg', parseFloat(e.target.value) || 0)} className={baseInp} title="スクラップ単価¥/kg" />
-            </div>
-          </label>
-          <label className="block">
-            <span className="text-[9px] text-[#B5451B] font-bold">下限利益率 %</span>
-            <input type="number" value={base.adjustments.minProfitRate || ''} step="0.1" onChange={(e) => updateBaseAdj('minProfitRate', parseFloat(e.target.value) || 0)} className="w-full px-1.5 py-1 text-xs font-mono rounded border border-[#F8C9BB] bg-[#FFF8F0] outline-none focus:ring-1 focus:border-[#B5451B] text-right" title="実態利益率（内掛け）がこの値を下回るLotを赤く警告します" />
-          </label>
-        </div>
-      </div>
+      {/* 基本諸元（品番・材料・下限利益率）は左サイドバー（共通諸元の置換）で入力する */}
 
       {patterns.length === 0 ? (
         <div className="bg-white border border-dashed border-[#D6D0C8] rounded p-6 text-center">
@@ -570,7 +524,14 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
                     return (
                       <React.Fragment key={pattern.id}>
                         <td className="px-1 py-0.5 border-l-2 border-[#E8C8BC]">
-                          <input type="number" value={rateVal ?? ''} disabled={isBlank} onChange={(e) => updatePatternRate(pattern.id, proc.index, mode, parseFloat(e.target.value) || 0)} className={`${inp} ${isBlank ? 'opacity-40' : ''}`} />
+                          <input
+                            type="number"
+                            value={rateVal ?? ''}
+                            disabled={isBlank}
+                            onChange={(e) => updatePatternRate(pattern.id, proc.index, mode, parseFloat(e.target.value) || 0)}
+                            className={`${inp} ${isBlank ? 'opacity-40' : ''} ${mode === 'standard' && typeof rateVal === 'number' && rateVal > 0 && rateVal % 100 !== 0 ? 'border-amber-400 bg-amber-50' : ''}`}
+                            title={mode === 'standard' && typeof rateVal === 'number' && rateVal > 0 && rateVal % 100 !== 0 ? '賃率は100円単位が自然です（端数は逆算で盛った証拠として客に疑われます）' : undefined}
+                          />
                         </td>
                         <td className="px-1 py-1 text-right font-mono text-[#B5451B] bg-[#FFF8F0] font-bold">
                           {isBlank ? '—' : showSetup ? yenFmt(bd.setup) : '—'}
@@ -773,7 +734,7 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
         <Info className="w-3.5 h-3.5 text-[#B5451B] shrink-0 mt-0.5" />
         <span>
           <strong className="text-[#B5451B]">段取費/個（橙列）＝ 賃率 × 段取時間 ÷ ロット数</strong> がロットで逓減 ＝ これが数量で単価が変わる本体です。
-          出来高・段取時間（緑列）は全Lot共通の生産前提。賃率は数量により調整可。
+          出来高・段取時間（緑列）は全Lot共通の生産前提。賃率は数量により調整可だが<strong className="text-[#B5451B]">100円単位</strong>が自然（端数は琥珀色で警告）。
           仕入実費を入力すると<strong className="text-[#B5451B]">実態利益率</strong>が表示され、下限利益率を下回ると赤く警告します。
           残差が1円以上残る場合は賃率だけでは辻褄が合わないサイン — 出来高・段取の前提自体を見直してください。
         </span>
