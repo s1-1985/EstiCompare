@@ -1254,6 +1254,14 @@ export default function App() {
                 <p className="text-[9px] text-[#9C9490] mt-0.5 leading-tight">実態利益率がこれを下回るLotを赤く警告します。</p>
               </div>
             </div>
+          ) : activeView === 'batch' ? (
+            // 複数品番では諸元を各品番の列で入力するため、共通諸元以下は表示しない（紛らわしさ回避）
+            <div className="border-b border-[#D6D0C8] p-2">
+              <div className="text-[10px] font-black uppercase tracking-widest px-1 pb-1" style={{ color: '#B5451B' }}>複数品番同時比較</div>
+              <p className="text-[10px] text-[#6B6057] leading-relaxed px-1">
+                品番・材料・工程・利管費などの諸元は、右側の<strong className="text-[#18130F]">各品番の列</strong>で直接入力します。
+              </p>
+            </div>
           ) : (
           <>
           {/* 共通諸元 inputs — 見積ロットは各列で設定するため除外 */}
