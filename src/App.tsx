@@ -47,6 +47,8 @@ export default function App() {
   const [activeScenarioId, setActiveScenarioId] = useState('');
   const [activeMultiPatternId, setActiveMultiPatternId] = useState('');
   const [activeBatchId, setActiveBatchId] = useState('');
+  const [mpMarket, setMpMarket] = useState<{ price: number; basis: string } | null>(null);
+  const [mpMarketLoading, setMpMarketLoading] = useState(false);
   const [newEstimate, setNewEstimate] = useState<DetailedEstimate>(() =>
     JSON.parse(JSON.stringify(createEmptyEstimate()))
   );
@@ -191,6 +193,7 @@ export default function App() {
     setMultiPatternBase({ ...JSON.parse(JSON.stringify(createEmptyEstimate())), baseLotSize: 0 });
     setQuantityPatterns([0, 1, 2].map((i) => createBlankPattern(`パターン${i + 1}`, '個', i)));
     setActiveMultiPatternId('');
+    setMpMarket(null);
   };
 
   const handleNewBatch = () => {
@@ -409,11 +412,35 @@ export default function App() {
   // 複数Lot基本諸元（サイドバー）の編集ハンドラ — multiPatternBaseを更新
   const updateMpField = (key: 'partNumber' | 'partName' | 'finishedWeightG', value: any) =>
     setMultiPatternBase(prev => ({ ...prev, [key]: value }));
-  const updateMpMaterial = (key: 'materialName' | 'inputWeightG' | 'basePricePerKg' | 'actualBasePricePerKg' | 'scrapWeightG' | 'scrapPricePerKg', value: any) =>
+  const updateMpMaterial = (key: 'materialName' | 'inputWeightG' | 'basePricePerKg' | 'actualBasePricePerKg' | 'scrapWeightG' | 'scrapPricePerKg', value: any) => {
+    if (key === 'materialName') setMpMarket(null); // 材質変更で相場結果は無効化
     setMultiPatternBase(prev => ({ ...prev, material: { ...prev.material, [key]: value } }));
+  };
   const updateMpMinProfit = (value: string) => {
     const parsed = parseFloat(value);
     setMultiPatternBase(prev => ({ ...prev, adjustments: { ...prev.adjustments, minProfitRate: isNaN(parsed) ? 0 : parsed } }));
+  };
+
+  // 材料建値の市場相場をAIで推定し、客提示建値との乖離をチェックする
+  const checkMpMarketPrice = async () => {
+    if (!user) { alert('AI相場照合はログインが必要です。'); return; }
+    const name = multiPatternBase.material.materialName.trim();
+    if (!name) { alert('先に材質・規格を入力してください。'); return; }
+    setMpMarketLoading(true);
+    setMpMarket(null);
+    try {
+      const res = await apiPost('/api/get-material-price', { materialName: name });
+      const data = await res.json();
+      if (typeof data.estimatedBasePricePerKg === 'number' && data.estimatedBasePricePerKg > 0) {
+        setMpMarket({ price: data.estimatedBasePricePerKg, basis: data.basis || '' });
+      } else {
+        alert('相場の推定に失敗しました。');
+      }
+    } catch (e: any) {
+      alert(`相場照合に失敗しました。\n${e?.message || '通信エラー'}`);
+    } finally {
+      setMpMarketLoading(false);
+    }
   };
 
   const updateOldAdj = (key: string, value: string) => {
@@ -1186,6 +1213,30 @@ export default function App() {
                   <label className="block text-xs font-bold text-[#18130F] mb-0.5">実態建値 ¥/kg</label>
                   <input type="number" value={multiPatternBase.material.actualBasePricePerKg ?? ''} placeholder={String(multiPatternBase.material.basePricePerKg || 0)} onChange={(e) => updateMpMaterial('actualBasePricePerKg', e.target.value === '' ? undefined : parseFloat(e.target.value) || 0)} className={sideInp} />
                 </div>
+              </div>
+              <div>
+                <button
+                  onClick={checkMpMarketPrice}
+                  disabled={mpMarketLoading}
+                  className="w-full p-1 bg-white border border-[#1E3A5F] text-[#1E3A5F] hover:bg-[#EFF4FD] rounded font-bold text-[10px] cursor-pointer transition-all disabled:opacity-50 inline-flex items-center justify-center gap-1"
+                  title="材質・規格からAIで建値の市場相場を推定し、客提示建値との乖離を確認します"
+                >
+                  <Zap className="w-3 h-3" /> {mpMarketLoading ? '相場照合中...' : 'AIで建値相場を照合'}
+                </button>
+                {mpMarket && (() => {
+                  const base = multiPatternBase.material.basePricePerKg || 0;
+                  const dev = base > 0 ? ((base - mpMarket.price) / mpMarket.price) * 100 : null;
+                  const bad = dev !== null && Math.abs(dev) > 20;
+                  return (
+                    <div className={`mt-1 text-[9px] leading-tight rounded p-1 border ${bad ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-[#F0F5FF] border-[#B8CCE8] text-[#1E3A5F]'}`}>
+                      <div className="font-bold">相場目安 ¥{mpMarket.price.toLocaleString()}/kg
+                        {dev !== null && <span> ／ 客提示 {dev > 0 ? '+' : ''}{dev.toFixed(0)}%</span>}
+                      </div>
+                      {bad && <div className="font-bold">⚠ 相場との乖離が大きく、客先に疑われる恐れ</div>}
+                      {mpMarket.basis && <div className="text-[#6B6057] mt-0.5">{mpMarket.basis}</div>}
+                    </div>
+                  );
+                })()}
               </div>
               <div className="grid grid-cols-2 gap-1.5">
                 <div>
