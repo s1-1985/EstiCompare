@@ -561,8 +561,10 @@ export default function App() {
     }, 0);
     let draftProcesses = [...target.processes];
     const sgaMode = target.adjustments.sgaCalcMode || 'markup';
+    // 利管費率の健全範囲。KNOWLEDGE §4-4 の正常範囲(5〜25%)に合わせ、複数Lot/複数品番と統一。
+    // （旧実装は上限15%と狭く、17〜25%の自然な率でも辻褄が残り「計算がおかしい」原因になっていた）
     const SGA_MIN = 5;
-    const SGA_MAX = 15;
+    const SGA_MAX = 25;
     let finalSgaPercent = Math.min(SGA_MAX, Math.max(SGA_MIN, target.adjustments.sgaRatePercent ?? 15));
     const materialCost = calc.netMaterialCost;
     const targetPrimeCost = costFromSell(Y, finalSgaPercent, sgaMode);
@@ -864,23 +866,19 @@ export default function App() {
   const oldSellForCalc = oldSell > 0 ? oldSell : oldCalc.grandTotalUnitPrice;
   const newSellForCalc = newSell > 0 ? newSell : newCalc.grandTotalUnitPrice;
 
-  // 実態の利管費率: 原価=架空primeCost、売価=売値−架空送料 として、選択中の方式(外掛け/内掛け)で算出
-  // base は grandTotalUnitPrice と同じ定義（送料・その他調整を除いた売価）にして表示の整合を取る。
-  const getActualSgaRate = (sell: number, shippingCost: number, other: number, primeCost: number, mode: 'markup' | 'margin'): number | null => {
-    const base = sell - shippingCost - other;
+  // 架空利管費率（客提示の積み上げ単価に実際に含まれている利管費率）:
+  //   原価＝客提示primeCost、売価＝積み上げ単価−送料−その他調整。選択中の方式(外掛け/内掛け)で算出。
+  //   ＝ 客が見積書から逆算して読み取る実効利管費率。入力した利管費率にほぼ一致する（sgaFixed分のみ差）。
+  //   ※ 目標単価から逆算する「帳尻利管費率」(calcReconcileRates)とは別物。混同しないこと。
+  const getEmbeddedSgaRate = (grandTotal: number, shippingCost: number, other: number, primeCost: number, mode: 'markup' | 'margin'): number | null => {
+    const base = grandTotal - shippingCost - other;
     if (base <= 0 || primeCost <= 0) return null;
     return rateFromCostSell(primeCost, base, mode);
   };
   const oldSgaMode = oldEstimate.adjustments.sgaCalcMode || 'markup';
   const newSgaMode = newEstimate.adjustments.sgaCalcMode || 'markup';
-  const oldActualSgaRate = getActualSgaRate(oldSellForCalc, oldCalc.shippingCostPerUnit, oldEstimate.adjustments.otherAdjustment || 0, oldCalc.primeCost, oldSgaMode);
-  const newActualSgaRate = getActualSgaRate(newSellForCalc, newCalc.shippingCostPerUnit, newEstimate.adjustments.otherAdjustment || 0, newCalc.primeCost, newSgaMode);
-  const getFictionalSgaRate = (sell: number, sp: number, mode: 'markup' | 'margin', hasOffset: boolean): number | null => {
-    if (!hasOffset || sp <= 0 || sell <= 0 || Math.abs(sell - sp) < 0.01) return null;
-    return rateFromCostSell(sp, sell, mode);
-  };
-  const oldFictionalSgaRate = getFictionalSgaRate(oldSellForCalc, oldCalc.suggestedPurchasePriceForClient, oldSgaMode, (oldEstimate.adjustments.targetProfitMarginOff || 0) > 0);
-  const newFictionalSgaRate = getFictionalSgaRate(newSellForCalc, newCalc.suggestedPurchasePriceForClient, newSgaMode, (newEstimate.adjustments.targetProfitMarginOff || 0) > 0);
+  const oldEmbeddedSgaRate = getEmbeddedSgaRate(oldCalc.grandTotalUnitPrice, oldCalc.shippingCostPerUnit, oldEstimate.adjustments.otherAdjustment || 0, oldCalc.primeCost, oldSgaMode);
+  const newEmbeddedSgaRate = getEmbeddedSgaRate(newCalc.grandTotalUnitPrice, newCalc.shippingCostPerUnit, newEstimate.adjustments.otherAdjustment || 0, newCalc.primeCost, newSgaMode);
 
   // 実態の利益率（内掛け＝原価基準）: 仕入実費が入力されている場合は直接使用（送料を二重計上しない）
   const oldActualCostForMarkup = oldEstimate.adjustments.actualPurchasePrice > 0
@@ -1695,11 +1693,11 @@ export default function App() {
                       </div>
                     </div>
                     <div className="border-r border-[#E8C8BC] pr-2">
-                      <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#9C9490] leading-none truncate">架空利管費率</span><Tooltip text="架空primeCost（原価）と売値−送料（売価）から算出した利管費率。選択中の方式（外掛け=率÷売価／内掛け=率÷原価）で表示。" /></div>
-                      <div className={`font-mono font-black text-sm leading-tight ${oldActualSgaRate !== null ? 'text-amber-700' : 'text-[#C8C2B8]'}`}>
-                        {oldActualSgaRate !== null ? `${oldActualSgaRate.toFixed(2)}%` : '—'}
+                      <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#9C9490] leading-none truncate">架空利管費率</span><Tooltip text="客提示の積み上げ単価に実際に含まれる利管費率。材工費(=客提示原価)に対し、積み上げ単価−送料−その他がどれだけ上乗せされているか。客が見積書から逆算して読み取る実効利管費率で、入力した利管費率にほぼ一致します（目標単価から逆算する帳尻利管費率とは別物）。" /></div>
+                      <div className={`font-mono font-black text-sm leading-tight ${oldEmbeddedSgaRate !== null ? 'text-amber-700' : 'text-[#C8C2B8]'}`}>
+                        {oldEmbeddedSgaRate !== null ? `${oldEmbeddedSgaRate.toFixed(2)}%` : '—'}
                       </div>
-                      {oldActualSgaRate !== null && <div className="text-[8px] text-[#9C9490] mt-0.5">{oldSgaMode === 'markup' ? '外掛け' : '内掛け'}</div>}
+                      {oldEmbeddedSgaRate !== null && <div className="text-[8px] text-[#9C9490] mt-0.5">{oldSgaMode === 'markup' ? '外掛け' : '内掛け'}</div>}
                     </div>
                     <div>
                       <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#9C9490] leading-none truncate">実態利益率</span><Tooltip text="実際の仕入原価に対して何%の利益を乗せているか（内掛け＝原価基準）。(売値 − 仕入実費) ÷ 仕入実費 × 100" /></div>
@@ -1908,11 +1906,11 @@ export default function App() {
                       </div>
                     </div>
                     <div className="border-r border-[#B8CCE8] pr-2">
-                      <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#9C9490] leading-none truncate">架空利管費率</span><Tooltip text="架空primeCost（原価）と売値−送料（売価）から算出した利管費率。選択中の方式（外掛け=率÷売価／内掛け=率÷原価）で表示。" /></div>
-                      <div className={`font-mono font-black text-sm leading-tight ${newActualSgaRate !== null ? 'text-amber-700' : 'text-[#C8C2B8]'}`}>
-                        {newActualSgaRate !== null ? `${newActualSgaRate.toFixed(2)}%` : '—'}
+                      <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#9C9490] leading-none truncate">架空利管費率</span><Tooltip text="客提示の積み上げ単価に実際に含まれる利管費率。材工費(=客提示原価)に対し、積み上げ単価−送料−その他がどれだけ上乗せされているか。客が見積書から逆算して読み取る実効利管費率で、入力した利管費率にほぼ一致します（目標単価から逆算する帳尻利管費率とは別物）。" /></div>
+                      <div className={`font-mono font-black text-sm leading-tight ${newEmbeddedSgaRate !== null ? 'text-amber-700' : 'text-[#C8C2B8]'}`}>
+                        {newEmbeddedSgaRate !== null ? `${newEmbeddedSgaRate.toFixed(2)}%` : '—'}
                       </div>
-                      {newActualSgaRate !== null && <div className="text-[8px] text-[#9C9490] mt-0.5">{newSgaMode === 'markup' ? '外掛け' : '内掛け'}</div>}
+                      {newEmbeddedSgaRate !== null && <div className="text-[8px] text-[#9C9490] mt-0.5">{newSgaMode === 'markup' ? '外掛け' : '内掛け'}</div>}
                     </div>
                     <div>
                       <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#9C9490] leading-none truncate">実態利益率</span><Tooltip text="実際の仕入原価に対して何%の利益を乗せているか（内掛け＝原価基準）。(売値 − 仕入実費) ÷ 仕入実費 × 100" /></div>

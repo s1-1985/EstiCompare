@@ -179,7 +179,9 @@ function EstimateBlock({ label, est, calc, tag }: EstimateBlockProps) {
                 <td style={{ textAlign: 'right', fontWeight: 'bold', padding: '2px 0' }}>¥{fmt(calc.primeCost)}</td>
               </tr>
               <tr>
-                <td style={{ color: '#555', padding: '2px 0' }}>利管費 ({est.adjustments.sgaRatePercent}%)</td>
+                {/* 見積書上の利管費率は「利管費 ÷ 直製造原価」(内掛け実効率) で表示。
+                    内部が外掛け方式でも、客が金額÷原価で逆算した値と一致させ、整合性を保つ。 */}
+                <td style={{ color: '#555', padding: '2px 0' }}>利管費 ({(calc.primeCost > 0 ? (calc.sgaCost / calc.primeCost) * 100 : (est.adjustments.sgaRatePercent || 0)).toFixed(1)}%)</td>
                 <td style={{ textAlign: 'right', padding: '2px 0' }}>¥{fmt(calc.sgaCost)}</td>
               </tr>
               <tr>
@@ -355,7 +357,7 @@ export function PrintSheet({ oldEstimate, newEstimate }: PrintSheetProps) {
       rows.push(['直接材料費', calc.netMaterialCost]);
       rows.push(['加工費合計', calc.totalProcessCost]);
       rows.push(['直製造原価小計', calc.primeCost]);
-      rows.push([`利管費 (${est.adjustments.sgaRatePercent}%)`, calc.sgaCost]);
+      rows.push([`利管費 (${(calc.primeCost > 0 ? (calc.sgaCost / calc.primeCost) * 100 : (est.adjustments.sgaRatePercent || 0)).toFixed(1)}%)`, calc.sgaCost]);
       rows.push(['送料/個', calc.shippingCostPerUnit]);
       if (est.adjustments.otherAdjustment !== 0) {
         rows.push(['その他調整', est.adjustments.otherAdjustment]);

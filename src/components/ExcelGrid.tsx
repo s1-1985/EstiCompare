@@ -249,18 +249,19 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
   };
 
   const copyFullColumn = (fromNew: boolean) => {
-    // 全内訳転記: material/processes/logistics/SGA設定はコピーするが、
-    // 目標単価・仕入実費・ロック状態はコピー先の値を維持する
-    const keepAdj = (dest: typeof oldEstimate['adjustments'], src: typeof oldEstimate['adjustments']) => ({
+    // 「全内訳を転記」= 原価内訳（材料建値・スクラップ・工程・物流）のみをコピーする。
+    // 左側で管理する諸元 ＝ adjustments(仕入実費・目標単価・利管費率・各利益率設定)と
+    // 共通諸元(材質名・投入量) は一切差し替えない（コピー先の値を完全に維持）。
+    // ※ 品番・品名・完成品重量・adjustments はトップレベルspread/維持で温存される。
+    const keepSpecMaterial = (dest: typeof oldEstimate['material'], src: typeof oldEstimate['material']) => ({
       ...src,
-      targetUnitPrice: dest.targetUnitPrice,
-      actualPurchasePrice: dest.actualPurchasePrice,
-      targetPriceLocked: dest.targetPriceLocked,
+      materialName: dest.materialName,
+      inputWeightG: dest.inputWeightG,
     });
     if (fromNew) {
-      onChangeOld({ ...oldEstimate, material: { ...newEstimate.material }, processes: newEstimate.processes.map(p => ({ ...p })), logistics: { ...newEstimate.logistics }, adjustments: keepAdj(oldEstimate.adjustments, newEstimate.adjustments) });
+      onChangeOld({ ...oldEstimate, material: keepSpecMaterial(oldEstimate.material, newEstimate.material), processes: newEstimate.processes.map(p => ({ ...p })), logistics: { ...newEstimate.logistics } });
     } else {
-      onChangeNew({ ...newEstimate, material: { ...oldEstimate.material }, processes: oldEstimate.processes.map(p => ({ ...p })), logistics: { ...oldEstimate.logistics }, adjustments: keepAdj(newEstimate.adjustments, oldEstimate.adjustments) });
+      onChangeNew({ ...newEstimate, material: keepSpecMaterial(newEstimate.material, oldEstimate.material), processes: oldEstimate.processes.map(p => ({ ...p })), logistics: { ...oldEstimate.logistics } });
     }
   };
 
@@ -322,6 +323,9 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       baseLotSize: oldEstimate.baseLotSize,
       material: {
         ...oldEstimate.material,
+        // 共通諸元（材質名・投入量）は維持し、原価データのみスライド転記する
+        materialName: newEstimate.material.materialName,
+        inputWeightG: newEstimate.material.inputWeightG,
         basePricePerKg: parseFloat((oldEstimate.material.basePricePerKg * m).toFixed(2)),
         actualBasePricePerKg: oldEstimate.material.actualBasePricePerKg != null
           ? parseFloat((oldEstimate.material.actualBasePricePerKg * m).toFixed(2)) : undefined,
@@ -407,10 +411,11 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
           </div>
           <button
             onClick={() => copyFullColumn(!isNew)}
+            title="材料建値・スクラップ・工程・物流（原価内訳）のみ転記します。仕入実費・目標単価・利管費率など左側の諸元は変更しません。"
             className="w-full text-xs font-bold py-1.5 rounded border border-white/30 bg-white/10 hover:bg-white/20 flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
           >
             <Copy className="w-3.5 h-3.5" />
-            {isNew ? '← 旧の全内訳を転記' : '新の全内訳を転記 →'}
+            {isNew ? '← 旧の原価内訳を転記' : '新の原価内訳を転記 →'}
           </button>
           <div className={`flex items-center gap-1.5 mt-2 ${!isNew ? 'invisible pointer-events-none' : ''}`}>
               <div className="relative flex-1">
