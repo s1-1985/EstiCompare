@@ -20,6 +20,7 @@ export interface ProcessRow {
   actualDirectProcessingCost?: number; // 実際の直接加工費 (円)
   actualLumpSumPrice?: number;  // 実際の一式金額 (円/lot)
   actualKgPrice?: number;       // 実際のkg単価 (円/kg)
+  actualProcessingCostPerUnit?: number; // 実態加工費/個（調達先提示の内訳不明な加工費。>0なら実態原価はこれを直接使用）
   changeReason?: string;        // 変動理由メモ（客先説明用）
   locked?: boolean;             // ロック中の工程はAI自動設定・自動補正・AI自動補正で数値を変更しない
 }

@@ -121,6 +121,8 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
 
   const [isInferringOld, setIsInferringOld] = useState(false);
   const [isInferringNew, setIsInferringNew] = useState(false);
+  const [isCostInferOld, setIsCostInferOld] = useState(false);
+  const [isCostInferNew, setIsCostInferNew] = useState(false);
   const [isCalcShippingOld, setIsCalcShippingOld] = useState(false);
   const [isCalcShippingNew, setIsCalcShippingNew] = useState(false);
   const [isGettingScrapOld, setIsGettingScrapOld] = useState(false);
@@ -171,6 +173,60 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     } finally { setLoading(false); }
   };
 
+  // 実態加工費(調達先提示の内訳不明な加工費)から、相場に合う 賃率・出来高・段取 を逆算してAIが客提示内訳に設定する。
+  // 判断材料: 工程名 / 削り代(材料投入−完成品重量) / 製品単価 / ロット。切削は削り代大→タクト長、プレスは短い 等。
+  const handleInferBreakdownFromCost = async (isNew: boolean) => {
+    const est = isNew ? newEstimate : oldEstimate;
+    const setter = isNew ? onChangeNew : onChangeOld;
+    const setLoading = isNew ? setIsCostInferNew : setIsCostInferOld;
+    // 対象: 実態加工費>0 かつ 工程名あり かつ ロック解除 かつ standardモード(賃率/出来高/段取を持つ)
+    const targets = est.processes.filter(p =>
+      p.processName.trim() && !p.locked &&
+      (p.actualProcessingCostPerUnit || 0) > 0 &&
+      getCalcMode(p) === 'standard'
+    );
+    if (targets.length === 0) {
+      showAiResult('実態加工費AI推定', 'error', '対象工程がありません。\n標準モードの工程に「実態加工費(円/個)」を入力してから実行してください（ロック工程は除外）。');
+      return;
+    }
+    setAiModal({ label: '実態加工費から内訳を逆算中...', status: 'loading' });
+    try {
+      setLoading(true);
+      const response = await apiPost('/api/infer-breakdown-from-cost', {
+        processes: targets.map(p => ({ index: p.index, processName: p.processName, actualProcessingCost: p.actualProcessingCostPerUnit })),
+        partNumber: est.partNumber,
+        materialName: est.material.materialName,
+        inputWeightG: est.material.inputWeightG,
+        finishedWeightG: est.finishedWeightG,
+        baseLotSize: est.baseLotSize,
+        productUnitPrice: est.adjustments.targetUnitPrice || 0,
+      }, { onRetryCountdown: setAiRetryCountdown });
+      const { results } = await response.json();
+      if (!results || !Array.isArray(results)) {
+        showAiResult('実態加工費AI推定', 'error', '結果データが取得できませんでした');
+        return;
+      }
+      const newProcs = est.processes.map(proc => {
+        if (proc.locked) return proc;
+        const r = results.find((x: any) => x?.index === proc.index);
+        if (!r) return proc;
+        const rate = typeof r.suggestedHourlyRate === 'number' && r.suggestedHourlyRate > 0
+          ? Math.round(r.suggestedHourlyRate / 100) * 100 : proc.hourlyRate;
+        return {
+          ...proc,
+          yieldPerHour: typeof r.suggestedYieldPerHour === 'number' && r.suggestedYieldPerHour > 0 ? r.suggestedYieldPerHour : proc.yieldPerHour,
+          totalHours: typeof r.suggestedTotalHours === 'number' && r.suggestedTotalHours >= 0 ? r.suggestedTotalHours : proc.totalHours,
+          hourlyRate: rate,
+        };
+      });
+      setter({ ...est, processes: newProcs });
+      showAiResult('実態加工費AI推定', 'success', `${targets.length}工程について、実態加工費から賃率・出来高・段取を逆算して客提示内訳に設定しました。`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '通信エラー';
+      showAiResult('実態加工費AI推定', 'error', `${msg}\n※ログインが必要な機能です`);
+    } finally { setLoading(false); }
+  };
+
   const handleCalculateShipping = async (isNew: boolean) => {
     const est = isNew ? newEstimate : oldEstimate;
     const setter = isNew ? onChangeNew : onChangeOld;
@@ -218,7 +274,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
   };
 
   const updateProcessMeta = (isNew: boolean, index: number, key: keyof ProcessRow, value: any) => {
-    const numericKeys = ['totalHours','yieldPerHour','actualHourlyRate','directProcessingCost','actualDirectProcessingCost','lumpSumPrice','actualLumpSumPrice','kgPrice','actualKgPrice'];
+    const numericKeys = ['totalHours','yieldPerHour','actualHourlyRate','directProcessingCost','actualDirectProcessingCost','lumpSumPrice','actualLumpSumPrice','kgPrice','actualKgPrice','actualProcessingCostPerUnit'];
     const est = isNew ? newEstimate : oldEstimate;
     const setter = isNew ? onChangeNew : onChangeOld;
     setter({
@@ -386,6 +442,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     const est = isNew ? newEstimate : oldEstimate;
     const calc = isNew ? newCalc : oldCalc;
     const isInferring = isNew ? isInferringNew : isInferringOld;
+    const isCostInfer = isNew ? isCostInferNew : isCostInferOld;
     const isCalcShipping = isNew ? isCalcShippingNew : isCalcShippingOld;
     const isGettingScrap = isNew ? isGettingScrapNew : isGettingScrapOld;
 
@@ -615,6 +672,12 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
               <Sparkles className={`w-3 h-3 ${isInferring ? 'animate-spin' : ''}`} />
               {isInferring && aiRetryCountdown !== null ? `${aiRetryCountdown}秒後再試行` : isInferring ? 'AI推定中...' : 'AI自動設定'}
             </button>
+            <button onClick={() => handleInferBreakdownFromCost(isNew)} disabled={isCostInfer}
+              title="各工程の『実態加工費(円/個)』から、相場に合う賃率・出来高・段取を逆算して客提示内訳に設定します（削り代・製品単価・ロットを考慮／ロック工程は除外）"
+              className="text-xs px-2.5 py-1.5 bg-[#1E3A5F] hover:bg-[#16293F] text-white rounded font-bold border border-[#16293F] flex items-center gap-1 cursor-pointer disabled:opacity-50 transition-colors">
+              <Sparkles className={`w-3 h-3 ${isCostInfer ? 'animate-spin' : ''}`} />
+              {isCostInfer && aiRetryCountdown !== null ? `${aiRetryCountdown}秒後再試行` : isCostInfer ? '逆算中...' : '実態加工費AI'}
+            </button>
           </div>
 
           <div className="overflow-x-auto">
@@ -627,7 +690,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                   <th className="py-1.5 px-1 text-right w-28">出来高<Tooltip text="1時間に何個加工できるか。サイクルタイム = 3600÷出来高(秒/個)。" /></th>
                   <th className="py-1.5 px-1 text-right w-20">段取(h)<Tooltip text="段取時間の合計(h)。1個当たり段取費用 = 段取時間 ÷ ロットサイズ × 賃率。" /></th>
                   <th className="py-1.5 px-1 text-right w-28 text-[#B5451B]">客提示賃率<Tooltip text="1時間当たりの加工費単価。客提示用（架空）の値。実際賃率と異なる場合は下の「実態賃率」に入力。" /></th>
-                  <th className="py-1.5 px-1 text-right w-28 text-[#1E3A5F]">実態賃率</th>
+                  <th className="py-1.5 px-1 text-right w-28 text-[#1E3A5F]">実態加工費<Tooltip text="調達先が提示する内訳のわからない加工費（円/個）。入力するとこれを実態原価として直接使用します。上の『実態加工費AI』で、この金額から賃率・出来高・段取を相場逆算して左の客提示内訳に設定できます。" /></th>
                   <th className="py-1.5 px-1 text-right w-20">加工費<Tooltip text="サイクル費用＋段取費用。サイクル費用 = 賃率 ÷ 出来高。段取費用 = 賃率 × 段取時間 ÷ ロットサイズ。" /></th>
                 </tr>
               </thead>
@@ -775,48 +838,17 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                         )}
                       </td>
                       <td className="py-1 px-1">
-                        {mode === 'standard' ? (
-                          <div className="relative">
-                            <input type="number" value={proc.actualHourlyRate || ''}
-                              onChange={(e) => updateProcessMeta(isNew, proc.index, 'actualHourlyRate', e.target.value)}
-                              placeholder="実態"
-                              className="no-spin w-full pl-1.5 pr-7 py-1 text-xs font-mono text-[#1E3A5F] rounded border border-[#C5D8EE] bg-[#EFF4FD]/30 outline-none focus:ring-1" />
-                            <span className="absolute right-0.5 top-1 text-[8px] text-[#1E3A5F]">円/h</span>
-                          </div>
-                        ) : mode === 'kg' ? (
-                          <div className="space-y-0.5">
-                            <div className="relative">
-                              <input type="number" value={proc.actualKgPrice ?? ''}
-                                onChange={(e) => updateProcessMeta(isNew, proc.index, 'actualKgPrice', e.target.value)}
-                                placeholder="実態"
-                                className="w-full pl-1.5 pr-9 py-1 text-xs font-mono text-[#1E3A5F] rounded border border-[#C5D8EE] bg-[#EFF4FD]/30 outline-none focus:ring-1" />
-                              <span className="absolute right-0.5 top-1 text-[8px] text-[#1E3A5F]">実/kg</span>
-                            </div>
-                          </div>
-                        ) : mode === 'lump' ? (
-                          <div className="space-y-0.5">
-                            <div className="relative">
-                              <input type="number" value={proc.actualLumpSumPrice ?? ''}
-                                onChange={(e) => updateProcessMeta(isNew, proc.index, 'actualLumpSumPrice', e.target.value)}
-                                placeholder="実態"
-                                className="w-full pl-1.5 pr-9 py-1 text-xs font-mono text-[#1E3A5F] rounded border border-[#C5D8EE] bg-[#EFF4FD]/30 outline-none focus:ring-1" />
-                              <span className="absolute right-0.5 top-1 text-[8px] text-[#1E3A5F]">実/lot</span>
-                            </div>
-                          </div>
-                        ) : mode === 'direct' ? (
-                          <div className="space-y-0.5">
-                            <div className="relative">
-                              <input type="number" value={proc.actualDirectProcessingCost ?? ''}
-                                onChange={(e) => updateProcessMeta(isNew, proc.index, 'actualDirectProcessingCost', e.target.value)}
-                                placeholder="実態"
-                                className="w-full pl-1.5 pr-7 py-1 text-xs font-mono text-[#1E3A5F] rounded border border-[#C5D8EE] bg-[#EFF4FD]/30 outline-none focus:ring-1" />
-                              <span className="absolute right-0.5 top-1 text-[8px] text-[#1E3A5F]">実/個</span>
-                            </div>
-                          </div>
-                        ) : null}
-                        {mode === 'standard' && (proc.actualHourlyRate || proc.hourlyRate || 0) > 0 && (
+                        {/* 実態加工費/個（調達先提示の内訳不明な加工費）。全モード共通の直接入力。 */}
+                        <div className="relative">
+                          <input type="number" value={proc.actualProcessingCostPerUnit ?? ''}
+                            onChange={(e) => updateProcessMeta(isNew, proc.index, 'actualProcessingCostPerUnit', e.target.value)}
+                            placeholder="実態"
+                            className="no-spin w-full pl-1.5 pr-7 py-1 text-xs font-mono text-[#1E3A5F] rounded border border-[#C5D8EE] bg-[#EFF4FD]/30 outline-none focus:ring-1" />
+                          <span className="absolute right-0.5 top-1 text-[8px] text-[#1E3A5F]">円/個</span>
+                        </div>
+                        {(proc.actualProcessingCostPerUnit || 0) > 0 && (proc.hourlyRate || 0) > 0 && mode === 'standard' && (
                           <div className="text-[8px] mt-0.5 font-mono text-[#1E3A5F]">
-                            {(((proc.actualHourlyRate ?? proc.hourlyRate) || 0) / 60).toFixed(1)}円/分
+                            {(((proc.actualProcessingCostPerUnit || 0) / Math.max(0.0001, costPerUnit)) * 100).toFixed(0)}% vs客提示
                           </div>
                         )}
                       </td>

@@ -182,6 +182,10 @@ function calcClientCost(proc: ProcessRow, finishedWeightG: number, baseLotSize: 
 
 function calcActualCost(proc: ProcessRow, finishedWeightG: number, baseLotSize: number): number {
   if (!proc.processName.trim()) return 0;
+  // 実態加工費/個（調達先提示の内訳不明な加工費）が入っていれば、それを実態原価として直接使う。
+  if (typeof proc.actualProcessingCostPerUnit === 'number' && proc.actualProcessingCostPerUnit > 0) {
+    return proc.actualProcessingCostPerUnit;
+  }
   const mode = resolveProcessCalcMode(proc);
   switch (mode) {
     case 'direct':
