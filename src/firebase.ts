@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore } from 'firebase/firestore';
 
 // Env vars (VITE_FIREBASE_*) take priority.
 // Hardcoded fallback ensures the app works in deployments where env vars are not yet configured.
@@ -17,7 +17,10 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-export const db = getFirestore(app);
+// ignoreUndefinedProperties: 見積データには未設定の実態値(actual*)・任意項目が
+// undefined のまま含まれる。これを無視しないと setDoc/updateDoc が
+// 「Unsupported field value: undefined」で失敗し、シナリオ保存が落ちる。
+export const db = initializeFirestore(app, { ignoreUndefinedProperties: true });
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
@@ -75,5 +78,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   };
   // Log full details server-side / in dev console — never expose to user
   console.error('Firestore Error:', JSON.stringify(errInfo));
-  throw new Error('データの操作に失敗しました。再度お試しください。');
+  // エラーコード（permission-denied / invalid-argument 等）は機密でないため、診断用に提示する
+  const code = (error && typeof error === 'object' && 'code' in error) ? String((error as any).code) : '';
+  throw new Error(`データの操作に失敗しました${code ? `（${code}）` : ''}。再度お試しください。`);
 }

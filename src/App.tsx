@@ -375,7 +375,7 @@ export default function App() {
       }
     } catch (error: any) {
       console.error(error);
-      alert('保存に失敗しました。再度お試しください。');
+      alert(error?.message || '保存に失敗しました。再度お試しください。');
     } finally {
       setIsSaving(false);
     }
