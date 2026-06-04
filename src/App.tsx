@@ -24,6 +24,8 @@ import {
   AlertTriangle,
   Layers,
   Layers3,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 import type { User } from 'firebase/auth';
 import { auth, loginWithGoogle, logout } from './firebase';
@@ -546,16 +548,19 @@ export default function App() {
       if (mode !== 'standard') return 0;
       return (proc.yieldPerHour > 0 ? 1 / proc.yieldPerHour : 0) + (lotSize > 0 ? (proc.totalHours || 0) / lotSize : 0);
     });
-    // 現在の客提示加工費合計（standardは実態賃率で、他はそのまま）
+    // ロック中の工程は調整対象外。現在の客提示加工費をそのまま固定費として扱う。
+    const lockedClientCost = target.processes.reduce((sum, proc, i) =>
+      (proc.processName.trim() && proc.locked) ? sum + (calc.processCosts[i] || 0) : sum, 0);
+    // 現在の客提示加工費合計（standardは実態賃率で、他はそのまま）— ロック工程は除外
     const currentStdCostTemp = target.processes.reduce((sum, proc, i) => {
       const mode = proc.calcMode || (proc.isDirectInput ? 'direct' : proc.kgPrice > 0 ? 'kg' : 'standard');
-      if (!proc.processName.trim() || mode !== 'standard') return sum;
+      if (!proc.processName.trim() || proc.locked || mode !== 'standard') return sum;
       return sum + (processHoursList[i] * (proc.actualHourlyRate ?? proc.hourlyRate ?? 3000));
     }, 0);
-    // non-standard（kg/lump/direct）の客提示コスト合計
+    // non-standard（kg/lump/direct）の客提示コスト合計 — ロック工程は除外
     const nonStdClientCostCurrent = calc.processCosts.reduce((sum, cost, i) => {
       const proc = target.processes[i];
-      if (!proc || !proc.processName.trim()) return sum;
+      if (!proc || !proc.processName.trim() || proc.locked) return sum;
       const mode = proc.calcMode || (proc.isDirectInput ? 'direct' : proc.kgPrice > 0 ? 'kg' : 'standard');
       return mode !== 'standard' ? sum + cost : sum;
     }, 0);
@@ -570,11 +575,12 @@ export default function App() {
     const targetPrimeCost = costFromSell(Y, finalSgaPercent, sgaMode);
     // non-standardも含めて全体をスケール
     const totalCurrentClientCost = currentStdCostTemp + nonStdClientCostCurrent;
-    const targetTotalProcessCost = Math.max(0, targetPrimeCost - materialCost);
+    // ロック工程の固定費を差し引いた残りを、未ロック工程の賃率スケールで埋める
+    const targetTotalProcessCost = Math.max(0, targetPrimeCost - materialCost - lockedClientCost);
     if (totalCurrentClientCost > 0) {
       const multiplier = Math.max(0.1, targetTotalProcessCost / totalCurrentClientCost);
       draftProcesses = target.processes.map((proc) => {
-        if (!proc.processName.trim()) return proc;
+        if (!proc.processName.trim() || proc.locked) return proc;
         const mode = proc.calcMode || (proc.isDirectInput ? 'direct' : proc.kgPrice > 0 ? 'kg' : 'standard');
         if (mode === 'standard') {
           const actRate = proc.actualHourlyRate ?? proc.hourlyRate ?? 3000;
@@ -678,6 +684,7 @@ export default function App() {
     const est = isNew ? newEstimate : oldEstimate;
     const adjustments: any[] = Array.isArray(result.processAdjustments) ? result.processAdjustments : [];
     const updatedProcesses = est.processes.map((proc) => {
+      if (proc.locked) return proc; // ロック工程はAI自動補正で変更しない
       // 賃率調整は standard モードの工程のみ（kg/一式/直接入力は hourlyRate を使わない）。
       const mode = proc.calcMode || (proc.isDirectInput ? 'direct' : proc.kgPrice > 0 ? 'kg' : 'standard');
       if (mode !== 'standard') return proc;
@@ -862,10 +869,6 @@ export default function App() {
   const oldStackPrice = oldCalc.primeCost + oldCalc.shippingCostPerUnit;
   const newStackPrice = newCalc.primeCost + newCalc.shippingCostPerUnit;
 
-  // 架空仕入れをもととした利管費率（targetProfitMarginOffが設定されている場合のみ表示）
-  const oldSellForCalc = oldSell > 0 ? oldSell : oldCalc.grandTotalUnitPrice;
-  const newSellForCalc = newSell > 0 ? newSell : newCalc.grandTotalUnitPrice;
-
   // 架空利管費率（客提示の積み上げ単価に実際に含まれている利管費率）:
   //   原価＝客提示primeCost、売価＝積み上げ単価−送料−その他調整。選択中の方式(外掛け/内掛け)で算出。
   //   ＝ 客が見積書から逆算して読み取る実効利管費率。入力した利管費率にほぼ一致する（sgaFixed分のみ差）。
@@ -880,15 +883,16 @@ export default function App() {
   const oldEmbeddedSgaRate = getEmbeddedSgaRate(oldCalc.grandTotalUnitPrice, oldCalc.shippingCostPerUnit, oldEstimate.adjustments.otherAdjustment || 0, oldCalc.primeCost, oldSgaMode);
   const newEmbeddedSgaRate = getEmbeddedSgaRate(newCalc.grandTotalUnitPrice, newCalc.shippingCostPerUnit, newEstimate.adjustments.otherAdjustment || 0, newCalc.primeCost, newSgaMode);
 
-  // 実態の利益率（内掛け＝原価基準）: 仕入実費が入力されている場合は直接使用（送料を二重計上しない）
+  // 実態利益率: 仕入実費(原価)と積み上げ単価(売価)から算出した【外掛け】利益率
+  //   外掛け = (積み上げ単価 − 仕入実費) ÷ 積み上げ単価 × 100
   const oldActualCostForMarkup = oldEstimate.adjustments.actualPurchasePrice > 0
     ? oldEstimate.adjustments.actualPurchasePrice : oldCalc.actualTotalCost;
   const newActualCostForMarkup = newEstimate.adjustments.actualPurchasePrice > 0
     ? newEstimate.adjustments.actualPurchasePrice : newCalc.actualTotalCost;
-  const oldActualMarkupRate = oldActualCostForMarkup > 0 && oldSellForCalc > 0
-    ? rateFromCostSell(oldActualCostForMarkup, oldSellForCalc, 'margin') : null; // 内掛け=(売価−原価)/原価
-  const newActualMarkupRate = newActualCostForMarkup > 0 && newSellForCalc > 0
-    ? rateFromCostSell(newActualCostForMarkup, newSellForCalc, 'margin') : null;
+  const oldActualMarkupRate = oldActualCostForMarkup > 0 && oldCalc.grandTotalUnitPrice > 0
+    ? rateFromCostSell(oldActualCostForMarkup, oldCalc.grandTotalUnitPrice, 'markup') : null; // 外掛け
+  const newActualMarkupRate = newActualCostForMarkup > 0 && newCalc.grandTotalUnitPrice > 0
+    ? rateFromCostSell(newActualCostForMarkup, newCalc.grandTotalUnitPrice, 'markup') : null;
 
   const showFixedHeader = activeView === 'workspace' && activeSheetTab === 'workspace';
 
@@ -1485,13 +1489,23 @@ export default function App() {
                   目標売値
                   <span className="text-[10px] text-[#9C9490] font-normal ml-1">← 連動</span>
                 </label>
-                <button
-                  onClick={() => setNewEstimate(prev => ({ ...prev, adjustments: { ...prev.adjustments, targetPriceLocked: !prev.adjustments.targetPriceLocked } }))}
-                  title={newEstimate.adjustments.targetPriceLocked ? 'ロック中（クリックで解除）' : '解除中（クリックでロック）'}
-                  className={`shrink-0 w-4 h-4 rounded flex items-center justify-center transition-colors cursor-pointer text-[10px] leading-none ${newEstimate.adjustments.targetPriceLocked ? 'bg-[#1E3A5F] text-white' : 'bg-[#D6D0C8] text-[#6B6057]'}`}
-                >
-                  {newEstimate.adjustments.targetPriceLocked ? '🔒' : '🔓'}
-                </button>
+                {(() => {
+                  const locked = !!newEstimate.adjustments.targetPriceLocked;
+                  return (
+                    <button
+                      onClick={() => setNewEstimate(prev => ({ ...prev, adjustments: { ...prev.adjustments, targetPriceLocked: !prev.adjustments.targetPriceLocked } }))}
+                      title={locked ? 'ロック中（自動補正で目標単価を変えない）— クリックで解除' : '解除中（自動補正で目標単価を調整可）— クリックでロック'}
+                      className="shrink-0 inline-flex items-center gap-1 cursor-pointer group select-none"
+                    >
+                      <Unlock className={`w-3 h-3 transition-colors ${locked ? 'text-[#C8C2B8]' : 'text-[#6B6057]'}`} />
+                      <span className={`relative w-8 h-4 rounded-full border-2 transition-all ${locked ? 'bg-[#1E3A5F] border-[#1E3A5F]' : 'bg-[#E2DED7] border-[#C8C2B8]'}`}>
+                        <span className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white shadow transition-all ${locked ? 'left-4' : 'left-0.5'}`} />
+                      </span>
+                      <Lock className={`w-3 h-3 transition-colors ${locked ? 'text-[#1E3A5F]' : 'text-[#C8C2B8]'}`} />
+                      <span className={`text-[8px] font-black ml-0.5 ${locked ? 'text-[#1E3A5F]' : 'text-[#9C9490]'}`}>{locked ? 'ロック' : '解除'}</span>
+                    </button>
+                  );
+                })()}
               </div>
               <div className="relative">
                 <span className="absolute left-2 top-1 text-xs text-[#9C9490]">¥</span>
@@ -1700,7 +1714,7 @@ export default function App() {
                       {oldEmbeddedSgaRate !== null && <div className="text-[8px] text-[#9C9490] mt-0.5">{oldSgaMode === 'markup' ? '外掛け' : '内掛け'}</div>}
                     </div>
                     <div>
-                      <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#9C9490] leading-none truncate">実態利益率</span><Tooltip text="実際の仕入原価に対して何%の利益を乗せているか（内掛け＝原価基準）。(売値 − 仕入実費) ÷ 仕入実費 × 100" /></div>
+                      <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#9C9490] leading-none truncate">実態利益率</span><Tooltip text="仕入実費(原価)と積み上げ単価(売価)から算出した外掛け利益率。(積み上げ単価 − 仕入実費) ÷ 積み上げ単価 × 100。" /></div>
                       <div className={`font-mono font-black text-sm leading-tight ${oldActualMarkupRate !== null ? profitColorCls(oldActualMarkupRate) : 'text-[#C8C2B8]'}`}>
                         {oldActualMarkupRate !== null ? `${oldActualMarkupRate.toFixed(2)}%` : '—'}
                       </div>
@@ -1913,7 +1927,7 @@ export default function App() {
                       {newEmbeddedSgaRate !== null && <div className="text-[8px] text-[#9C9490] mt-0.5">{newSgaMode === 'markup' ? '外掛け' : '内掛け'}</div>}
                     </div>
                     <div>
-                      <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#9C9490] leading-none truncate">実態利益率</span><Tooltip text="実際の仕入原価に対して何%の利益を乗せているか（内掛け＝原価基準）。(売値 − 仕入実費) ÷ 仕入実費 × 100" /></div>
+                      <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#9C9490] leading-none truncate">実態利益率</span><Tooltip text="仕入実費(原価)と積み上げ単価(売価)から算出した外掛け利益率。(積み上げ単価 − 仕入実費) ÷ 積み上げ単価 × 100。" /></div>
                       <div className={`font-mono font-black text-sm leading-tight ${newActualMarkupRate !== null ? profitColorCls(newActualMarkupRate) : 'text-[#C8C2B8]'}`}>
                         {newActualMarkupRate !== null ? `${newActualMarkupRate.toFixed(2)}%` : '—'}
                       </div>

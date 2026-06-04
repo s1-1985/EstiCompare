@@ -267,7 +267,11 @@ export function calculateEstimate(est: DetailedEstimate): CalculatedSection {
     ? (sgaRate < 1 ? primeCost * sgaRate / (1 - sgaRate) : 0)
     : primeCost * sgaRate;
   const sgaCost = sgaBase + (adjustments.sgaFixedAdjustment || 0);
-  const shippingCostPerUnit = logistics.qtyPerBox > 0 ? (logistics.freightPerBox / logistics.qtyPerBox) : 0;
+  // 送料/個: 直接入力(directShippingPerUnit>0)があれば優先。なければ 運賃/箱 ÷ 入数。
+  const useDirectShip = typeof logistics.directShippingPerUnit === 'number' && logistics.directShippingPerUnit > 0;
+  const shippingCostPerUnit = useDirectShip
+    ? (logistics.directShippingPerUnit as number)
+    : (logistics.qtyPerBox > 0 ? (logistics.freightPerBox / logistics.qtyPerBox) : 0);
   
   // 提示用総見積額 ＝ 材料費 ＋ 加工費 ＋ 利管費 ＋ 送料 ＋ 調整（型費は別途）
   const grandTotalUnitPrice = primeCost + sgaCost + shippingCostPerUnit + (adjustments.otherAdjustment || 0);
@@ -285,7 +289,10 @@ export function calculateEstimate(est: DetailedEstimate): CalculatedSection {
   const actualPrimeCost = actualNetMaterialCost + actualTotalProcessCost;
   
   const actFreight = logistics.actualFreightPerBox ?? logistics.freightPerBox;
-  const actualShippingCost = logistics.qtyPerBox > 0 ? (actFreight / logistics.qtyPerBox) : 0;
+  // 直接入力の送料/個がある場合は実態側もそれを使う（箱データが無くても送料を反映）
+  const actualShippingCost = useDirectShip
+    ? (logistics.directShippingPerUnit as number)
+    : (logistics.qtyPerBox > 0 ? (actFreight / logistics.qtyPerBox) : 0);
 
   // 手動で入力した「実際の仕入単価」がある場合は、それを仕入原価(actualPrimeCost)の代わりに実質製造コストのベースにします。
   // これにより、電卓を使わずに「実際の仕入単価」から利益率・目標値・さらに架空仕入単価を逆算できます。
