@@ -6,7 +6,7 @@ import { apiPost } from '../utils/apiClient';
 import {
   Settings2,
   Sparkles, TrendingUp, Coins,
-  History, Truck, Copy, Package,
+  History, Truck, Copy, Package, Lock, Unlock, Plus,
 } from 'lucide-react';
 
 // ─── Visual sub-components ───────────────────────────────────────────────────
@@ -144,7 +144,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     try {
       setLoading(true);
       const response = await apiPost('/api/infer-process-params', {
-        processes: est.processes.filter(p => !p.isDirectInput && p.processName),
+        processes: est.processes.filter(p => !p.isDirectInput && !p.locked && p.processName),
         partNumber: est.partNumber,
       }, { onRetryCountdown: setAiRetryCountdown });
       const { results } = await response.json();
@@ -152,7 +152,8 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
         showAiResult('AI工程パラメータ推定', 'error', '結果データが取得できませんでした');
         return;
       }
-      const filtered = est.processes.filter(p => !p.isDirectInput && p.processName.trim());
+      // ロック工程はAI自動設定の対象外（数値を変更しない）
+      const filtered = est.processes.filter(p => !p.isDirectInput && !p.locked && p.processName.trim());
       const newProcs = [...est.processes];
       results.forEach((res: any, i: number) => {
         if (i >= filtered.length) return;
@@ -248,19 +249,34 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     else onChangeNew({ ...newEstimate, processes: oldEstimate.processes.map(p => ({ ...p })) });
   };
 
+  // 工程行を1つ追加（工程数の上限なし）
+  const addProcess = (isNew: boolean) => {
+    const est = isNew ? newEstimate : oldEstimate;
+    const setter = isNew ? onChangeNew : onChangeOld;
+    const nextIndex = est.processes.length > 0 ? Math.max(...est.processes.map(p => p.index)) + 1 : 1;
+    setter({
+      ...est,
+      processes: [
+        ...est.processes,
+        { index: nextIndex, processName: '', workContent: '', hourlyRate: 0, totalHours: 0, yieldPerHour: 0, kgPrice: 0, isDirectInput: false, directProcessingCost: 0 },
+      ],
+    });
+  };
+
   const copyFullColumn = (fromNew: boolean) => {
-    // 全内訳転記: material/processes/logistics/SGA設定はコピーするが、
-    // 目標単価・仕入実費・ロック状態はコピー先の値を維持する
-    const keepAdj = (dest: typeof oldEstimate['adjustments'], src: typeof oldEstimate['adjustments']) => ({
+    // 「全内訳を転記」= 原価内訳（材料建値・スクラップ・工程・物流）のみをコピーする。
+    // 左側で管理する諸元 ＝ adjustments(仕入実費・目標単価・利管費率・各利益率設定)と
+    // 共通諸元(材質名・投入量) は一切差し替えない（コピー先の値を完全に維持）。
+    // ※ 品番・品名・完成品重量・adjustments はトップレベルspread/維持で温存される。
+    const keepSpecMaterial = (dest: typeof oldEstimate['material'], src: typeof oldEstimate['material']) => ({
       ...src,
-      targetUnitPrice: dest.targetUnitPrice,
-      actualPurchasePrice: dest.actualPurchasePrice,
-      targetPriceLocked: dest.targetPriceLocked,
+      materialName: dest.materialName,
+      inputWeightG: dest.inputWeightG,
     });
     if (fromNew) {
-      onChangeOld({ ...oldEstimate, material: { ...newEstimate.material }, processes: newEstimate.processes.map(p => ({ ...p })), logistics: { ...newEstimate.logistics }, adjustments: keepAdj(oldEstimate.adjustments, newEstimate.adjustments) });
+      onChangeOld({ ...oldEstimate, material: keepSpecMaterial(oldEstimate.material, newEstimate.material), processes: newEstimate.processes.map(p => ({ ...p })), logistics: { ...newEstimate.logistics } });
     } else {
-      onChangeNew({ ...newEstimate, material: { ...oldEstimate.material }, processes: oldEstimate.processes.map(p => ({ ...p })), logistics: { ...oldEstimate.logistics }, adjustments: keepAdj(newEstimate.adjustments, oldEstimate.adjustments) });
+      onChangeNew({ ...newEstimate, material: keepSpecMaterial(newEstimate.material, oldEstimate.material), processes: oldEstimate.processes.map(p => ({ ...p })), logistics: { ...oldEstimate.logistics } });
     }
   };
 
@@ -285,7 +301,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     setter({ ...target, processes: target.processes.map(proc => proc.index === index ? { ...proc, [key]: isNaN(parsed) ? 0 : parsed } : proc) });
   };
 
-  const updateLogisticsRates = (isNew: boolean, key: 'qtyPerBox' | 'freightPerBox' | 'actualFreightPerBox' | 'originPrefecture' | 'destinationPrefecture', value: any) => {
+  const updateLogisticsRates = (isNew: boolean, key: 'qtyPerBox' | 'freightPerBox' | 'actualFreightPerBox' | 'directShippingPerUnit' | 'originPrefecture' | 'destinationPrefecture', value: any) => {
     const target = isNew ? newEstimate : oldEstimate;
     const setter = isNew ? onChangeNew : onChangeOld;
     if (key === 'originPrefecture' || key === 'destinationPrefecture') {
@@ -322,6 +338,9 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       baseLotSize: oldEstimate.baseLotSize,
       material: {
         ...oldEstimate.material,
+        // 共通諸元（材質名・投入量）は維持し、原価データのみスライド転記する
+        materialName: newEstimate.material.materialName,
+        inputWeightG: newEstimate.material.inputWeightG,
         basePricePerKg: parseFloat((oldEstimate.material.basePricePerKg * m).toFixed(2)),
         actualBasePricePerKg: oldEstimate.material.actualBasePricePerKg != null
           ? parseFloat((oldEstimate.material.actualBasePricePerKg * m).toFixed(2)) : undefined,
@@ -407,10 +426,11 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
           </div>
           <button
             onClick={() => copyFullColumn(!isNew)}
+            title="材料建値・スクラップ・工程・物流（原価内訳）のみ転記します。仕入実費・目標単価・利管費率など左側の諸元は変更しません。"
             className="w-full text-xs font-bold py-1.5 rounded border border-white/30 bg-white/10 hover:bg-white/20 flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
           >
             <Copy className="w-3.5 h-3.5" />
-            {isNew ? '← 旧の全内訳を転記' : '新の全内訳を転記 →'}
+            {isNew ? '← 旧の原価内訳を転記' : '新の原価内訳を転記 →'}
           </button>
           <div className={`flex items-center gap-1.5 mt-2 ${!isNew ? 'invisible pointer-events-none' : ''}`}>
               <div className="relative flex-1">
@@ -624,8 +644,17 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                     ? (proc.hourlyRate || 0) / (oldProc!.hourlyRate || 0) : null;
                   return (
                     <React.Fragment key={proc.index}>
-                    <tr className="hover:bg-[#FAFAF8]">
-                      <td className="py-1 px-1 text-center text-[9px] text-[#3A3028] font-mono">#{proc.index}</td>
+                    <tr className={`hover:bg-[#FAFAF8] ${proc.locked ? 'bg-[#EFF4FD]/40' : ''}`}>
+                      <td className="py-1 px-1 text-center">
+                        <div className="text-[9px] text-[#3A3028] font-mono mb-0.5">#{proc.index}</div>
+                        <button
+                          onClick={() => updateProcessMeta(isNew, proc.index, 'locked', !proc.locked)}
+                          title={proc.locked ? 'ロック中：AI自動設定・自動補正・AI自動補正で変更しない（クリックで解除）' : '解除中：自動調整の対象（クリックでロック）'}
+                          className={`w-5 h-5 rounded flex items-center justify-center cursor-pointer transition-colors mx-auto ${proc.locked ? 'bg-[#1E3A5F] text-white' : 'bg-[#F0EDE8] text-[#9C9490] hover:bg-[#E2DED7]'}`}
+                        >
+                          {proc.locked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+                        </button>
+                      </td>
                       <td className="py-1 px-1.5">
                         <input type="text" value={proc.processName}
                           onChange={(e) => updateProcessMeta(isNew, proc.index, 'processName', e.target.value)}
@@ -822,6 +851,14 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
             </table>
           </div>
 
+          <button
+            onClick={() => addProcess(isNew)}
+            className={`w-full mt-1.5 py-1.5 text-xs font-bold rounded border border-dashed flex items-center justify-center gap-1 cursor-pointer transition-all hover:opacity-70 ${colAccentBorder} ${colAccentText} ${colAccentBg}`}
+            title="工程行を追加（上限なし）"
+          >
+            <Plus className="w-3.5 h-3.5" /> 工程を追加
+          </button>
+
           <div className={`flex justify-between text-xs px-3 py-1.5 mt-2 ${colAccentBg} rounded border ${colAccentBorder}`}>
             <span className={`font-bold ${colAccentText}`}>加工費合計</span>
             <span className={`font-mono font-black ${colAccentText}`}>¥{calc.totalProcessCost.toFixed(2)}</span>
@@ -897,8 +934,25 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
             </div>
           </div>
 
+          <div className="flex items-center justify-between gap-2 pt-1 border-t border-dashed border-[#E2DED7]">
+            <label className="text-xs font-bold text-[#18130F] shrink-0">
+              送料/個 直接入力
+              <span className="block text-[8px] text-[#9C9490] font-normal">入力時は箱計算より優先</span>
+            </label>
+            <div className="relative w-48 flex-none">
+              <span className="absolute left-2.5 top-1.5 text-[10px] text-[#3A3028]">¥</span>
+              <input type="number" value={est.logistics.directShippingPerUnit || ''}
+                onChange={(e) => updateLogisticsRates(isNew, 'directShippingPerUnit', e.target.value)}
+                placeholder="箱計算を使う場合は空欄"
+                className={`${inp} pl-6 font-bold ${(est.logistics.directShippingPerUnit || 0) > 0 ? 'border-[#1A6B3A] bg-[#E8F5EC]' : 'border-[#D6D0C8] bg-white'}`} />
+            </div>
+          </div>
+
           <div className={`flex justify-between text-xs px-3 py-1.5 ${colAccentBg} rounded border ${colAccentBorder}`}>
-            <span className={`font-bold ${colAccentText}`}>送料/個</span>
+            <span className={`font-bold ${colAccentText}`}>
+              送料/個
+              {(est.logistics.directShippingPerUnit || 0) > 0 && <span className="ml-1 text-[8px] font-bold text-[#1A6B3A]">直接</span>}
+            </span>
             <span className={`font-mono font-black ${colAccentText}`}>¥{calc.shippingCostPerUnit.toFixed(2)}</span>
           </div>
         </div>

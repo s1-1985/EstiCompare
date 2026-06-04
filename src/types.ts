@@ -21,6 +21,7 @@ export interface ProcessRow {
   actualLumpSumPrice?: number;  // 実際の一式金額 (円/lot)
   actualKgPrice?: number;       // 実際のkg単価 (円/kg)
   changeReason?: string;        // 変動理由メモ（客先説明用）
+  locked?: boolean;             // ロック中の工程はAI自動設定・自動補正・AI自動補正で数値を変更しない
 }
 
 export interface MaterialComputation {
@@ -39,6 +40,7 @@ export interface LogisticsComputation {
   qtyPerBox: number;               // 1箱の入数
   freightPerBox: number;           // 【客提示用】1箱の運賃
   actualFreightPerBox?: number;    // 実際の1箱の運賃
+  directShippingPerUnit?: number;  // 【客提示用】送料/個を直接入力（>0なら箱計算より優先）
   originPrefecture?: string;       // 発送元都道府県
   destinationPrefecture?: string;  // 送付先都道府県
 }

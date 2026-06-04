@@ -1,7 +1,7 @@
-import { useRef, useState, Fragment } from 'react';
+import { useRef, useState, Fragment, type CSSProperties } from 'react';
 import { Printer, Download } from 'lucide-react';
 import { DetailedEstimate } from '../types';
-import { calculateEstimate, CalculatedSection, rateFromCostSell } from '../utils/calculations';
+import { calculateEstimate, CalculatedSection } from '../utils/calculations';
 
 interface PrintSheetProps {
   oldEstimate: DetailedEstimate;
@@ -28,7 +28,8 @@ function getProcessCostDetail(proc: import('../types').ProcessRow): string {
   if (mode === 'kg') return `${fmtInt(proc.kgPrice)}円/kg`;
   if (mode === 'lump') return `一式${fmtInt(proc.lumpSumPrice || 0)}円`;
   if (mode === 'direct') return `${fmt(proc.directProcessingCost)}円/個`;
-  return `${fmtInt(proc.hourlyRate)}円/h`;
+  // 標準工程は賃率(円/h)ではなく分単価(円/分)を見積書に記載する
+  return `${fmt(proc.hourlyRate / 60, 1)}円/分`;
 }
 
 interface EstimateBlockProps {
@@ -42,6 +43,11 @@ function EstimateBlock({ label, est, calc, tag }: EstimateBlockProps) {
   const bgHeader = tag === 'old' ? '#2A4A7F' : '#1A6B3A';
   const bgHeaderLight = tag === 'old' ? '#EBF0FA' : '#E8F5EC';
   const borderColor = tag === 'old' ? '#2A4A7F' : '#1A6B3A';
+  const named = est.processes.filter(p => p.processName.trim());
+
+  const sectionTitle: CSSProperties = { fontWeight: 'bold', fontSize: 13, color: borderColor, marginBottom: 5, borderBottom: `1.5px solid ${borderColor}`, paddingBottom: 3 };
+  const th: CSSProperties = { border: '1px solid #BBB', padding: '5px 6px', fontWeight: 'bold', whiteSpace: 'nowrap' };
+  const td: CSSProperties = { border: '1px solid #DDD', padding: '5px 6px', wordBreak: 'break-word' };
 
   return (
     <div
@@ -51,97 +57,93 @@ function EstimateBlock({ label, est, calc, tag }: EstimateBlockProps) {
         borderRadius: 4,
         overflow: 'hidden',
         fontFamily: '"Noto Sans JP", "Meiryo", sans-serif',
-        fontSize: 10,
+        fontSize: 12,
+        boxSizing: 'border-box',
+        width: '100%',
         pageBreakInside: 'avoid',
       }}
     >
       {/* Block header */}
-      <div style={{ background: bgHeader, color: 'white', padding: '4px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontWeight: 'bold', fontSize: 12 }}>御 見 積 書 【{label}】</span>
-        <span style={{ fontSize: 10 }}>作成日: {est.date || '—'}</span>
+      <div style={{ background: bgHeader, color: 'white', padding: '8px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontWeight: 'bold', fontSize: 17, letterSpacing: 2 }}>御 見 積 書 【{label}】</span>
+        <span style={{ fontSize: 11 }}>作成日: {est.date || '—'}</span>
       </div>
 
-      {/* Part info row */}
-      <div style={{ background: bgHeaderLight, padding: '4px 10px', display: 'flex', gap: 24, flexWrap: 'wrap', borderBottom: `1px solid ${borderColor}` }}>
+      {/* Part info row — full-width grid */}
+      <div style={{ background: bgHeaderLight, padding: '7px 14px', borderBottom: `1px solid ${borderColor}`, display: 'grid', gridTemplateColumns: '1.4fr 1.4fr 1fr 1fr', gap: '3px 16px', fontSize: 12.5 }}>
         <span><strong>品番:</strong> {est.partNumber || '—'}</span>
-        {est.partName && <span><strong>品名:</strong> {est.partName}</span>}
+        <span><strong>品名:</strong> {est.partName || '—'}</span>
         <span><strong>見積基準数:</strong> {fmtInt(est.baseLotSize)} {est.lotUnit}</span>
         <span><strong>完成品重量:</strong> {fmtInt(est.finishedWeightG)} g</span>
       </div>
 
-      <div style={{ display: 'flex', gap: 0 }}>
+      <div style={{ display: 'flex', boxSizing: 'border-box' }}>
         {/* Left: Material + Process */}
-        <div style={{ flex: 1, minWidth: 0, borderRight: `1px solid #D0D0D0` }}>
+        <div style={{ flex: 1, minWidth: 0, borderRight: `1px solid #D0D0D0`, boxSizing: 'border-box' }}>
 
           {/* Material */}
-          <div style={{ padding: '4px 8px', borderBottom: '1px solid #D0D0D0' }}>
-            <div style={{ fontWeight: 'bold', fontSize: 10, color: borderColor, marginBottom: 3, borderBottom: `1px solid ${borderColor}`, paddingBottom: 2 }}>
-              ■ 材料
-            </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
+          <div style={{ padding: '7px 12px', borderBottom: '1px solid #D0D0D0' }}>
+            <div style={sectionTitle}>■ 材料</div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <tbody>
                 <tr>
                   <td style={{ color: '#555', paddingRight: 6, whiteSpace: 'nowrap' }}>材質・寸法:</td>
                   <td style={{ fontWeight: 'bold' }}>{est.material.materialName || '—'}</td>
-                  <td style={{ color: '#555', paddingRight: 6, paddingLeft: 12, whiteSpace: 'nowrap' }}>投入重量:</td>
+                  <td style={{ color: '#555', padding: '0 6px 0 14px', whiteSpace: 'nowrap' }}>投入重量:</td>
                   <td><strong>{fmtInt(est.material.inputWeightG)}</strong> g</td>
-                  <td style={{ color: '#555', paddingRight: 6, paddingLeft: 12, whiteSpace: 'nowrap' }}>建値:</td>
+                  <td style={{ color: '#555', padding: '0 6px 0 14px', whiteSpace: 'nowrap' }}>建値:</td>
                   <td><strong>{fmtInt(est.material.basePricePerKg)}</strong> 円/kg</td>
                 </tr>
                 <tr>
                   <td style={{ color: '#555', paddingRight: 6, whiteSpace: 'nowrap' }}>スクラップ重量:</td>
                   <td>{fmtInt(est.material.scrapWeightG)} g</td>
-                  <td style={{ color: '#555', paddingRight: 6, paddingLeft: 12, whiteSpace: 'nowrap' }}>スクラップ単価:</td>
+                  <td style={{ color: '#555', padding: '0 6px 0 14px', whiteSpace: 'nowrap' }}>スクラップ単価:</td>
                   <td>{fmtInt(est.material.scrapPricePerKg)} 円/kg</td>
-                  <td style={{ color: '#555', paddingRight: 6, paddingLeft: 12, whiteSpace: 'nowrap' }}>スクラップ控除:</td>
+                  <td style={{ color: '#555', padding: '0 6px 0 14px', whiteSpace: 'nowrap' }}>スクラップ控除:</td>
                   <td>▲ ¥{fmt(calc.scrapValue)}</td>
                 </tr>
               </tbody>
             </table>
-            <div style={{ marginTop: 3, textAlign: 'right', fontWeight: 'bold', color: borderColor }}>
+            <div style={{ marginTop: 5, textAlign: 'right', fontWeight: 'bold', fontSize: 13, color: borderColor }}>
               材料費/個: ¥{fmt(calc.netMaterialCost)}
             </div>
           </div>
 
           {/* Processes */}
-          <div style={{ padding: '4px 8px' }}>
-            <div style={{ fontWeight: 'bold', fontSize: 10, color: borderColor, marginBottom: 3, borderBottom: `1px solid ${borderColor}`, paddingBottom: 2 }}>
-              ■ 加工工程
-            </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9 }}>
+          <div style={{ padding: '7px 12px' }}>
+            <div style={sectionTitle}>■ 加工工程</div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5, tableLayout: 'fixed' }}>
               <thead>
                 <tr style={{ background: bgHeaderLight }}>
-                  <th style={{ border: '1px solid #CCC', padding: '2px 4px', textAlign: 'center', width: 20 }}>No</th>
-                  <th style={{ border: '1px solid #CCC', padding: '2px 4px', textAlign: 'left' }}>工程名</th>
-                  <th style={{ border: '1px solid #CCC', padding: '2px 4px', textAlign: 'left' }}>作業内容</th>
-                  <th style={{ border: '1px solid #CCC', padding: '2px 4px', textAlign: 'center' }}>計算方式</th>
-                  <th style={{ border: '1px solid #CCC', padding: '2px 4px', textAlign: 'right' }}>単価</th>
-                  <th style={{ border: '1px solid #CCC', padding: '2px 4px', textAlign: 'right' }}>加工費/個</th>
+                  <th style={{ ...th, textAlign: 'center', width: '7%' }}>No</th>
+                  <th style={{ ...th, textAlign: 'left', width: '30%' }}>工程名</th>
+                  <th style={{ ...th, textAlign: 'left', width: '31%' }}>作業内容</th>
+                  <th style={{ ...th, textAlign: 'right', width: '15%' }}>単価</th>
+                  <th style={{ ...th, textAlign: 'right', width: '17%' }}>加工費/個</th>
                 </tr>
               </thead>
               <tbody>
-                {est.processes.filter(p => p.processName.trim()).map((proc, i) => (
+                {named.map((proc, i) => (
                   <Fragment key={i}>
                     <tr style={{ background: i % 2 === 0 ? 'white' : '#F9F9F9' }}>
-                      <td style={{ border: '1px solid #CCC', padding: '2px 4px', textAlign: 'center' }}>{proc.index}</td>
-                      <td style={{ border: '1px solid #CCC', padding: '2px 4px' }}>{proc.processName}</td>
-                      <td style={{ border: '1px solid #CCC', padding: '2px 4px', color: '#555' }}>{proc.workContent || '—'}</td>
-                      <td style={{ border: '1px solid #CCC', padding: '2px 4px', textAlign: 'center' }}>{getModeLabel(proc)}</td>
-                      <td style={{ border: '1px solid #CCC', padding: '2px 4px', textAlign: 'right' }}>{getProcessCostDetail(proc)}</td>
-                      <td style={{ border: '1px solid #CCC', padding: '2px 4px', textAlign: 'right', fontWeight: 'bold' }}>¥{fmt(calc.processCosts[proc.index - 1] ?? 0)}</td>
+                      <td style={{ ...td, textAlign: 'center' }}>{proc.index}</td>
+                      <td style={{ ...td, fontWeight: 'bold' }}>{proc.processName}</td>
+                      <td style={{ ...td, color: '#555' }}>{proc.workContent || '—'}</td>
+                      <td style={{ ...td, textAlign: 'right' }}>{getProcessCostDetail(proc)}</td>
+                      <td style={{ ...td, textAlign: 'right', fontWeight: 'bold' }}>¥{fmt(calc.processCosts[proc.index - 1] ?? 0)}</td>
                     </tr>
                     {proc.changeReason?.trim() && (
                       <tr style={{ background: '#FFFDF0' }}>
-                        <td colSpan={6} style={{ border: '1px solid #CCC', padding: '1px 8px', color: '#8B6914', fontSize: 9, fontStyle: 'italic' }}>
+                        <td colSpan={5} style={{ ...td, color: '#8B6914', fontStyle: 'italic', fontSize: 10.5 }}>
                           └ 変動理由: {proc.changeReason}
                         </td>
                       </tr>
                     )}
                   </Fragment>
                 ))}
-                {est.processes.filter(p => p.processName.trim()).length === 0 && (
+                {named.length === 0 && (
                   <tr>
-                    <td colSpan={6} style={{ border: '1px solid #CCC', padding: '4px', textAlign: 'center', color: '#999' }}>工程なし</td>
+                    <td colSpan={5} style={{ ...td, textAlign: 'center', color: '#999' }}>工程なし</td>
                   </tr>
                 )}
               </tbody>
@@ -150,143 +152,66 @@ function EstimateBlock({ label, est, calc, tag }: EstimateBlockProps) {
         </div>
 
         {/* Right: Cost summary */}
-        <div style={{ width: 180, flexShrink: 0, padding: '6px 8px', fontSize: 10 }}>
-          <div style={{ fontWeight: 'bold', fontSize: 10, color: borderColor, marginBottom: 4, borderBottom: `1px solid ${borderColor}`, paddingBottom: 2 }}>
-            ■ 費用内訳
-          </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
+        <div style={{ width: '33%', flexShrink: 0, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box' }}>
+          <div style={sectionTitle}>■ 費用内訳</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <tbody>
               <tr>
-                <td style={{ color: '#555', padding: '2px 0' }}>直接材料費</td>
-                <td style={{ textAlign: 'right', fontWeight: 'bold', padding: '2px 0' }}>¥{fmt(calc.netMaterialCost)}</td>
+                <td style={{ color: '#555', padding: '3px 0' }}>直接材料費</td>
+                <td style={{ textAlign: 'right', fontWeight: 'bold', padding: '3px 0' }}>¥{fmt(calc.netMaterialCost)}</td>
               </tr>
               {calc.processCosts.map((cost, i) => {
                 const proc = est.processes[i];
                 if (!proc || !proc.processName.trim()) return null;
                 return (
                   <tr key={i}>
-                    <td style={{ color: '#555', padding: '1px 0', fontSize: 9 }}>　{proc.processName}</td>
-                    <td style={{ textAlign: 'right', padding: '1px 0', fontSize: 9 }}>¥{fmt(cost)}</td>
+                    <td style={{ color: '#555', padding: '2px 0', fontSize: 11 }}>　{proc.processName}</td>
+                    <td style={{ textAlign: 'right', padding: '2px 0', fontSize: 11 }}>¥{fmt(cost)}</td>
                   </tr>
                 );
               })}
               <tr style={{ borderTop: '1px solid #CCC' }}>
-                <td style={{ color: '#555', padding: '2px 0' }}>加工費合計</td>
-                <td style={{ textAlign: 'right', fontWeight: 'bold', padding: '2px 0' }}>¥{fmt(calc.totalProcessCost)}</td>
+                <td style={{ color: '#555', padding: '3px 0' }}>加工費合計</td>
+                <td style={{ textAlign: 'right', fontWeight: 'bold', padding: '3px 0' }}>¥{fmt(calc.totalProcessCost)}</td>
               </tr>
               <tr style={{ borderTop: '2px solid #999' }}>
-                <td style={{ padding: '2px 0' }}>直製造原価</td>
-                <td style={{ textAlign: 'right', fontWeight: 'bold', padding: '2px 0' }}>¥{fmt(calc.primeCost)}</td>
+                <td style={{ padding: '3px 0', fontWeight: 'bold' }}>直製造原価</td>
+                <td style={{ textAlign: 'right', fontWeight: 'bold', padding: '3px 0' }}>¥{fmt(calc.primeCost)}</td>
               </tr>
               <tr>
-                <td style={{ color: '#555', padding: '2px 0' }}>利管費 ({est.adjustments.sgaRatePercent}%)</td>
-                <td style={{ textAlign: 'right', padding: '2px 0' }}>¥{fmt(calc.sgaCost)}</td>
+                {/* 見積書上の利管費率は「利管費 ÷ 直製造原価」(内掛け実効率) で表示。
+                    内部が外掛け方式でも、客が金額÷原価で逆算した値と一致させ整合性を保つ。 */}
+                <td style={{ color: '#555', padding: '3px 0' }}>利管費 ({(calc.primeCost > 0 ? (calc.sgaCost / calc.primeCost) * 100 : (est.adjustments.sgaRatePercent || 0)).toFixed(1)}%)</td>
+                <td style={{ textAlign: 'right', padding: '3px 0' }}>¥{fmt(calc.sgaCost)}</td>
               </tr>
               <tr>
-                <td style={{ color: '#555', padding: '2px 0' }}>送料/個</td>
-                <td style={{ textAlign: 'right', padding: '2px 0' }}>¥{fmt(calc.shippingCostPerUnit)}</td>
+                <td style={{ color: '#555', padding: '3px 0' }}>送料/個</td>
+                <td style={{ textAlign: 'right', padding: '3px 0' }}>¥{fmt(calc.shippingCostPerUnit)}</td>
               </tr>
               {est.adjustments.otherAdjustment !== 0 && (
                 <tr>
-                  <td style={{ color: '#555', padding: '2px 0' }}>その他調整</td>
-                  <td style={{ textAlign: 'right', padding: '2px 0' }}>¥{fmt(est.adjustments.otherAdjustment)}</td>
+                  <td style={{ color: '#555', padding: '3px 0' }}>その他調整</td>
+                  <td style={{ textAlign: 'right', padding: '3px 0' }}>¥{fmt(est.adjustments.otherAdjustment)}</td>
                 </tr>
               )}
               <tr style={{ borderTop: '2px solid ' + borderColor, background: bgHeaderLight }}>
-                <td style={{ fontWeight: 'bold', padding: '3px 0', color: borderColor }}>御見積単価</td>
-                <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: 13, padding: '3px 0', color: borderColor }}>
+                <td style={{ fontWeight: 'bold', padding: '5px 4px', color: borderColor, fontSize: 13 }}>御見積単価</td>
+                <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: 16, padding: '5px 4px', color: borderColor }}>
                   ¥{fmt(calc.grandTotalUnitPrice)}
                 </td>
               </tr>
               {est.adjustments.toolingCost > 0 && (
                 <tr style={{ borderTop: '1px dashed #AAA' }}>
-                  <td style={{ color: '#555', padding: '2px 0', fontSize: 9 }}>型費（別途）</td>
-                  <td style={{ textAlign: 'right', padding: '2px 0', fontSize: 9 }}>¥{fmtInt(est.adjustments.toolingCost)}</td>
+                  <td style={{ color: '#555', padding: '3px 0', fontSize: 11 }}>型費（別途）</td>
+                  <td style={{ textAlign: 'right', padding: '3px 0', fontSize: 11 }}>¥{fmtInt(est.adjustments.toolingCost)}</td>
                 </tr>
               )}
             </tbody>
           </table>
-
-          {/* Margin info */}
-          <div style={{ marginTop: 8, borderTop: '1px solid #E0E0E0', paddingTop: 4 }}>
-            <div style={{ fontSize: 9, color: '#666', marginBottom: 2 }}>【社内参考】</div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9 }}>
-              <tbody>
-                <tr>
-                  <td style={{ color: '#777' }}>実原価</td>
-                  <td style={{ textAlign: 'right' }}>¥{fmt(calc.actualTotalCost)}</td>
-                </tr>
-                <tr>
-                  <td style={{ color: '#777' }}>目標売価</td>
-                  <td style={{ textAlign: 'right' }}>¥{fmt(calc.requiredSellingPrice)}</td>
-                </tr>
-                <tr>
-                  <td style={{ color: '#777' }}>実利益率(外)</td>
-                  <td style={{ textAlign: 'right', fontWeight: 'bold', color: calc.actualProfitRate >= 0 ? '#1A6B3A' : '#B5451B' }}>
-                    {fmt(calc.actualProfitRate)}%
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
         </div>
       </div>
     </div>
   );
-}
-
-function buildChecklist(oldEstimate: DetailedEstimate, newEstimate: DetailedEstimate, oldCalc: CalculatedSection, newCalc: CalculatedSection) {
-  const oldPurchase = oldEstimate.adjustments.actualPurchasePrice > 0
-    ? oldEstimate.adjustments.actualPurchasePrice : oldCalc.grandTotalUnitPrice;
-  const oldSell = oldEstimate.adjustments.targetUnitPrice || 0;
-  const oldMarkup = (oldSell > 0 && oldPurchase > 0) ? rateFromCostSell(oldPurchase, oldSell, 'markup') : null; // 外掛け
-
-  const newPurchase = newEstimate.adjustments.actualPurchasePrice > 0
-    ? newEstimate.adjustments.actualPurchasePrice : newCalc.grandTotalUnitPrice;
-  const newSell = newEstimate.adjustments.targetUnitPrice || 0;
-  const newMarkup = (newSell > 0 && newPurchase > 0) ? rateFromCostSell(newPurchase, newSell, 'markup') : null; // 外掛け
-
-  const oldMarginOff = oldEstimate.adjustments.targetProfitMarginOff || 0;
-  const newMarginOff = newEstimate.adjustments.targetProfitMarginOff || 0;
-
-  const hasChangeReason =
-    !!newEstimate.material.changeReason?.trim() ||
-    !!oldEstimate.material.changeReason?.trim() ||
-    newEstimate.processes.some(p => p.processName.trim() && p.changeReason?.trim()) ||
-    oldEstimate.processes.some(p => p.processName.trim() && p.changeReason?.trim());
-
-  return [
-    {
-      label: '旧単価: 社内外掛け ≥ 25%',
-      ok: oldMarkup !== null && oldMarkup >= 25,
-      na: oldMarkup === null,
-      detail: oldMarkup !== null ? `${oldMarkup.toFixed(2)}%` : 'データ不足',
-    },
-    {
-      label: '新単価: 社内外掛け ≥ 25%',
-      ok: newMarkup !== null && newMarkup >= 25,
-      na: newMarkup === null,
-      detail: newMarkup !== null ? `${newMarkup.toFixed(2)}%` : 'データ不足',
-    },
-    {
-      label: '旧単価: 客先内掛け ≤ 15%',
-      ok: oldMarginOff > 0 && oldMarginOff <= 15,
-      na: oldMarginOff === 0,
-      detail: oldMarginOff > 0 ? `${oldMarginOff}%` : '未設定',
-    },
-    {
-      label: '新単価: 客先内掛け ≤ 15%',
-      ok: newMarginOff > 0 && newMarginOff <= 15,
-      na: newMarginOff === 0,
-      detail: newMarginOff > 0 ? `${newMarginOff}%` : '未設定',
-    },
-    {
-      label: '変動理由の記載（工程/材料）',
-      ok: hasChangeReason,
-      na: false,
-      detail: hasChangeReason ? '記載あり' : '未記載',
-    },
-  ];
 }
 
 export function PrintSheet({ oldEstimate, newEstimate }: PrintSheetProps) {
@@ -355,7 +280,7 @@ export function PrintSheet({ oldEstimate, newEstimate }: PrintSheetProps) {
       rows.push(['直接材料費', calc.netMaterialCost]);
       rows.push(['加工費合計', calc.totalProcessCost]);
       rows.push(['直製造原価小計', calc.primeCost]);
-      rows.push([`利管費 (${est.adjustments.sgaRatePercent}%)`, calc.sgaCost]);
+      rows.push([`利管費 (${(calc.primeCost > 0 ? (calc.sgaCost / calc.primeCost) * 100 : (est.adjustments.sgaRatePercent || 0)).toFixed(1)}%)`, calc.sgaCost]);
       rows.push(['送料/個', calc.shippingCostPerUnit]);
       if (est.adjustments.otherAdjustment !== 0) {
         rows.push(['その他調整', est.adjustments.otherAdjustment]);
@@ -476,11 +401,6 @@ export function PrintSheet({ oldEstimate, newEstimate }: PrintSheetProps) {
           boxShadow: '0 2px 16px rgba(0,0,0,0.12)',
         }}
       >
-        {/* Page title */}
-        <div className="no-print" style={{ textAlign: 'center', fontSize: 11, color: '#666', marginBottom: 2 }}>
-          ▼ A4縦 プレビュー（上半分: 旧単価 / 下半分: 新単価）
-        </div>
-
         {/* Old estimate — top half */}
         <div style={{ flex: 1 }}>
           <EstimateBlock label="旧単価" est={oldEstimate} calc={oldCalc} tag="old" />
@@ -503,40 +423,6 @@ export function PrintSheet({ oldEstimate, newEstimate }: PrintSheetProps) {
         <div style={{ flex: 1 }}>
           <EstimateBlock label="新単価" est={newEstimate} calc={newCalc} tag="new" />
         </div>
-
-        {/* E: 客先提出前チェックリスト */}
-        {(() => {
-          const checks = buildChecklist(oldEstimate, newEstimate, oldCalc, newCalc);
-          const allOk = checks.filter(c => !c.na).every(c => c.ok);
-          return (
-            <div style={{ border: `2px solid ${allOk ? '#1A6B3A' : '#B5451B'}`, borderRadius: 4, overflow: 'hidden', fontFamily: '"Noto Sans JP", "Meiryo", sans-serif', fontSize: 10 }}>
-              <div style={{ background: allOk ? '#1A6B3A' : '#B5451B', color: 'white', padding: '4px 10px', fontWeight: 'bold', fontSize: 11, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span>{allOk ? '✓' : '⚠'}</span>
-                <span>客先提出前チェックリスト</span>
-                <span style={{ marginLeft: 'auto', fontSize: 9, fontWeight: 'normal', opacity: 0.8 }}>
-                  {checks.filter(c => !c.na && c.ok).length}/{checks.filter(c => !c.na).length} 項目クリア
-                </span>
-              </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
-                <tbody>
-                  {checks.map((chk, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid #EEEEEE', background: chk.na ? '#F9F9F9' : chk.ok ? '#F0FAF4' : '#FEF0EB' }}>
-                      <td style={{ padding: '3px 8px', width: 22, textAlign: 'center', fontSize: 12 }}>
-                        {chk.na ? '—' : chk.ok ? '✅' : '❌'}
-                      </td>
-                      <td style={{ padding: '3px 6px', fontWeight: chk.ok || chk.na ? 'normal' : 'bold', color: chk.na ? '#999' : chk.ok ? '#1A6B3A' : '#B5451B' }}>
-                        {chk.label}
-                      </td>
-                      <td style={{ padding: '3px 8px', textAlign: 'right', fontFamily: 'monospace', color: chk.na ? '#999' : chk.ok ? '#1A6B3A' : '#B5451B' }}>
-                        {chk.detail}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          );
-        })()}
       </div>
 
       {/* Print styles */}
@@ -553,14 +439,19 @@ export function PrintSheet({ oldEstimate, newEstimate }: PrintSheetProps) {
           #print-area * {
             visibility: visible;
           }
+          /* インラインの width:210mm/padding を !important で上書きし、印刷可能幅(190mm)に収める＝右の見切れ防止 */
           #print-area {
             position: fixed;
             top: 0;
             left: 0;
-            width: 190mm;
-            margin: 0;
-            padding: 0;
-            box-shadow: none;
+            width: 190mm !important;
+            max-width: 190mm !important;
+            min-height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            gap: 6mm !important;
+            box-shadow: none !important;
+            box-sizing: border-box !important;
           }
           .no-print {
             display: none !important;
