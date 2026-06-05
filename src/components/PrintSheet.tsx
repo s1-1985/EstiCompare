@@ -235,6 +235,9 @@ export function PrintSheet({ oldEstimate, newEstimate }: PrintSheetProps) {
     const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
 
+    // 表示は小数点第2位まで（Excel セルへの書き込み前に丸める）
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+
     function estimateToRows(label: string, est: DetailedEstimate, calc: CalculatedSection): (string | number)[][] {
       const rows: (string | number)[][] = [];
       rows.push([`御見積書【${label}】`]);
@@ -251,8 +254,8 @@ export function PrintSheet({ oldEstimate, newEstimate }: PrintSheetProps) {
         est.material.actualBasePricePerKg ?? '',
         est.material.scrapWeightG,
         est.material.scrapPricePerKg,
-        -calc.scrapValue,
-        calc.netMaterialCost,
+        r2(-calc.scrapValue),
+        r2(calc.netMaterialCost),
         est.material.changeReason || '',
       ]);
       rows.push([]);
@@ -272,7 +275,7 @@ export function PrintSheet({ oldEstimate, newEstimate }: PrintSheetProps) {
           mode === 'kg' ? proc.kgPrice : '',
           mode === 'lump' ? (proc.lumpSumPrice ?? '') : '',
           mode === 'direct' ? proc.directProcessingCost : '',
-          calc.processCosts[proc.index - 1] ?? 0,
+          r2(calc.processCosts[proc.index - 1] ?? 0),
           proc.changeReason || '',
         ]);
       });
@@ -280,25 +283,25 @@ export function PrintSheet({ oldEstimate, newEstimate }: PrintSheetProps) {
 
       rows.push(['■ 費用内訳']);
       rows.push(['項目', '金額(円)']);
-      rows.push(['直接材料費', calc.netMaterialCost]);
-      rows.push(['加工費合計', calc.totalProcessCost]);
-      rows.push(['直製造原価小計', calc.primeCost]);
-      rows.push([`利管費 (${(calc.primeCost > 0 ? (calc.sgaCost / calc.primeCost) * 100 : (est.adjustments.sgaRatePercent || 0)).toFixed(1)}%)`, calc.sgaCost]);
-      rows.push(['送料/個', calc.shippingCostPerUnit]);
+      rows.push(['直接材料費', r2(calc.netMaterialCost)]);
+      rows.push(['加工費合計', r2(calc.totalProcessCost)]);
+      rows.push(['直製造原価小計', r2(calc.primeCost)]);
+      rows.push([`利管費 (${(calc.primeCost > 0 ? (calc.sgaCost / calc.primeCost) * 100 : (est.adjustments.sgaRatePercent || 0)).toFixed(1)}%)`, r2(calc.sgaCost)]);
+      rows.push(['送料/個', r2(calc.shippingCostPerUnit)]);
       if (est.adjustments.otherAdjustment !== 0) {
-        rows.push(['その他調整', est.adjustments.otherAdjustment]);
+        rows.push(['その他調整', r2(est.adjustments.otherAdjustment)]);
       }
-      rows.push(['御見積単価', calc.grandTotalUnitPrice]);
+      rows.push(['御見積単価', r2(calc.grandTotalUnitPrice)]);
       if (est.adjustments.toolingCost > 0) {
-        rows.push(['型費（別途）', est.adjustments.toolingCost]);
+        rows.push(['型費（別途）', r2(est.adjustments.toolingCost)]);
       }
       rows.push([]);
       rows.push(['■ 社内参考']);
-      rows.push(['実仕入原価', calc.actualTotalCost]);
-      rows.push(['目標売価(外掛け)', calc.requiredSellingPrice]);
-      rows.push(['下限売価(外掛け)', calc.minRequiredSellingPrice]);
-      rows.push(['実利益率(外掛け%)', calc.actualProfitRate]);
-      rows.push(['辻褄差異', calc.auditVariance]);
+      rows.push(['実仕入原価', r2(calc.actualTotalCost)]);
+      rows.push(['目標売価(外掛け)', r2(calc.requiredSellingPrice)]);
+      rows.push(['下限売価(外掛け)', r2(calc.minRequiredSellingPrice)]);
+      rows.push(['実利益率(外掛け%)', r2(calc.actualProfitRate)]);
+      rows.push(['辻褄差異', r2(calc.auditVariance)]);
       rows.push([]);
 
       return rows;
@@ -340,14 +343,14 @@ export function PrintSheet({ oldEstimate, newEstimate }: PrintSheetProps) {
       ['新旧単価比較サマリー'],
       [],
       ['項目', '旧単価', '新単価', '差額', '変化率(%)'],
-      ['御見積単価', oldCalc.grandTotalUnitPrice, newCalc.grandTotalUnitPrice, diffUnitPrice, diffPct],
-      ['材料費/個', oldCalc.netMaterialCost, newCalc.netMaterialCost, newCalc.netMaterialCost - oldCalc.netMaterialCost, oldCalc.netMaterialCost > 0 ? ((newCalc.netMaterialCost - oldCalc.netMaterialCost) / oldCalc.netMaterialCost) * 100 : 0],
-      ['加工費合計', oldCalc.totalProcessCost, newCalc.totalProcessCost, newCalc.totalProcessCost - oldCalc.totalProcessCost, oldCalc.totalProcessCost > 0 ? ((newCalc.totalProcessCost - oldCalc.totalProcessCost) / oldCalc.totalProcessCost) * 100 : 0],
-      ['直製造原価', oldCalc.primeCost, newCalc.primeCost, newCalc.primeCost - oldCalc.primeCost, oldCalc.primeCost > 0 ? ((newCalc.primeCost - oldCalc.primeCost) / oldCalc.primeCost) * 100 : 0],
-      ['利管費', oldCalc.sgaCost, newCalc.sgaCost, newCalc.sgaCost - oldCalc.sgaCost, oldCalc.sgaCost > 0 ? ((newCalc.sgaCost - oldCalc.sgaCost) / oldCalc.sgaCost) * 100 : 0],
-      ['送料/個', oldCalc.shippingCostPerUnit, newCalc.shippingCostPerUnit, newCalc.shippingCostPerUnit - oldCalc.shippingCostPerUnit, oldCalc.shippingCostPerUnit > 0 ? ((newCalc.shippingCostPerUnit - oldCalc.shippingCostPerUnit) / oldCalc.shippingCostPerUnit) * 100 : 0],
-      ['実原価合計', oldCalc.actualTotalCost, newCalc.actualTotalCost, newCalc.actualTotalCost - oldCalc.actualTotalCost, oldCalc.actualTotalCost > 0 ? ((newCalc.actualTotalCost - oldCalc.actualTotalCost) / oldCalc.actualTotalCost) * 100 : 0],
-      ['実利益率(外%)', oldCalc.actualProfitRate, newCalc.actualProfitRate, newCalc.actualProfitRate - oldCalc.actualProfitRate, ''],
+      ['御見積単価', r2(oldCalc.grandTotalUnitPrice), r2(newCalc.grandTotalUnitPrice), r2(diffUnitPrice), r2(diffPct)],
+      ['材料費/個', r2(oldCalc.netMaterialCost), r2(newCalc.netMaterialCost), r2(newCalc.netMaterialCost - oldCalc.netMaterialCost), r2(oldCalc.netMaterialCost > 0 ? ((newCalc.netMaterialCost - oldCalc.netMaterialCost) / oldCalc.netMaterialCost) * 100 : 0)],
+      ['加工費合計', r2(oldCalc.totalProcessCost), r2(newCalc.totalProcessCost), r2(newCalc.totalProcessCost - oldCalc.totalProcessCost), r2(oldCalc.totalProcessCost > 0 ? ((newCalc.totalProcessCost - oldCalc.totalProcessCost) / oldCalc.totalProcessCost) * 100 : 0)],
+      ['直製造原価', r2(oldCalc.primeCost), r2(newCalc.primeCost), r2(newCalc.primeCost - oldCalc.primeCost), r2(oldCalc.primeCost > 0 ? ((newCalc.primeCost - oldCalc.primeCost) / oldCalc.primeCost) * 100 : 0)],
+      ['利管費', r2(oldCalc.sgaCost), r2(newCalc.sgaCost), r2(newCalc.sgaCost - oldCalc.sgaCost), r2(oldCalc.sgaCost > 0 ? ((newCalc.sgaCost - oldCalc.sgaCost) / oldCalc.sgaCost) * 100 : 0)],
+      ['送料/個', r2(oldCalc.shippingCostPerUnit), r2(newCalc.shippingCostPerUnit), r2(newCalc.shippingCostPerUnit - oldCalc.shippingCostPerUnit), r2(oldCalc.shippingCostPerUnit > 0 ? ((newCalc.shippingCostPerUnit - oldCalc.shippingCostPerUnit) / oldCalc.shippingCostPerUnit) * 100 : 0)],
+      ['実原価合計', r2(oldCalc.actualTotalCost), r2(newCalc.actualTotalCost), r2(newCalc.actualTotalCost - oldCalc.actualTotalCost), r2(oldCalc.actualTotalCost > 0 ? ((newCalc.actualTotalCost - oldCalc.actualTotalCost) / oldCalc.actualTotalCost) * 100 : 0)],
+      ['実利益率(外%)', r2(oldCalc.actualProfitRate), r2(newCalc.actualProfitRate), r2(newCalc.actualProfitRate - oldCalc.actualProfitRate), ''],
     ];
     const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
     wsSummary['!cols'] = [{ wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
