@@ -94,14 +94,17 @@ function EstimateBlock({ label, est, calc, tag }: EstimateBlockProps) {
                   <td style={{ color: '#555', padding: '0 6px 0 14px', whiteSpace: 'nowrap' }}>建値:</td>
                   <td><strong>{fmtInt(est.material.basePricePerKg)}</strong> 円/kg</td>
                 </tr>
-                <tr>
-                  <td style={{ color: '#555', paddingRight: 6, whiteSpace: 'nowrap' }}>スクラップ重量:</td>
-                  <td>{fmtInt(est.material.scrapWeightG)} g</td>
-                  <td style={{ color: '#555', padding: '0 6px 0 14px', whiteSpace: 'nowrap' }}>スクラップ単価:</td>
-                  <td>{fmtInt(est.material.scrapPricePerKg)} 円/kg</td>
-                  <td style={{ color: '#555', padding: '0 6px 0 14px', whiteSpace: 'nowrap' }}>スクラップ控除:</td>
-                  <td>▲ ¥{fmt(calc.scrapValue)}</td>
-                </tr>
+                {/* スクラップ控除が0（スクラップ無し）の場合は見積書に記載しない */}
+                {calc.scrapValue > 0 && (
+                  <tr>
+                    <td style={{ color: '#555', paddingRight: 6, whiteSpace: 'nowrap' }}>スクラップ重量:</td>
+                    <td>{fmtInt(est.material.scrapWeightG)} g</td>
+                    <td style={{ color: '#555', padding: '0 6px 0 14px', whiteSpace: 'nowrap' }}>スクラップ単価:</td>
+                    <td>{fmtInt(est.material.scrapPricePerKg)} 円/kg</td>
+                    <td style={{ color: '#555', padding: '0 6px 0 14px', whiteSpace: 'nowrap' }}>スクラップ控除:</td>
+                    <td>▲ ¥{fmt(calc.scrapValue)}</td>
+                  </tr>
+                )}
               </tbody>
             </table>
             <div style={{ marginTop: 5, textAlign: 'right', fontWeight: 'bold', fontSize: 13, color: borderColor }}>
@@ -404,19 +407,6 @@ export function PrintSheet({ oldEstimate, newEstimate }: PrintSheetProps) {
         {/* Old estimate — top half */}
         <div style={{ flex: 1 }}>
           <EstimateBlock label="旧単価" est={oldEstimate} calc={oldCalc} tag="old" />
-        </div>
-
-        {/* Separator */}
-        <div style={{ borderTop: '2px dashed #CCC', margin: '2mm 0', position: 'relative' }}>
-          <span
-            className="no-print"
-            style={{
-              position: 'absolute', top: -9, left: '50%', transform: 'translateX(-50%)',
-              background: '#F7F6F2', padding: '0 8px', fontSize: 10, color: '#999'
-            }}
-          >
-            ─── 切り取り線 / 改ページ ───
-          </span>
         </div>
 
         {/* New estimate — bottom half */}
