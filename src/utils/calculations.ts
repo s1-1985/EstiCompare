@@ -345,35 +345,38 @@ export function calculateEstimate(est: DetailedEstimate): CalculatedSection {
   const priceVarianceFromTarget = auditVariance;
   const actualProfitAmount = sellingPrice - actualTotalCost;
 
+  // 裏での計算値は小数点第3位で四捨五入（浮動小数点の誤差をカット）
+  const r3 = (n: number) => Math.round(n * 1000) / 1000;
+
   return {
-    rawMaterialCost,
-    scrapValue,
-    netMaterialCost,
-    processCosts,
-    totalProcessCost,
-    primeCost,
-    sgaCost,
-    shippingCostPerUnit,
-    totalOtherExpenses: sgaCost + shippingCostPerUnit + (adjustments.otherAdjustment || 0),
-    grandTotalUnitPrice,
+    rawMaterialCost:             r3(rawMaterialCost),
+    scrapValue:                  r3(scrapValue),
+    netMaterialCost:             r3(netMaterialCost),
+    processCosts:                processCosts.map(r3),
+    totalProcessCost:            r3(totalProcessCost),
+    primeCost:                   r3(primeCost),
+    sgaCost:                     r3(sgaCost),
+    shippingCostPerUnit:         r3(shippingCostPerUnit),
+    totalOtherExpenses:          r3(sgaCost + shippingCostPerUnit + (adjustments.otherAdjustment || 0)),
+    grandTotalUnitPrice:         r3(grandTotalUnitPrice),
 
-    actualNetMaterialCost,
-    actualProcessCosts,
-    actualTotalProcessCost,
-    actualPrimeCost,
-    actualShippingCost,
-    actualTotalCost,
+    actualNetMaterialCost:       r3(actualNetMaterialCost),
+    actualProcessCosts:          actualProcessCosts.map(r3),
+    actualTotalProcessCost:      r3(actualTotalProcessCost),
+    actualPrimeCost:             r3(actualPrimeCost),
+    actualShippingCost:          r3(actualShippingCost),
+    actualTotalCost:             r3(actualTotalCost),
 
-    requiredSellingPrice,
-    minRequiredSellingPrice,
-    suggestedPurchasePriceForClient,
-    makeupGapAmount,
-    actualMarkupTotalAllocated,
-    auditVariance,
+    requiredSellingPrice:        r3(requiredSellingPrice),
+    minRequiredSellingPrice:     r3(minRequiredSellingPrice),
+    suggestedPurchasePriceForClient: r3(suggestedPurchasePriceForClient),
+    makeupGapAmount:             r3(makeupGapAmount),
+    actualMarkupTotalAllocated:  r3(actualMarkupTotalAllocated),
+    auditVariance:               r3(auditVariance),
 
-    adjustedSellingPrice,
-    actualProfitRate,
-    priceVarianceFromTarget,
-    actualProfitAmount
+    adjustedSellingPrice:        r3(adjustedSellingPrice),
+    actualProfitRate:            r3(actualProfitRate),
+    priceVarianceFromTarget:     r3(priceVarianceFromTarget),
+    actualProfitAmount:          r3(actualProfitAmount),
   };
 }
