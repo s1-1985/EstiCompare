@@ -689,7 +689,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                   <th className="py-1.5 px-1 text-center w-10">種別</th>
                   <th className="py-1.5 px-1 text-right w-28">出来高<Tooltip text="1時間に何個加工できるか。サイクルタイム = 3600÷出来高(秒/個)。" /></th>
                   <th className="py-1.5 px-1 text-right w-20">段取(h)<Tooltip text="段取時間の合計(h)。1個当たり段取費用 = 段取時間 ÷ ロットサイズ × 賃率。" /></th>
-                  <th className="py-1.5 px-1 text-right w-28 text-[#B5451B]">客提示賃率<Tooltip text="1時間当たりの加工費単価。客提示用（架空）の値。実際賃率と異なる場合は下の「実態賃率」に入力。" /></th>
+                  <th className="py-1.5 px-1 text-right w-28 text-[#B5451B]">客提示賃率<Tooltip text="1時間当たりの加工費単価（円/h）。客提示用（架空）の賃率です。調達先の実際の加工費は別管理で、右の「実態加工費」欄に入力します。" /></th>
                   <th className="py-1.5 px-1 text-right w-28 text-[#1E3A5F]">実態加工費<Tooltip text="調達先が提示する内訳のわからない加工費（円/個）。入力するとこれを実態原価として直接使用します。上の『実態加工費AI』で、この金額から賃率・出来高・段取を相場逆算して左の客提示内訳に設定できます。" /></th>
                   <th className="py-1.5 px-1 text-right w-20">加工費<Tooltip text="サイクル費用＋段取費用。サイクル費用 = 賃率 ÷ 出来高。段取費用 = 賃率 × 段取時間 ÷ ロットサイズ。" /></th>
                 </tr>

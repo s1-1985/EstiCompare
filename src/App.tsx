@@ -1689,7 +1689,7 @@ export default function App() {
                 <div className="flex-none px-3 py-2 bg-[#FEF3EE] border-b-2 border-[#E8C8BC]">
                   <div className="grid grid-cols-5 gap-x-2">
                     <div className="border-r border-[#E8C8BC] pr-2">
-                      <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#5C5248] leading-none truncate">仕入実費</span><Tooltip text="実際の仕入れ原価。actualPurchasePrice入力時はその値を使用。未入力時は材料費＋加工費＋実際の送料を積み上げた値。" /></div>
+                      <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#5C5248] leading-none truncate">仕入実費</span><Tooltip text="社内の真の仕入れ原価。左側『仕入実費』欄に入力した値をそのまま表示します。未入力（—）の場合は、実態の材料費＋加工費＋実際の送料を積み上げた額を原価とみなし、実態利益率・粗利益の計算に使用します。" /></div>
                       <div className="font-mono font-black text-sm text-[#6B6057] leading-tight">
                         {oldEstimate.adjustments.actualPurchasePrice > 0 ? fmtYen(oldEstimate.adjustments.actualPurchasePrice) : '—'}
                       </div>
@@ -1701,23 +1701,23 @@ export default function App() {
                       </div>
                     </div>
                     <div className="border-r border-[#E8C8BC] pr-2">
+                      <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#5C5248] leading-none truncate">実態利益率</span><Tooltip text="仕入実費(原価)と積み上げ単価(売価)から算出した外掛け利益率。(積み上げ単価 − 仕入実費) ÷ 積み上げ単価 × 100。" /></div>
+                      <div className={`font-mono font-black text-sm leading-tight ${oldActualMarkupRate !== null ? profitColorCls(oldActualMarkupRate) : 'text-[#C8C2B8]'}`}>
+                        {oldActualMarkupRate !== null ? `${oldActualMarkupRate.toFixed(2)}%` : '—'}
+                      </div>
+                    </div>
+                    <div className="border-r border-[#E8C8BC] pr-2">
                       <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#5C5248] leading-none truncate">積み上げ単価</span><Tooltip text="材料費＋加工費（客提示賃率）＋利管費＋送料＋その他調整を積み上げた客提示用の見積単価。" /></div>
                       <div className="font-mono font-black text-sm text-[#18130F] leading-tight">
                         {oldCalc.grandTotalUnitPrice > 0 ? fmtYen(oldCalc.grandTotalUnitPrice) : '—'}
                       </div>
                     </div>
-                    <div className="border-r border-[#E8C8BC] pr-2">
+                    <div>
                       <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#5C5248] leading-none truncate">架空利管費率</span><Tooltip text="客提示の積み上げ単価に実際に含まれる利管費率。材工費(=客提示原価)に対し、積み上げ単価−送料−その他がどれだけ上乗せされているか。客が見積書から逆算して読み取る実効利管費率で、入力した利管費率にほぼ一致します（目標単価から逆算する帳尻利管費率とは別物）。" /></div>
                       <div className={`font-mono font-black text-sm leading-tight ${oldEmbeddedSgaRate !== null ? 'text-amber-700' : 'text-[#C8C2B8]'}`}>
                         {oldEmbeddedSgaRate !== null ? `${oldEmbeddedSgaRate.toFixed(2)}%` : '—'}
                       </div>
                       {oldEmbeddedSgaRate !== null && <div className="text-[8px] text-[#5C5248] mt-0.5">{oldSgaMode === 'markup' ? '外掛け' : '内掛け'}</div>}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#5C5248] leading-none truncate">実態利益率</span><Tooltip text="仕入実費(原価)と積み上げ単価(売価)から算出した外掛け利益率。(積み上げ単価 − 仕入実費) ÷ 積み上げ単価 × 100。" /></div>
-                      <div className={`font-mono font-black text-sm leading-tight ${oldActualMarkupRate !== null ? profitColorCls(oldActualMarkupRate) : 'text-[#C8C2B8]'}`}>
-                        {oldActualMarkupRate !== null ? `${oldActualMarkupRate.toFixed(2)}%` : '—'}
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -1902,7 +1902,7 @@ export default function App() {
                 <div className="flex-none px-3 py-2 bg-[#EEF3FB] border-b-2 border-[#B8CCE8]">
                   <div className="grid grid-cols-5 gap-x-2">
                     <div className="border-r border-[#B8CCE8] pr-2">
-                      <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#5C5248] leading-none truncate">仕入実費</span><Tooltip text="実際の仕入れ原価。actualPurchasePrice入力時はその値を使用。未入力時は材料費＋加工費＋実際の送料を積み上げた値。" /></div>
+                      <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#5C5248] leading-none truncate">仕入実費</span><Tooltip text="社内の真の仕入れ原価。左側『仕入実費』欄に入力した値をそのまま表示します。未入力（—）の場合は、実態の材料費＋加工費＋実際の送料を積み上げた額を原価とみなし、実態利益率・粗利益の計算に使用します。" /></div>
                       <div className="font-mono font-black text-sm text-[#6B6057] leading-tight">
                         {newEstimate.adjustments.actualPurchasePrice > 0 ? fmtYen(newEstimate.adjustments.actualPurchasePrice) : '—'}
                       </div>
@@ -1914,23 +1914,23 @@ export default function App() {
                       </div>
                     </div>
                     <div className="border-r border-[#B8CCE8] pr-2">
+                      <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#5C5248] leading-none truncate">実態利益率</span><Tooltip text="仕入実費(原価)と積み上げ単価(売価)から算出した外掛け利益率。(積み上げ単価 − 仕入実費) ÷ 積み上げ単価 × 100。" /></div>
+                      <div className={`font-mono font-black text-sm leading-tight ${newActualMarkupRate !== null ? profitColorCls(newActualMarkupRate) : 'text-[#C8C2B8]'}`}>
+                        {newActualMarkupRate !== null ? `${newActualMarkupRate.toFixed(2)}%` : '—'}
+                      </div>
+                    </div>
+                    <div className="border-r border-[#B8CCE8] pr-2">
                       <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#5C5248] leading-none truncate">積み上げ単価</span><Tooltip text="材料費＋加工費（客提示賃率）＋利管費＋送料＋その他調整を積み上げた客提示用の見積単価。" /></div>
                       <div className="font-mono font-black text-sm text-[#18130F] leading-tight">
                         {newCalc.grandTotalUnitPrice > 0 ? fmtYen(newCalc.grandTotalUnitPrice) : '—'}
                       </div>
                     </div>
-                    <div className="border-r border-[#B8CCE8] pr-2">
+                    <div>
                       <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#5C5248] leading-none truncate">架空利管費率</span><Tooltip text="客提示の積み上げ単価に実際に含まれる利管費率。材工費(=客提示原価)に対し、積み上げ単価−送料−その他がどれだけ上乗せされているか。客が見積書から逆算して読み取る実効利管費率で、入力した利管費率にほぼ一致します（目標単価から逆算する帳尻利管費率とは別物）。" /></div>
                       <div className={`font-mono font-black text-sm leading-tight ${newEmbeddedSgaRate !== null ? 'text-amber-700' : 'text-[#C8C2B8]'}`}>
                         {newEmbeddedSgaRate !== null ? `${newEmbeddedSgaRate.toFixed(2)}%` : '—'}
                       </div>
                       {newEmbeddedSgaRate !== null && <div className="text-[8px] text-[#5C5248] mt-0.5">{newSgaMode === 'markup' ? '外掛け' : '内掛け'}</div>}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-0.5 mb-1"><span className="text-[9px] font-bold text-[#5C5248] leading-none truncate">実態利益率</span><Tooltip text="仕入実費(原価)と積み上げ単価(売価)から算出した外掛け利益率。(積み上げ単価 − 仕入実費) ÷ 積み上げ単価 × 100。" /></div>
-                      <div className={`font-mono font-black text-sm leading-tight ${newActualMarkupRate !== null ? profitColorCls(newActualMarkupRate) : 'text-[#C8C2B8]'}`}>
-                        {newActualMarkupRate !== null ? `${newActualMarkupRate.toFixed(2)}%` : '—'}
-                      </div>
                     </div>
                   </div>
                 </div>
