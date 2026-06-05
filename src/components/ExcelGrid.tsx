@@ -6,7 +6,7 @@ import { apiPost } from '../utils/apiClient';
 import {
   Settings2,
   Sparkles, TrendingUp, Coins,
-  History, Truck, Copy, Package, Lock, Unlock, Plus,
+  History, Truck, Copy, Package, Lock, Unlock, Plus, ArrowLeftRight,
 } from 'lucide-react';
 
 // ─── Visual sub-components ───────────────────────────────────────────────────
@@ -123,6 +123,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
   const [isInferringNew, setIsInferringNew] = useState(false);
   const [isCostInferOld, setIsCostInferOld] = useState(false);
   const [isCostInferNew, setIsCostInferNew] = useState(false);
+  const [isReconciling, setIsReconciling] = useState(false);
   const [isCalcShippingOld, setIsCalcShippingOld] = useState(false);
   const [isCalcShippingNew, setIsCalcShippingNew] = useState(false);
   const [isGettingScrapOld, setIsGettingScrapOld] = useState(false);
@@ -175,10 +176,14 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
 
   // 実態加工費(調達先提示の内訳不明な加工費)から、相場に合う 賃率・出来高・段取 を逆算してAIが客提示内訳に設定する。
   // 判断材料: 工程名 / 削り代(材料投入−完成品重量) / 製品単価 / ロット。切削は削り代大→タクト長、プレスは短い 等。
+  // ★反対側(新→旧 / 旧→新)の同名工程に既に出来高・段取が入っていれば、それを物理的事実として尊重(固定)し、
+  //   賃率はその固定値と実態加工費から逆算する。両側に無い工程のみAIで出来高・段取を推定する。
   const handleInferBreakdownFromCost = async (isNew: boolean) => {
     const est = isNew ? newEstimate : oldEstimate;
+    const other = isNew ? oldEstimate : newEstimate;
     const setter = isNew ? onChangeNew : onChangeOld;
     const setLoading = isNew ? setIsCostInferNew : setIsCostInferOld;
+    const lot = est.baseLotSize > 0 ? est.baseLotSize : 1;
     // 対象: 実態加工費>0 かつ 工程名あり かつ ロック解除 かつ standardモード(賃率/出来高/段取を持つ)
     const targets = est.processes.filter(p =>
       p.processName.trim() && !p.locked &&
@@ -189,42 +194,136 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       showAiResult('実態加工費AI推定', 'error', '対象工程がありません。\n標準モードの工程に「実態加工費(円/個)」を入力してから実行してください（ロック工程は除外）。');
       return;
     }
-    setAiModal({ label: '実態加工費から内訳を逆算中...', status: 'loading' });
+    // 反対側の同名工程（物理諸元アンカー）。出来高>0の工程のみ採用。
+    const otherByName = new Map<string, ProcessRow>();
+    other.processes.forEach(p => { if (p.processName.trim() && (p.yieldPerHour || 0) > 0) otherByName.set(p.processName.trim(), p); });
+    const anchorOf = (p: ProcessRow): { yield: number; setup: number } | null => {
+      const a = otherByName.get(p.processName.trim());
+      return a ? { yield: a.yieldPerHour, setup: a.totalHours || 0 } : null;
+    };
+    // 実態加工費と確定した出来高・段取から賃率を逆算（100円単位）。
+    const solveRate = (cost: number, yieldPerHour: number, setup: number): number => {
+      const denom = (yieldPerHour > 0 ? 1 / yieldPerHour : 0) + (lot > 0 ? setup / lot : 0);
+      return denom > 0 ? Math.max(0, Math.round((cost / denom) / 100) * 100) : 0;
+    };
+    // AIに出来高・段取を聞く必要があるのは「反対側にアンカーが無い」工程のみ。
+    const needAI = targets.filter(p => !anchorOf(p));
+    setAiModal({ label: needAI.length > 0 ? '実態加工費から内訳を逆算中...' : '反対側の諸元で内訳を整合中...', status: 'loading' });
     try {
       setLoading(true);
-      const response = await apiPost('/api/infer-breakdown-from-cost', {
-        processes: targets.map(p => ({ index: p.index, processName: p.processName, actualProcessingCost: p.actualProcessingCostPerUnit })),
-        partNumber: est.partNumber,
-        materialName: est.material.materialName,
-        inputWeightG: est.material.inputWeightG,
-        finishedWeightG: est.finishedWeightG,
-        baseLotSize: est.baseLotSize,
-        productUnitPrice: est.adjustments.targetUnitPrice || 0,
-      }, { onRetryCountdown: setAiRetryCountdown });
-      const { results } = await response.json();
-      if (!results || !Array.isArray(results)) {
-        showAiResult('実態加工費AI推定', 'error', '結果データが取得できませんでした');
-        return;
+      let results: any[] = [];
+      if (needAI.length > 0) {
+        const response = await apiPost('/api/infer-breakdown-from-cost', {
+          processes: needAI.map(p => ({ index: p.index, processName: p.processName, actualProcessingCost: p.actualProcessingCostPerUnit })),
+          partNumber: est.partNumber,
+          materialName: est.material.materialName,
+          inputWeightG: est.material.inputWeightG,
+          finishedWeightG: est.finishedWeightG,
+          baseLotSize: est.baseLotSize,
+          productUnitPrice: est.adjustments.targetUnitPrice || 0,
+        }, { onRetryCountdown: setAiRetryCountdown });
+        const data = await response.json();
+        if (!data.results || !Array.isArray(data.results)) {
+          showAiResult('実態加工費AI推定', 'error', '結果データが取得できませんでした');
+          return;
+        }
+        results = data.results;
       }
+      let anchoredCount = 0;
       const newProcs = est.processes.map(proc => {
         if (proc.locked) return proc;
-        const r = results.find((x: any) => x?.index === proc.index);
-        if (!r) return proc;
-        const rate = typeof r.suggestedHourlyRate === 'number' && r.suggestedHourlyRate > 0
-          ? Math.round(r.suggestedHourlyRate / 100) * 100 : proc.hourlyRate;
-        return {
-          ...proc,
-          yieldPerHour: typeof r.suggestedYieldPerHour === 'number' && r.suggestedYieldPerHour > 0 ? r.suggestedYieldPerHour : proc.yieldPerHour,
-          totalHours: typeof r.suggestedTotalHours === 'number' && r.suggestedTotalHours >= 0 ? r.suggestedTotalHours : proc.totalHours,
-          hourlyRate: rate,
-        };
+        if (!targets.some(t => t.index === proc.index)) return proc;
+        const cost = proc.actualProcessingCostPerUnit || 0;
+        const anchor = anchorOf(proc);
+        let finalYield: number;
+        let finalSetup: number;
+        if (anchor) {
+          anchoredCount++;
+          finalYield = anchor.yield;
+          finalSetup = anchor.setup;
+        } else {
+          const r = results.find((x: any) => x?.index === proc.index);
+          finalYield = typeof r?.suggestedYieldPerHour === 'number' && r.suggestedYieldPerHour > 0 ? r.suggestedYieldPerHour : proc.yieldPerHour;
+          finalSetup = typeof r?.suggestedTotalHours === 'number' && r.suggestedTotalHours >= 0 ? r.suggestedTotalHours : proc.totalHours;
+        }
+        // 賃率は確定した出来高・段取と実態加工費から逆算（客提示加工費≒実態加工費になる）。
+        const rate = solveRate(cost, finalYield, finalSetup) || proc.hourlyRate;
+        return { ...proc, yieldPerHour: finalYield, totalHours: finalSetup, hourlyRate: rate };
       });
       setter({ ...est, processes: newProcs });
-      showAiResult('実態加工費AI推定', 'success', `${targets.length}工程について、実態加工費から賃率・出来高・段取を逆算して客提示内訳に設定しました。`);
+      const aiCount = targets.length - anchoredCount;
+      const detail = anchoredCount > 0
+        ? `${anchoredCount}工程は反対側の出来高・段取を尊重して賃率を逆算${aiCount > 0 ? `、残り${aiCount}工程はAIで推定` : ''}しました。`
+        : `${aiCount}工程について、実態加工費から賃率・出来高・段取を逆算して客提示内訳に設定しました。`;
+      showAiResult('実態加工費AI推定', 'success', detail);
     } catch (err) {
       const msg = err instanceof Error ? err.message : '通信エラー';
       showAiResult('実態加工費AI推定', 'error', `${msg}\n※ログインが必要な機能です`);
     } finally { setLoading(false); }
+  };
+
+  // 新旧整合: 新旧で同名の標準工程について、出来高・段取(物理諸元)をAIで1つの妥当値に統一する。
+  // 各側の賃率は独立のまま、その側の現在の客提示加工費を維持するよう再計算（価格は動かさず物理前提だけ一致）。
+  const handleReconcileOldNew = async () => {
+    const oldByName = new Map<string, ProcessRow>();
+    oldEstimate.processes.forEach(p => { if (p.processName.trim() && getCalcMode(p) === 'standard') oldByName.set(p.processName.trim(), p); });
+    const pairs: { name: string; o: ProcessRow; n: ProcessRow }[] = [];
+    newEstimate.processes.forEach(n => {
+      if (!n.processName.trim() || getCalcMode(n) !== 'standard') return;
+      const o = oldByName.get(n.processName.trim());
+      if (!o || o.locked || n.locked) return;
+      if ((o.yieldPerHour || 0) <= 0 && (n.yieldPerHour || 0) <= 0) return; // 双方未入力はスキップ
+      pairs.push({ name: n.processName.trim(), o, n });
+    });
+    if (pairs.length === 0) {
+      showAiResult('新旧整合', 'error', '整合できる新旧共通の標準工程がありません。\n（同名・標準モード・ロック解除で、どちらかに出来高が入力されている必要があります）');
+      return;
+    }
+    setAiModal({ label: '新旧の出来高・段取をAIで整合中...', status: 'loading' });
+    try {
+      setIsReconciling(true);
+      const response = await apiPost('/api/reconcile-process-physicals', {
+        processes: pairs.map(p => ({
+          processName: p.name,
+          oldYieldPerHour: p.o.yieldPerHour || 0, oldTotalHours: p.o.totalHours || 0,
+          newYieldPerHour: p.n.yieldPerHour || 0, newTotalHours: p.n.totalHours || 0,
+        })),
+        partNumber: newEstimate.partNumber || oldEstimate.partNumber,
+        materialName: newEstimate.material.materialName,
+        inputWeightG: newEstimate.material.inputWeightG,
+        finishedWeightG: newEstimate.finishedWeightG,
+        baseLotSize: newEstimate.baseLotSize,
+        productUnitPrice: newEstimate.adjustments.targetUnitPrice || oldEstimate.adjustments.targetUnitPrice || 0,
+      }, { onRetryCountdown: setAiRetryCountdown });
+      const { results } = await response.json();
+      if (!results || !Array.isArray(results)) {
+        showAiResult('新旧整合', 'error', '結果データが取得できませんでした');
+        return;
+      }
+      const agreed = new Map<string, { y: number; s: number }>();
+      results.forEach((r: any) => {
+        if (r?.processName) agreed.set(String(r.processName).trim(), { y: Number(r.agreedYieldPerHour) || 0, s: Math.max(0, Number(r.agreedTotalHours) || 0) });
+      });
+      // 各側: 出来高・段取を合意値に置換し、その側の現在の客提示加工費を維持するよう賃率を再計算。
+      const applySide = (est: DetailedEstimate) => {
+        const lot = est.baseLotSize > 0 ? est.baseLotSize : 1;
+        return est.processes.map(proc => {
+          if (proc.locked || getCalcMode(proc) !== 'standard') return proc;
+          const ag = agreed.get(proc.processName.trim());
+          if (!ag || ag.y <= 0) return proc;
+          const curCost = (proc.hourlyRate || 0) * ((proc.yieldPerHour > 0 ? 1 / proc.yieldPerHour : 0) + (lot > 0 ? (proc.totalHours || 0) / lot : 0));
+          const denom = (ag.y > 0 ? 1 / ag.y : 0) + (lot > 0 ? ag.s / lot : 0);
+          const newRate = denom > 0 && curCost > 0 ? Math.max(0, Math.round((curCost / denom) / 100) * 100) : proc.hourlyRate;
+          return { ...proc, yieldPerHour: ag.y, totalHours: ag.s, hourlyRate: newRate };
+        });
+      };
+      onChangeOld({ ...oldEstimate, processes: applySide(oldEstimate) });
+      onChangeNew({ ...newEstimate, processes: applySide(newEstimate) });
+      showAiResult('新旧整合', 'success', `${pairs.length}工程の出来高・段取を新旧で統一しました。各側の客提示加工費は維持し、賃率のみ再計算しています（賃率は新旧で独立）。`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '通信エラー';
+      showAiResult('新旧整合', 'error', `${msg}\n※ログインが必要な機能です`);
+    } finally { setIsReconciling(false); }
   };
 
   const handleCalculateShipping = async (isNew: boolean) => {
@@ -673,10 +772,16 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
               {isInferring && aiRetryCountdown !== null ? `${aiRetryCountdown}秒後再試行` : isInferring ? 'AI推定中...' : 'AI自動設定'}
             </button>
             <button onClick={() => handleInferBreakdownFromCost(isNew)} disabled={isCostInfer}
-              title="各工程の『実態加工費(円/個)』から、相場に合う賃率・出来高・段取を逆算して客提示内訳に設定します（削り代・製品単価・ロットを考慮／ロック工程は除外）"
+              title="各工程の『実態加工費(円/個)』から、相場に合う賃率・出来高・段取を逆算して客提示内訳に設定します（削り代・製品単価・ロットを考慮／ロック工程は除外）。反対側の同名工程に出来高・段取があれば、それを物理的事実として尊重し賃率を逆算します。"
               className="text-xs px-2.5 py-1.5 bg-[#1E3A5F] hover:bg-[#16293F] text-white rounded font-bold border border-[#16293F] flex items-center gap-1 cursor-pointer disabled:opacity-50 transition-colors">
               <Sparkles className={`w-3 h-3 ${isCostInfer ? 'animate-spin' : ''}`} />
               {isCostInfer && aiRetryCountdown !== null ? `${aiRetryCountdown}秒後再試行` : isCostInfer ? '逆算中...' : '実態加工費AI'}
+            </button>
+            <button onClick={handleReconcileOldNew} disabled={isReconciling}
+              title="新旧で同名の標準工程について、出来高・段取をAIで1つの妥当値に統一します。各側の客提示加工費は維持したまま賃率のみ再計算（賃率は新旧で独立）。ロック工程は対象外。"
+              className="text-xs px-2.5 py-1.5 bg-[#6B3FA0] hover:bg-[#56308A] text-white rounded font-bold border border-[#56308A] flex items-center gap-1 cursor-pointer disabled:opacity-50 transition-colors">
+              <ArrowLeftRight className={`w-3 h-3 ${isReconciling ? 'animate-pulse' : ''}`} />
+              {isReconciling && aiRetryCountdown !== null ? `${aiRetryCountdown}秒後再試行` : isReconciling ? '整合中...' : '新旧整合'}
             </button>
           </div>
 
