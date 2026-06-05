@@ -744,6 +744,12 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                             <span className="absolute right-0.5 top-1 text-[8px] text-[#3A3028]">個/h</span>
                           </div>
                         )}
+                        {/* 1個あたりの加工タクト（秒）= 3600 ÷ 出来高 */}
+                        {mode === 'standard' && (proc.yieldPerHour || 0) > 0 && (
+                          <div className="text-[8px] mt-0.5 font-mono text-[#B5451B]">
+                            {(3600 / (proc.yieldPerHour || 1)).toFixed(1)}秒/個
+                          </div>
+                        )}
                         {isNew && oldProc && mode === 'standard' && (
                           <div className={`text-[8px] mt-0.5 font-mono ${yieldMismatch ? 'text-rose-600 font-black' : 'text-[#3A3028]'}`}>
                             旧:{oldProc.yieldPerHour || '—'}{yieldMismatch && ' ⚠ 不一致'}
