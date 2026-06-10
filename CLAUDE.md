@@ -96,17 +96,21 @@ Adjusts client-facing rates proportionally so `auditVariance → 0`:
 
 ### API Endpoints (server.ts)
 
-All endpoints require **Firebase ID token** (`Authorization: Bearer <token>`) and are rate-limited (10 req/min per IP).
+All endpoints require **Firebase ID token** (`Authorization: Bearer <token>`) and are rate-limited in two tiers (30 req/min per IP before auth + 10 req/min per UID after auth).
 
 | Endpoint | Purpose |
 |----------|---------|
-| `POST /api/ping-ai` | Connection health check |
-| `POST /api/parse-estimate` | Text → estimate JSON |
+| `POST /api/ping-ai` | Connection health check (currently unused by frontend) |
+| `POST /api/parse-estimate` | Text → estimate JSON (currently unused by frontend) |
 | `POST /api/compare-estimates` | New/old AI audit report |
-| `POST /api/generate-estimate` | Spec → estimate |
-| `POST /api/infer-process-params` | Process name → yield/rate estimates |
+| `POST /api/generate-estimate` | Spec → estimate (currently unused by frontend) |
+| `POST /api/infer-process-params` | Process name → yield/setup/rate estimates |
+| `POST /api/infer-breakdown-from-cost` | Actual processing cost → reverse-engineer yield/setup/rate |
+| `POST /api/reconcile-process-physicals` | Unify old/new yield & setup for same-name processes |
 | `POST /api/calculate-shipping` | AI freight estimate |
 | `POST /api/get-scrap-price` | AI scrap market price |
+| `POST /api/get-material-price` | AI material base-price market estimate |
+| `POST /api/ai-auto-reconcile` | AI rate-adjustment proposal toward target sell price |
 | `POST /api/analyze-scenario` | Scenario pattern analysis (persisted to Firestore) |
 
 ### Firestore Schema

@@ -56,7 +56,8 @@ function reconcilePattern(
   if (Y <= 0) return { pattern, residual: target - calc.grandTotalUnitPrice };
 
   const materialCost = calc.netMaterialCost;
-  let sgaPercent = Math.min(SGA_MAX, Math.max(SGA_MIN, pattern.sgaRatePercent ?? 15));
+  // 未設定(0)のときは下限5%に張り付かせず中庸値15%を起点にする（新旧比較の一発整合と同じ）
+  let sgaPercent = Math.min(SGA_MAX, Math.max(SGA_MIN, pattern.sgaRatePercent || 15));
   const targetPrimeCost = costFromSell(Y, sgaPercent, sgaMode);
   const targetProcessCost = Math.max(0, targetPrimeCost - materialCost);
   const currentProcessCost = calc.totalProcessCost;
@@ -88,9 +89,20 @@ function reconcilePattern(
     const rawSga = Math.round(rateFromCostSell(recalc.primeCost, Y, sgaMode) * 100) / 100;
     sgaPercent = Math.min(SGA_MAX, Math.max(SGA_MIN, rawSga));
   }
-  const finalPattern: QuantityPattern = { ...pattern, processRates: newRates, sgaRatePercent: sgaPercent };
-  const finalCalc = calculateEstimate(applyPatternOverride(base, finalPattern));
-  return { pattern: finalPattern, residual: finalCalc.grandTotalUnitPrice - target };
+  let finalPattern: QuantityPattern = { ...pattern, processRates: newRates, sgaRatePercent: sgaPercent };
+  let finalCalc = calculateEstimate(applyPatternOverride(base, finalPattern));
+  let residual = finalCalc.grandTotalUnitPrice - target;
+  // 1円未満の端数（賃率100円丸め・SGA率2桁丸めの累積）は利管費固定調整で消し込み、
+  // 積算合計＝目標単価を厳密一致させる（新旧比較の一発整合と同じ挙動）。
+  if (Math.abs(residual) > 0 && Math.abs(residual) < 1) {
+    finalPattern = {
+      ...finalPattern,
+      sgaFixedAdjustment: Math.round((sgaFixed - residual) * 100) / 100,
+    };
+    finalCalc = calculateEstimate(applyPatternOverride(base, finalPattern));
+    residual = finalCalc.grandTotalUnitPrice - target;
+  }
+  return { pattern: finalPattern, residual };
 }
 
 export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({

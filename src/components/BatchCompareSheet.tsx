@@ -42,7 +42,8 @@ function reconcilePart(est: DetailedEstimate): { estimate: DetailedEstimate; res
   if (Y <= 0) return { estimate: est, residual: target - calc.grandTotalUnitPrice };
 
   const materialCost = calc.netMaterialCost;
-  let sgaPercent = Math.min(SGA_MAX, Math.max(SGA_MIN, est.adjustments.sgaRatePercent ?? 15));
+  // 未設定(0)のときは下限5%に張り付かせず中庸値15%を起点にする（新旧比較の一発整合と同じ）
+  let sgaPercent = Math.min(SGA_MAX, Math.max(SGA_MIN, est.adjustments.sgaRatePercent || 15));
   const targetPrimeCost = costFromSell(Y, sgaPercent, mode);
   const targetProcessCost = Math.max(0, targetPrimeCost - materialCost);
   const currentProcessCost = calc.totalProcessCost;
@@ -69,9 +70,23 @@ function reconcilePart(est: DetailedEstimate): { estimate: DetailedEstimate; res
     const rawSga = Math.round(rateFromCostSell(recalc.primeCost, Y, mode) * 100) / 100;
     sgaPercent = Math.min(SGA_MAX, Math.max(SGA_MIN, rawSga));
   }
-  const finalEst: DetailedEstimate = { ...est, processes, adjustments: { ...est.adjustments, sgaRatePercent: sgaPercent } };
-  const finalCalc = calculateEstimate(finalEst);
-  return { estimate: finalEst, residual: finalCalc.grandTotalUnitPrice - target };
+  let finalEst: DetailedEstimate = { ...est, processes, adjustments: { ...est.adjustments, sgaRatePercent: sgaPercent } };
+  let finalCalc = calculateEstimate(finalEst);
+  let residual = finalCalc.grandTotalUnitPrice - target;
+  // 1円未満の端数（賃率100円丸め・SGA率2桁丸めの累積）は利管費固定調整で消し込み、
+  // 積算合計＝目標単価を厳密一致させる（新旧比較の一発整合と同じ挙動）。
+  if (Math.abs(residual) > 0 && Math.abs(residual) < 1) {
+    finalEst = {
+      ...finalEst,
+      adjustments: {
+        ...finalEst.adjustments,
+        sgaFixedAdjustment: Math.round((sgaFixed - residual) * 100) / 100,
+      },
+    };
+    finalCalc = calculateEstimate(finalEst);
+    residual = finalCalc.grandTotalUnitPrice - target;
+  }
+  return { estimate: finalEst, residual };
 }
 
 export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onPartsChange, importSources = [], onBack, onNew }) => {

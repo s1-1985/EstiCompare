@@ -89,8 +89,8 @@ EstiCompare/
 grandTotalUnitPrice = primeCost + sgaCost + shippingCostPerUnit + otherAdjustment
 
 // 利管費（外掛け/内掛け切替: sgaCalcMode）
-// 'markup':  sgaCost = primeCost * sgaRate
-// 'margin':  sgaCost = primeCost * sgaRate / (1 - sgaRate)
+// 'markup'(外掛け): sgaCost = primeCost * sgaRate / (1 - sgaRate)  ← 率は売価基準
+// 'margin'(内掛け): sgaCost = primeCost * sgaRate                  ← 率は原価基準
 
 // 社内実原価（actualPurchasePrice > 0 ならそちらを優先）
 actualTotalCost = baseActualPrimeCost + actualShippingCost
