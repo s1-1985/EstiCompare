@@ -537,7 +537,10 @@ export default function App() {
     const updatedAdjustments = { ...target.adjustments, targetUnitPrice: isNew ? reconciledUnitPrice : target.adjustments.targetUnitPrice };
     const shipping = calc.shippingCostPerUnit;
     const otherAdj = target.adjustments.otherAdjustment || 0;
-    const Y = reconciledUnitPrice - shipping - otherAdj;
+    // 既存の利管費固定調整も積み上げに含まれるため、賃率・SGA率の逆算からは除外しておく
+    // （除外しないと固定調整分がまるごと乖離として残る）。最後に残差吸収で再設定する。
+    const sgaFixed = target.adjustments.sgaFixedAdjustment || 0;
+    const Y = reconciledUnitPrice - shipping - otherAdj - sgaFixed;
     if (Y <= 0) { alert("目標単価が低すぎるため、加工費の自動調整ができません。"); return; }
     const hasAnyProcess = target.processes.some(p => p.processName.trim() !== '');
     if (!hasAnyProcess) { alert("加工費の自動調整対象となる工程が見つかりません。"); return; }
@@ -570,7 +573,8 @@ export default function App() {
     // （旧実装は上限15%と狭く、17〜25%の自然な率でも辻褄が残り「計算がおかしい」原因になっていた）
     const SGA_MIN = 5;
     const SGA_MAX = 25;
-    let finalSgaPercent = Math.min(SGA_MAX, Math.max(SGA_MIN, target.adjustments.sgaRatePercent ?? 15));
+    // 未設定(0)のときは下限5%に張り付かせず、最も怪しまれない中庸値15%（KNOWLEDGE §5-3）を起点にする
+    let finalSgaPercent = Math.min(SGA_MAX, Math.max(SGA_MIN, target.adjustments.sgaRatePercent || 15));
     const materialCost = calc.netMaterialCost;
     const targetPrimeCost = costFromSell(Y, finalSgaPercent, sgaMode);
     // non-standardも含めて全体をスケール
@@ -618,7 +622,7 @@ export default function App() {
           const raisedPrice = Math.ceil(requiredY + (reconciledUnitPrice - Y));
           reconciledUnitPrice = raisedPrice;
           updatedAdjustments.targetUnitPrice = raisedPrice;
-          const adjustedY = raisedPrice - (calc.shippingCostPerUnit) - (target.adjustments.otherAdjustment || 0);
+          const adjustedY = raisedPrice - (calc.shippingCostPerUnit) - (target.adjustments.otherAdjustment || 0) - sgaFixed;
           finalSgaPercent = Math.min(SGA_MAX, Math.max(SGA_MIN, Math.round(rateFromCostSell(tempPrimeCost, adjustedY, sgaMode) * 100) / 100));
         } else {
           // 旧単価 or 新単価ロック: 目標単価固定、SGAをSGA_MINに設定（辻褄は残る）
@@ -634,25 +638,31 @@ export default function App() {
       }
     }
     updatedAdjustments.sgaRatePercent = finalSgaPercent;
+
+    // 最終積み上げと目標の残差を算出（賃率100円丸め・SGA率2桁丸め・SGAクランプの累積誤差）
+    const finalPrimeCost = tempPrimeCost;
+    const finalSgaCost = sgaMode === 'markup'
+      ? (finalSgaPercent < 100 ? finalPrimeCost * (finalSgaPercent / 100) / (1 - finalSgaPercent / 100) : 0)
+      : finalPrimeCost * (finalSgaPercent / 100);
+    const finalGrand = finalPrimeCost + finalSgaCost + sgaFixed + calc.shippingCostPerUnit + otherAdj;
+    const residual = finalGrand - reconciledUnitPrice;
+    if (Math.abs(residual) < 1) {
+      // 1円未満の端数は利管費固定調整(円)で消し込み、見積書の積算合計＝提示単価を厳密一致させる
+      // （0.19円等の端数が見積書に残ると、客先が積算した際に合計が合わず露見リスクになる）
+      updatedAdjustments.sgaFixedAdjustment = Math.round((sgaFixed - residual) * 100) / 100;
+    }
+
     if (isNew) setNewEstimate({ ...target, processes: draftProcesses, adjustments: updatedAdjustments });
     else setOldEstimate({ ...target, processes: draftProcesses, adjustments: updatedAdjustments });
 
     // 辻褄が合わない（auditVariance≠0が残る）場合、AGENTS.md §3に従い前提見直しを促す
-    if (clampedOutOfRange) {
-      const finalPrimeCost = tempPrimeCost;
-      const finalSgaCost = sgaMode === 'markup'
-        ? (finalSgaPercent < 100 ? finalPrimeCost * (finalSgaPercent / 100) / (1 - finalSgaPercent / 100) : 0)
-        : finalPrimeCost * (finalSgaPercent / 100);
-      const finalGrand = finalPrimeCost + finalSgaCost + calc.shippingCostPerUnit + (target.adjustments.otherAdjustment || 0);
-      const residual = finalGrand - reconciledUnitPrice;
-      if (Math.abs(residual) >= 1) {
-        alert(
-          `【辻褄を合わせきれませんでした】\n` +
-          `利管費率を健全範囲(${SGA_MIN}〜${SGA_MAX}%)に収めると、積み上げ単価が目標単価から ${residual > 0 ? '+' : ''}${residual.toFixed(2)}円 ずれます。\n\n` +
-          `これは賃率の調整だけでは辻褄が合わないサインです。AGENTS.mdの原則に従い、` +
-          `出来高(個/h)や段取時間(h)など生産前提の見直し（新旧同時）を検討してください。`
-        );
-      }
+    if (clampedOutOfRange && Math.abs(residual) >= 1) {
+      alert(
+        `【辻褄を合わせきれませんでした】\n` +
+        `利管費率を健全範囲(${SGA_MIN}〜${SGA_MAX}%)に収めると、積み上げ単価が目標単価から ${residual > 0 ? '+' : ''}${residual.toFixed(2)}円 ずれます。\n\n` +
+        `これは賃率の調整だけでは辻褄が合わないサインです。AGENTS.mdの原則に従い、` +
+        `出来高(個/h)や段取時間(h)など生産前提の見直し（新旧同時）を検討してください。`
+      );
     }
   };
 

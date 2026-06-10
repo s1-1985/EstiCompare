@@ -146,9 +146,16 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     setAiModal({ label: 'AI工程パラメータ推定中...', status: 'loading' });
     try {
       setLoading(true);
+      const targetProcs = est.processes.filter(p => !p.isDirectInput && !p.locked && p.processName.trim());
       const response = await apiPost('/api/infer-process-params', {
-        processes: est.processes.filter(p => !p.isDirectInput && !p.locked && p.processName),
+        processes: targetProcs,
         partNumber: est.partNumber,
+        // 推定精度向上のための部品コンテキスト（材質・削り代・ロット・単価目安）
+        materialName: est.material.materialName,
+        inputWeightG: est.material.inputWeightG,
+        finishedWeightG: est.finishedWeightG,
+        baseLotSize: est.baseLotSize,
+        productUnitPrice: est.adjustments.targetUnitPrice || 0,
       }, { onRetryCountdown: setAiRetryCountdown });
       const { results } = await response.json();
       if (!results || !Array.isArray(results)) {
@@ -156,11 +163,13 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
         return;
       }
       // ロック工程はAI自動設定の対象外（数値を変更しない）
-      const filtered = est.processes.filter(p => !p.isDirectInput && !p.locked && p.processName.trim());
+      const filtered = targetProcs;
       const newProcs = [...est.processes];
       results.forEach((res: any, i: number) => {
-        if (i >= filtered.length) return;
-        const pIdx = newProcs.findIndex(p => p.index === filtered[i].index);
+        // AIに渡したリストの1始まり通し番号(res.index)で照合し、欠落・並べ替えに耐える。型不正は位置で代替。
+        const listIdx = (typeof res?.index === 'number' && res.index >= 1 && res.index <= filtered.length) ? res.index - 1 : i;
+        if (listIdx >= filtered.length) return;
+        const pIdx = newProcs.findIndex(p => p.index === filtered[listIdx].index);
         if (pIdx > -1) {
           const suggestedRate = res.suggestedHourlyRate ? Math.round(res.suggestedHourlyRate / 100) * 100 : newProcs[pIdx].hourlyRate;
           newProcs[pIdx] = { ...newProcs[pIdx], totalHours: res.suggestedTotalHours || 0, yieldPerHour: res.suggestedYieldPerHour || 0, hourlyRate: suggestedRate, actualHourlyRate: suggestedRate };
