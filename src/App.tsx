@@ -247,6 +247,7 @@ export default function App() {
   const importIntoMultiPattern = (est: DetailedEstimate) => {
     const cloned: DetailedEstimate = JSON.parse(JSON.stringify(est));
     const snapshot = createPatternFromEstimate(cloned, '', cloned.baseLotSize || 0).processRates;
+    setMpMarket(null);
     setMultiPatternBase(cloned);
     setQuantityPatterns((prev) => {
       const list = prev.length ? prev : seedBlankPatterns();
