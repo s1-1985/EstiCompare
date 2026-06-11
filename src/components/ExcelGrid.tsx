@@ -786,12 +786,14 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
               <Sparkles className={`w-3 h-3 ${isCostInfer ? 'animate-spin' : ''}`} />
               {isCostInfer && aiRetryCountdown !== null ? `${aiRetryCountdown}秒後再試行` : isCostInfer ? '逆算中...' : '実態加工費AI'}
             </button>
-            <button onClick={handleReconcileOldNew} disabled={isReconciling}
-              title="新旧で同名の標準工程について、出来高・段取をAIで1つの妥当値に統一します。各側の客提示加工費は維持したまま賃率のみ再計算（賃率は新旧で独立）。ロック工程は対象外。"
-              className="text-xs px-2.5 py-1.5 bg-[#6B3FA0] hover:bg-[#56308A] text-white rounded font-bold border border-[#56308A] flex items-center gap-1 cursor-pointer disabled:opacity-50 transition-colors">
-              <ArrowLeftRight className={`w-3 h-3 ${isReconciling ? 'animate-pulse' : ''}`} />
-              {isReconciling && aiRetryCountdown !== null ? `${aiRetryCountdown}秒後再試行` : isReconciling ? '整合中...' : '新旧整合'}
-            </button>
+            {!isNew && (
+              <button onClick={handleReconcileOldNew} disabled={isReconciling}
+                title="新旧で同名の標準工程について、出来高・段取をAIで1つの妥当値に統一します。各側の客提示加工費は維持したまま賃率のみ再計算（賃率は新旧で独立）。ロック工程は対象外。"
+                className="text-xs px-2.5 py-1.5 bg-[#6B3FA0] hover:bg-[#56308A] text-white rounded font-bold border border-[#56308A] flex items-center gap-1 cursor-pointer disabled:opacity-50 transition-colors">
+                <ArrowLeftRight className={`w-3 h-3 ${isReconciling ? 'animate-pulse' : ''}`} />
+                {isReconciling && aiRetryCountdown !== null ? `${aiRetryCountdown}秒後再試行` : isReconciling ? '整合中...' : '新旧整合'}
+              </button>
+            )}
           </div>
 
           <div className="overflow-x-auto">
@@ -1162,33 +1164,6 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                 </button>
               </>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* ── 過去履歴 ── */}
-      {historyScenarios.length > 0 && (
-        <div className="p-3 bg-[#FEF0EB] border border-[#F8C9BB] rounded-lg">
-          <div className="flex items-center gap-2 mb-2">
-            <History className="w-3.5 h-3.5 text-[#B5451B] shrink-0" />
-            <span className="text-[10px] font-black text-[#B5451B]">この品番の保存済み見積が {historyScenarios.length} 件あります</span>
-          </div>
-          <div className="space-y-1.5">
-            {historyScenarios.map((s) => (
-              <div key={s.id} className="flex items-center justify-between bg-white rounded px-3 py-2 border border-[#F8C9BB] gap-3">
-                <div className="min-w-0">
-                  <span className="text-xs font-bold text-[#18130F] truncate block">{s.name}</span>
-                  <span className="text-[10px] text-[#3A3028]">
-                    旧: ¥{s.oldEstimate.adjustments.targetUnitPrice.toLocaleString()} → 新: ¥{s.newEstimate.adjustments.targetUnitPrice.toLocaleString()}
-                    {s.updatedAt?.seconds && <span className="ml-2">{new Date(s.updatedAt.seconds * 1000).toLocaleDateString('ja-JP')}</span>}
-                  </span>
-                </div>
-                <button onClick={() => onLoadHistory?.(s.id)}
-                  className="shrink-0 text-[10px] font-bold text-[#B5451B] hover:bg-[#FEF0EB] border border-[#A09488] rounded px-2.5 py-1 cursor-pointer transition-all">
-                  読み込む
-                </button>
-              </div>
-            ))}
           </div>
         </div>
       )}
