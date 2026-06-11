@@ -1729,6 +1729,20 @@ export default function App() {
             <div className="text-[10px] font-black uppercase tracking-widest px-1 pb-0.5" style={{ color: '#B5451B' }}>旧単価</div>
 
             <div>
+              <label className="block text-xs font-bold text-[#18130F] mb-0.5">見積ロット</label>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={oldEstimate.baseLotSize || ''}
+                  onChange={(e) => setOldEstimate(prev => ({ ...prev, baseLotSize: Math.max(1, parseInt(e.target.value) || 1) }))}
+                  placeholder="300"
+                  className={`${sideInp} pr-10 font-bold`}
+                />
+                <span className="absolute right-2 top-1 text-[9px] text-[#5C5248]">個/Lot</span>
+              </div>
+            </div>
+
+            <div>
               <label className="block text-xs font-bold text-[#18130F] mb-0.5">仕入実費</label>
               <div className="relative">
                 <span className="absolute left-2 top-1 text-xs text-[#5C5248]">¥</span>
@@ -1779,7 +1793,7 @@ export default function App() {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-[#18130F] mb-0.5">上限利益率 (%)</label>
+              <label className="block text-xs font-bold text-[#18130F] mb-0.5">上限利益率 / 架空利管費率 (%)</label>
               <input
                 type="number"
                 value={oldEstimate.adjustments.maxProfitRate || ''}
@@ -1787,62 +1801,6 @@ export default function App() {
                 placeholder="例: 35"
                 className={sideInp}
               />
-            </div>
-
-            {/* 利益・利管費設定 for 旧単価 */}
-            <div className="pt-1.5 border-t border-[#F0C0B0]">
-              <div className="text-[9px] font-black text-[#B5451B] uppercase tracking-wide mb-1">利益・利管費設定</div>
-
-              <div className="mb-1.5">
-                <label className="text-[9px] font-bold text-[#18130F] block mb-0.5">利管費率</label>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => toggleSgaMode(false)}
-                    className="shrink-0 flex items-center gap-0.5 cursor-pointer"
-                    title="クリックで内掛け/外掛けを切り替え"
-                  >
-                    <span className={`text-[8px] font-bold transition-colors ${(oldEstimate.adjustments.sgaCalcMode || 'markup') === 'markup' ? 'text-[#B5451B]' : 'text-[#5C5248]'}`}>外</span>
-                    <div className={`relative w-8 h-4 rounded-full border-2 transition-all ${(oldEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? 'bg-[#1E3A5F] border-[#1E3A5F]' : 'bg-[#E8C8BC] border-[#D6A89C]'}`}>
-                      <div className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white shadow transition-all ${(oldEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? 'left-4' : 'left-0.5'}`} />
-                    </div>
-                    <span className={`text-[8px] font-bold transition-colors ${(oldEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? 'text-[#1E3A5F]' : 'text-[#5C5248]'}`}>内</span>
-                  </button>
-                  <div className={`relative flex-1 rounded border ${(oldEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? 'border-blue-300 bg-blue-50' : 'border-orange-300 bg-orange-50'}`}>
-                    <input type="number" value={oldEstimate.adjustments.sgaRatePercent || ''}
-                      onChange={(e) => updateAdj(false, 'sgaRatePercent', e.target.value)}
-                      placeholder="15" step="0.01"
-                      className="w-full pl-1.5 pr-5 py-0.5 text-[11px] font-mono font-bold bg-transparent outline-none focus:ring-1 focus:ring-[#B5451B]/30" />
-                    <span className="absolute right-1 top-0.5 text-[8px] text-[#5C5248]">%</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mb-1">
-                <label className="text-[9px] font-bold text-[#18130F] block mb-0.5">客向け内掛け率 (%)</label>
-                <div className="relative">
-                  <input type="number" value={oldEstimate.adjustments.targetProfitMarginOff || ''}
-                    onChange={(e) => updateOldAdj('targetProfitMarginOff', e.target.value)}
-                    placeholder="例: 15"
-                    className={`${sideInp} pr-5`} />
-                  <span className="absolute right-2 top-1 text-[9px] text-[#5C5248]">%</span>
-                </div>
-              </div>
-
-              <div className="mb-1">
-                <label className="text-[9px] font-bold text-[#18130F] block mb-0.5">利管費固定調整 (¥)</label>
-                <input type="number" value={oldEstimate.adjustments.sgaFixedAdjustment || ''}
-                  onChange={(e) => updateOldAdj('sgaFixedAdjustment', e.target.value)}
-                  placeholder="0"
-                  className={sideInp} />
-              </div>
-
-              <div className="mb-1">
-                <label className="text-[9px] font-bold text-[#18130F] block mb-0.5">その他調整 (¥)</label>
-                <input type="number" value={oldEstimate.adjustments.otherAdjustment || ''}
-                  onChange={(e) => updateOldAdj('otherAdjustment', e.target.value)}
-                  placeholder="0"
-                  className={sideInp} />
-              </div>
             </div>
 
             <div>
@@ -1861,6 +1819,20 @@ export default function App() {
           {/* 新単価 KPI section */}
           <div className="p-2 space-y-1.5 bg-[#F0F5FF]" style={{ borderTop: '3px solid #1E3A5F' }}>
             <div className="text-[10px] font-black uppercase tracking-widest px-1 pb-0.5" style={{ color: '#1E3A5F' }}>新単価</div>
+
+            <div>
+              <label className="block text-xs font-bold text-[#18130F] mb-0.5">見積ロット</label>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={newEstimate.baseLotSize || ''}
+                  onChange={(e) => setNewEstimate(prev => ({ ...prev, baseLotSize: Math.max(1, parseInt(e.target.value) || 1) }))}
+                  placeholder="300"
+                  className={`${sideInp} pr-10 font-bold`}
+                />
+                <span className="absolute right-2 top-1 text-[9px] text-[#5C5248]">個/Lot</span>
+              </div>
+            </div>
 
             <div>
               <label className="block text-xs font-bold text-[#18130F] mb-0.5">仕入実費</label>
@@ -1949,7 +1921,7 @@ export default function App() {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-[#18130F] mb-0.5">㉜ 下限利益率 (%)</label>
+              <label className="block text-xs font-bold text-[#18130F] mb-0.5">下限利益率 / 実態利益率 (%)</label>
               <input
                 type="number"
                 value={newEstimate.adjustments.minProfitRate || ''}
@@ -1960,7 +1932,7 @@ export default function App() {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-[#18130F] mb-0.5">㉝ 上限利益率 / 架空利管費上限 (%)</label>
+              <label className="block text-xs font-bold text-[#18130F] mb-0.5">上限利益率 / 架空利管費上率 (%)</label>
               <input
                 type="number"
                 value={newEstimate.adjustments.maxProfitRate || ''}
@@ -1971,89 +1943,6 @@ export default function App() {
               <p className="text-[9px] text-[#5C5248] mt-0.5 leading-tight">対外提示の架空利管費率(SGA)をこの値以下に抑えます。AI自動補正・自動最適化で参照されます。</p>
             </div>
 
-            {/* 利益・利管費設定 for 新単価 */}
-            <div className="pt-1.5 border-t border-[#C5D8EE]">
-              <div className="text-[9px] font-black text-[#1E3A5F] uppercase tracking-wide mb-1">利益・利管費設定</div>
-
-              <div className="mb-1.5">
-                <label className="text-[9px] font-bold text-[#18130F] block mb-0.5">利管費率</label>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => toggleSgaMode(true)}
-                    className="shrink-0 flex items-center gap-0.5 cursor-pointer"
-                    title="クリックで内掛け/外掛けを切り替え"
-                  >
-                    <span className={`text-[8px] font-bold transition-colors ${(newEstimate.adjustments.sgaCalcMode || 'markup') === 'markup' ? 'text-[#B5451B]' : 'text-[#5C5248]'}`}>外</span>
-                    <div className={`relative w-8 h-4 rounded-full border-2 transition-all ${(newEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? 'bg-[#1E3A5F] border-[#1E3A5F]' : 'bg-[#E8C8BC] border-[#D6A89C]'}`}>
-                      <div className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white shadow transition-all ${(newEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? 'left-4' : 'left-0.5'}`} />
-                    </div>
-                    <span className={`text-[8px] font-bold transition-colors ${(newEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? 'text-[#1E3A5F]' : 'text-[#5C5248]'}`}>内</span>
-                  </button>
-                  <div className={`relative flex-1 rounded border ${(newEstimate.adjustments.sgaCalcMode || 'markup') === 'margin' ? 'border-blue-300 bg-blue-50' : 'border-orange-300 bg-orange-50'}`}>
-                    <input type="number" value={newEstimate.adjustments.sgaRatePercent || ''}
-                      onChange={(e) => updateAdj(true, 'sgaRatePercent', e.target.value)}
-                      placeholder="15" step="0.01"
-                      className="w-full pl-1.5 pr-5 py-0.5 text-[11px] font-mono font-bold bg-transparent outline-none focus:ring-1 focus:ring-[#1E3A5F]/30" />
-                    <span className="absolute right-1 top-0.5 text-[8px] text-[#5C5248]">%</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mb-1">
-                <label className="text-[9px] font-bold text-[#18130F] block mb-0.5">利管費固定調整 (¥)</label>
-                <input type="number" value={newEstimate.adjustments.sgaFixedAdjustment || ''}
-                  onChange={(e) => updateNewAdj('sgaFixedAdjustment', e.target.value)}
-                  placeholder="0"
-                  className={sideInp} />
-              </div>
-
-              <div className="mb-1">
-                <label className="text-[9px] font-bold text-[#18130F] block mb-0.5">その他調整 (¥)</label>
-                <input type="number" value={newEstimate.adjustments.otherAdjustment || ''}
-                  onChange={(e) => updateNewAdj('otherAdjustment', e.target.value)}
-                  placeholder="0"
-                  className={sideInp} />
-              </div>
-            </div>
-
-            {/* 得意先用目標利益率 */}
-            <div className="pt-1 border-t border-[#C5D8EE]">
-              <div className="text-[9px] font-black uppercase tracking-widest text-[#6B6057] mb-1">得意先用目標利益率</div>
-              <div className="space-y-1">
-                <div>
-                  <label className="block text-[9px] font-bold text-[#6B6057] mb-0.5">
-                    外掛け
-                    <span className="text-[9px] font-normal ml-1">→ 内掛け連動</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      value={newClientMarkupOff !== null ? newClientMarkupOff : ''}
-                      onChange={(e) => handleNewClientMarkupChange(e.target.value)}
-                      placeholder="例: 17.6"
-                      className={`${sideInp} pr-6 text-sm border-[#C8C2B8] focus:border-[#6B6057] focus:ring-[#6B6057]/15`}
-                    />
-                    <span className="absolute right-2 top-1 text-[9px] text-[#5C5248]">%</span>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[9px] font-bold text-[#6B6057] mb-0.5">
-                    内掛け
-                    <span className="text-[9px] font-normal ml-1">→ 外掛け連動</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      value={newClientMarginOff || ''}
-                      onChange={(e) => handleNewClientMarginChange(e.target.value)}
-                      placeholder="例: 15"
-                      className={`${sideInp} pr-6 text-sm border-[#C8C2B8] focus:border-[#6B6057] focus:ring-[#6B6057]/15`}
-                    />
-                    <span className="absolute right-2 top-1 text-[9px] text-[#5C5248]">%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
           </>
           )}
