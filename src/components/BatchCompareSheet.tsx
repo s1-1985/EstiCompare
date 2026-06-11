@@ -39,7 +39,7 @@ function reconcilePart(est: DetailedEstimate): { estimate: DetailedEstimate; res
   const other = est.adjustments.otherAdjustment || 0;
   const sgaFixed = est.adjustments.sgaFixedAdjustment || 0;
   const Y = target - shipping - other - sgaFixed;
-  if (Y <= 0) return { estimate: est, residual: target - calc.grandTotalUnitPrice };
+  if (Y <= 0) return { estimate: est, residual: calc.grandTotalUnitPrice - target };
 
   const materialCost = calc.netMaterialCost;
   // 未設定(0)のときは下限5%に張り付かせず中庸値15%を起点にする（新旧比較の一発整合と同じ）
@@ -204,10 +204,27 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
   };
 
   // ── cross-cutting alignment (揃える = copy leftmost part's value to all) ──────
+  // 材料建値は同一材質の品番間でのみ比較・統一する（異材質は価格が違って当然のため）
+  const matKey = (pt: BatchPart) => pt.estimate.material.materialName.trim();
+  const matCellBad = (pt: BatchPart): boolean => {
+    const k = matKey(pt);
+    if (!k) return false;
+    const price = Math.round(pt.estimate.material.basePricePerKg * 100) / 100;
+    return parts.some((o) => o.id !== pt.id && matKey(o) === k && Math.round(o.estimate.material.basePricePerKg * 100) / 100 !== price);
+  };
   const alignMaterialPrice = () => {
     if (parts.length < 2) return;
-    const ref = parts[0].estimate.material.basePricePerKg;
-    onPartsChange(parts.map((pt, i) => (i === 0 ? pt : { ...pt, estimate: { ...pt.estimate, material: { ...pt.estimate.material, basePricePerKg: ref } } })));
+    const refByMat = new Map<string, number>();
+    parts.forEach((pt) => {
+      const k = matKey(pt);
+      if (k && !refByMat.has(k)) refByMat.set(k, pt.estimate.material.basePricePerKg);
+    });
+    onPartsChange(parts.map((pt) => {
+      const k = matKey(pt);
+      const ref = k ? refByMat.get(k) : undefined;
+      if (ref === undefined || pt.estimate.material.basePricePerKg === ref) return pt;
+      return { ...pt, estimate: { ...pt.estimate, material: { ...pt.estimate.material, basePricePerKg: ref } } };
+    }));
   };
   const alignSga = () => {
     if (parts.length < 2) return;
@@ -278,21 +295,24 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
     setWarnings(nextWarn);
   };
 
-  // inconsistency detection across all parts (for alignable rows)
-  const numDiffers = (getter: (pt: BatchPart) => number): boolean => {
-    if (parts.length < 2) return false;
-    const set = new Set(parts.map((pt) => Math.round(getter(pt) * 100) / 100));
-    return set.size > 1;
-  };
-  const refNum = (getter: (pt: BatchPart) => number) => (parts.length ? getter(parts[0]) : 0);
-
-  // Per-process rate consistency, considering ONLY parts that actually have the process
+  // Per-process rate consistency, considering ONLY parts that actually have the process.
+  // モード（賃率/kg/一式/直接費）とそのモードの単価の両方を比較する。
   const procRateInfo = (pn: string) => {
     const present = parts.filter((pt) => pt.estimate.processes.some((p) => p.processName.trim() === pn));
-    const rateOf = (pt: BatchPart) => pt.estimate.processes.find((p) => p.processName.trim() === pn)?.hourlyRate ?? 0;
-    const differs = present.length >= 2 && new Set(present.map((pt) => Math.round(rateOf(pt) * 100) / 100)).size > 1;
+    const keyOf = (pt: BatchPart) => {
+      const p = pt.estimate.processes.find((x) => x.processName.trim() === pn)!;
+      const m = resolveProcessCalcMode(p);
+      const v = m === 'kg' ? p.kgPrice : m === 'lump' ? (p.lumpSumPrice || 0) : m === 'direct' ? p.directProcessingCost : p.hourlyRate;
+      return `${m}:${Math.round((v || 0) * 100) / 100}`;
+    };
+    const differs = present.length >= 2 && new Set(present.map(keyOf)).size > 1;
     return { differs };
   };
+
+  // 利管費は率だけでなく外掛け/内掛けモードも含めて不一致を検出する（外15%と内15%は別物）
+  const sgaKeyOf = (pt: BatchPart) =>
+    `${pt.estimate.adjustments.sgaCalcMode || 'markup'}:${Math.round((pt.estimate.adjustments.sgaRatePercent || 0) * 100) / 100}`;
+  const sgaDiffers = parts.length >= 2 && new Set(parts.map(sgaKeyOf)).size > 1;
 
   const inp = 'w-full px-1 py-0.5 text-xs font-mono rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#1E3A5F] text-right';
   const inpL = 'w-full px-1 py-0.5 text-xs rounded border border-[#D6D0C8] bg-white outline-none focus:ring-1 focus:border-[#1E3A5F]';
@@ -300,10 +320,10 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
   const warnCell = 'bg-amber-50';
   const lbl = 'px-2 py-1 font-bold text-[#6B6057] sticky left-0 bg-white z-10';
 
-  const AlignBtn: React.FC<{ onClick: () => void; differs: boolean }> = ({ onClick, differs }) => (
+  const AlignBtn: React.FC<{ onClick: () => void; differs: boolean; title?: string }> = ({ onClick, differs, title }) => (
     <button
       onClick={onClick}
-      title="先頭品番の値に全列を揃える"
+      title={title || '先頭品番の値に全列を揃える'}
       className={`ml-1 inline-flex items-center cursor-pointer rounded px-1 py-0.5 text-[8px] font-black border transition-colors ${
         differs ? 'bg-amber-100 border-amber-400 text-amber-800 animate-pulse' : 'border-[#D6D0C8] text-[#9C9490] hover:bg-[#F0EDE8]'
       }`}
@@ -464,10 +484,10 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
             <tr className="border-b border-[#EEEBE6]">
               <td className={lbl}>
                 材料建値 ¥/kg
-                {parts.length >= 2 && <AlignBtn onClick={alignMaterialPrice} differs={numDiffers((pt) => pt.estimate.material.basePricePerKg)} />}
+                {parts.length >= 2 && <AlignBtn onClick={alignMaterialPrice} differs={parts.some(matCellBad)} title="同一材質の品番間で先頭品番の建値に揃える（異材質には影響しない）" />}
               </td>
               {calcs.map(({ part }) => {
-                const bad = parts.length >= 2 && numDiffers((pt) => pt.estimate.material.basePricePerKg) && Math.round(part.estimate.material.basePricePerKg * 100) / 100 !== Math.round(refNum((pt) => pt.estimate.material.basePricePerKg) * 100) / 100;
+                const bad = matCellBad(part);
                 return (
                   <td key={part.id} className={`px-1 py-0.5 border-l border-[#EEEBE6] ${bad ? warnCell : ''}`}>
                     <input type="number" value={part.estimate.material.basePricePerKg || ''} onChange={(e) => setMaterial(part.id, { basePricePerKg: parseFloat(e.target.value) || 0 })} className={inp} />
@@ -634,11 +654,11 @@ export const BatchCompareSheet: React.FC<BatchCompareSheetProps> = ({ parts, onP
             <tr className="border-b border-[#EEEBE6]">
               <td className={lbl}>
                 利管費率 %
-                {parts.length >= 2 && <AlignBtn onClick={alignSga} differs={numDiffers((pt) => pt.estimate.adjustments.sgaRatePercent)} />}
+                {parts.length >= 2 && <AlignBtn onClick={alignSga} differs={sgaDiffers} />}
               </td>
               {calcs.map(({ part }) => {
                 const a = part.estimate.adjustments;
-                const bad = parts.length >= 2 && numDiffers((pt) => pt.estimate.adjustments.sgaRatePercent) && Math.round(a.sgaRatePercent * 100) / 100 !== Math.round(refNum((pt) => pt.estimate.adjustments.sgaRatePercent) * 100) / 100;
+                const bad = sgaDiffers && sgaKeyOf(part) !== sgaKeyOf(parts[0]);
                 return (
                   <td key={part.id} className={`px-1 py-0.5 border-l border-[#EEEBE6] ${bad ? warnCell : ''}`}>
                     <div className="flex items-center gap-0.5 justify-end">

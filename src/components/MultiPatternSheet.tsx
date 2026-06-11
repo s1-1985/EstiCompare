@@ -53,7 +53,7 @@ function reconcilePattern(
   // Y = the portion of target that primeCost+sgaBase must cover
   // (calculateEstimate adds sgaFixed on top of sgaBase, so subtract it here)
   const Y = target - shipping - other - sgaFixed;
-  if (Y <= 0) return { pattern, residual: target - calc.grandTotalUnitPrice };
+  if (Y <= 0) return { pattern, residual: calc.grandTotalUnitPrice - target };
 
   const materialCost = calc.netMaterialCost;
   // 未設定(0)のときは下限5%に張り付かせず中庸値15%を起点にする（新旧比較の一発整合と同じ）
@@ -201,6 +201,10 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
   };
 
   const duplicatePattern = (id: string) => {
+    if (patterns.length >= MAX_PATTERNS) {
+      alert(`Lotパターンは最大${MAX_PATTERNS}件まで登録できます。`);
+      return;
+    }
     const src = patterns.find((p) => p.id === id);
     if (!src) return;
     const clone: QuantityPattern = {
