@@ -26,6 +26,11 @@ import {
   Layers3,
   Lock,
   Unlock,
+  History,
+  Loader2,
+  XCircle,
+  MinusCircle,
+  Wand2,
 } from 'lucide-react';
 import type { User } from 'firebase/auth';
 import { auth, loginWithGoogle, logout } from './firebase';
@@ -76,6 +81,12 @@ export default function App() {
     error?: string;
   } | null>(null);
   const [saveToast, setSaveToast] = useState<string | null>(null);
+
+  type OneShotStepStatus = 'pending' | 'running' | 'done' | 'skipped' | 'error';
+  interface OneShotStep { id: string; label: string; status: OneShotStepStatus; message?: string; }
+  interface OneShotModalState { steps: OneShotStep[]; isRunning: boolean; isDone: boolean; }
+  const [oneShotModal, setOneShotModal] = useState<OneShotModalState | null>(null);
+
   const [headerHeightPct, setHeaderHeightPct] = useState(40);
   const [sidebarWidthPx, setSidebarWidthPx] = useState(230);
   const isDraggingRef = useRef(false);
@@ -668,7 +679,7 @@ export default function App() {
 
   // ─── AI自動補正 ────────────────────────────────────────────────────────────────
   const handleAiAutoReconcile = async (isNew: boolean) => {
-    const est = isNew ? newEstimate : oldEstimate;
+    let est = isNew ? newEstimate : oldEstimate;
     const targetSellPrice = est.adjustments.targetUnitPrice;
     if (!targetSellPrice || targetSellPrice <= 0) {
       alert('先に目標売価を入力してください。');
@@ -680,6 +691,12 @@ export default function App() {
     }
     setAiReconcileModal({ isNew, status: 'loading' });
     try {
+      // 工程パラメータ（出来高・賃率）が未設定の場合は先にAI自動設定を実行する
+      if (needsParamInference(est)) {
+        est = await inferParamsForEstimate(est);
+        if (isNew) setNewEstimate(est);
+        else setOldEstimate(est);
+      }
       const response = await apiPost('/api/ai-auto-reconcile', { estimate: est, targetSellPrice, isNew });
       const data = await response.json();
       setAiReconcileModal({ isNew, status: 'result', result: data });
@@ -713,6 +730,345 @@ export default function App() {
     if (isNew) setNewEstimate(updatedEst);
     else setOldEstimate(updatedEst);
     setAiReconcileModal(null);
+  };
+
+  // ─── 一気通貫 AI自動補正 — helper functions ────────────────────────────────────
+
+  const getProcessCalcMode = (proc: any): string =>
+    proc.calcMode || (proc.isDirectInput ? 'direct' : proc.kgPrice > 0 ? 'kg' : 'standard');
+
+  const needsParamInference = (est: DetailedEstimate): boolean =>
+    est.processes.some(p =>
+      !p.locked && p.processName.trim() && !p.isDirectInput &&
+      getProcessCalcMode(p) === 'standard' &&
+      ((p.yieldPerHour || 0) <= 0 || (p.hourlyRate || 0) <= 0)
+    );
+
+  const inferParamsForEstimate = async (est: DetailedEstimate): Promise<DetailedEstimate> => {
+    const targetProcs = est.processes.filter(p =>
+      !p.isDirectInput && !p.locked && p.processName.trim() &&
+      getProcessCalcMode(p) === 'standard' &&
+      ((p.yieldPerHour || 0) <= 0 || (p.hourlyRate || 0) <= 0)
+    );
+    if (targetProcs.length === 0) return est;
+    const response = await apiPost('/api/infer-process-params', {
+      processes: targetProcs,
+      partNumber: est.partNumber,
+      materialName: est.material.materialName,
+      inputWeightG: est.material.inputWeightG,
+      finishedWeightG: est.finishedWeightG,
+      baseLotSize: est.baseLotSize,
+      productUnitPrice: est.adjustments.targetUnitPrice || 0,
+    });
+    const { results } = await response.json();
+    if (!results || !Array.isArray(results)) return est;
+    const newProcs = [...est.processes];
+    results.forEach((res: any, i: number) => {
+      const listIdx = (typeof res?.index === 'number' && res.index >= 1 && res.index <= targetProcs.length) ? res.index - 1 : i;
+      if (listIdx >= targetProcs.length) return;
+      const pIdx = newProcs.findIndex(p => p.index === targetProcs[listIdx].index);
+      if (pIdx > -1) {
+        const suggestedRate = res.suggestedHourlyRate ? Math.round(res.suggestedHourlyRate / 100) * 100 : newProcs[pIdx].hourlyRate;
+        newProcs[pIdx] = { ...newProcs[pIdx], totalHours: res.suggestedTotalHours || 0, yieldPerHour: res.suggestedYieldPerHour || 0, hourlyRate: suggestedRate, actualHourlyRate: suggestedRate };
+      }
+    });
+    return { ...est, processes: newProcs };
+  };
+
+  const reconcilePhysicalsForEstimates = async (
+    oldEst: DetailedEstimate,
+    newEst: DetailedEstimate
+  ): Promise<{ oldEst: DetailedEstimate; newEst: DetailedEstimate }> => {
+    const oldByName = new Map<string, any>();
+    oldEst.processes.forEach(p => { if (p.processName.trim() && getProcessCalcMode(p) === 'standard') oldByName.set(p.processName.trim(), p); });
+    const pairs: { name: string; o: any; n: any }[] = [];
+    newEst.processes.forEach(n => {
+      if (!n.processName.trim() || getProcessCalcMode(n) !== 'standard') return;
+      const o = oldByName.get(n.processName.trim());
+      if (!o || o.locked || n.locked) return;
+      if ((o.yieldPerHour || 0) <= 0 && (n.yieldPerHour || 0) <= 0) return;
+      pairs.push({ name: n.processName.trim(), o, n });
+    });
+    if (pairs.length === 0) return { oldEst, newEst };
+    const response = await apiPost('/api/reconcile-process-physicals', {
+      processes: pairs.map(p => ({
+        processName: p.name,
+        oldYieldPerHour: p.o.yieldPerHour || 0, oldTotalHours: p.o.totalHours || 0,
+        newYieldPerHour: p.n.yieldPerHour || 0, newTotalHours: p.n.totalHours || 0,
+      })),
+      partNumber: newEst.partNumber || oldEst.partNumber,
+      materialName: newEst.material.materialName,
+      inputWeightG: newEst.material.inputWeightG,
+      finishedWeightG: newEst.finishedWeightG,
+      baseLotSize: newEst.baseLotSize,
+      productUnitPrice: newEst.adjustments.targetUnitPrice || oldEst.adjustments.targetUnitPrice || 0,
+    });
+    const { results } = await response.json();
+    if (!results || !Array.isArray(results)) return { oldEst, newEst };
+    const agreed = new Map<string, { y: number; s: number }>();
+    results.forEach((r: any) => {
+      if (r?.processName) agreed.set(String(r.processName).trim(), { y: Number(r.agreedYieldPerHour) || 0, s: Math.max(0, Number(r.agreedTotalHours) || 0) });
+    });
+    const applySide = (est: DetailedEstimate) => {
+      const lot = est.baseLotSize > 0 ? est.baseLotSize : 1;
+      return est.processes.map(proc => {
+        if (proc.locked || getProcessCalcMode(proc) !== 'standard') return proc;
+        const ag = agreed.get(proc.processName.trim());
+        if (!ag || ag.y <= 0) return proc;
+        const curCost = (proc.hourlyRate || 0) * ((proc.yieldPerHour > 0 ? 1 / proc.yieldPerHour : 0) + (lot > 0 ? (proc.totalHours || 0) / lot : 0));
+        const denom = (ag.y > 0 ? 1 / ag.y : 0) + (lot > 0 ? ag.s / lot : 0);
+        const newRate = denom > 0 && curCost > 0 ? Math.max(0, Math.round((curCost / denom) / 100) * 100) : proc.hourlyRate;
+        return { ...proc, yieldPerHour: ag.y, totalHours: ag.s, hourlyRate: newRate };
+      });
+    };
+    return {
+      oldEst: { ...oldEst, processes: applySide(oldEst) },
+      newEst: { ...newEst, processes: applySide(newEst) },
+    };
+  };
+
+  // Pure version of handleAutoReconcile — returns updated estimate instead of calling setState.
+  // Returns null if preconditions (target sell price, processes) are not met.
+  const computeAutoReconcile = (target: DetailedEstimate, isNew: boolean): DetailedEstimate | null => {
+    const calc = calculateEstimate(target);
+    const locked = isNew && (target.adjustments.targetPriceLocked === true);
+    let targetUnitPrice = target.adjustments.targetUnitPrice || 0;
+    let reconciledUnitPrice = targetUnitPrice;
+    if (!isNew) {
+      if (targetUnitPrice <= 0) return null;
+      reconciledUnitPrice = targetUnitPrice;
+    } else if (locked) {
+      if (targetUnitPrice <= 0) return null;
+      reconciledUnitPrice = targetUnitPrice;
+    } else {
+      const minProfitPercent = target.adjustments.minProfitRate || 0;
+      const targetProfitPercent = target.adjustments.targetProfitRate || 0;
+      const actualTotalCost = calc.actualTotalCost;
+      const minRequiredSellingPrice = minProfitPercent < 100 ? actualTotalCost / (1 - minProfitPercent / 100) : actualTotalCost * 100;
+      const targetRequiredSellingPrice = targetProfitPercent < 100 ? actualTotalCost / (1 - targetProfitPercent / 100) : actualTotalCost * 100;
+      if (targetUnitPrice <= 0) {
+        reconciledUnitPrice = Math.round(targetRequiredSellingPrice);
+      } else if (minProfitPercent > 0 && targetUnitPrice < minRequiredSellingPrice) {
+        reconciledUnitPrice = Math.ceil(minRequiredSellingPrice);
+      }
+    }
+    const updatedAdjustments = { ...target.adjustments, targetUnitPrice: isNew ? reconciledUnitPrice : target.adjustments.targetUnitPrice };
+    const shipping = calc.shippingCostPerUnit;
+    const otherAdj = target.adjustments.otherAdjustment || 0;
+    const sgaFixed = target.adjustments.sgaFixedAdjustment || 0;
+    const Y = reconciledUnitPrice - shipping - otherAdj - sgaFixed;
+    if (Y <= 0) return target;
+    const hasAnyProcess = target.processes.some(p => p.processName.trim() !== '');
+    if (!hasAnyProcess) return target;
+    const lotSize = target.baseLotSize || 1;
+    const processHoursList = target.processes.map(proc => {
+      if (!proc.processName.trim()) return 0;
+      const mode = getProcessCalcMode(proc);
+      if (mode !== 'standard') return 0;
+      return (proc.yieldPerHour > 0 ? 1 / proc.yieldPerHour : 0) + (lotSize > 0 ? (proc.totalHours || 0) / lotSize : 0);
+    });
+    const lockedClientCost = target.processes.reduce((sum, proc, i) =>
+      (proc.processName.trim() && proc.locked) ? sum + (calc.processCosts[i] || 0) : sum, 0);
+    const currentStdCostTemp = target.processes.reduce((sum, proc, i) => {
+      const mode = getProcessCalcMode(proc);
+      if (!proc.processName.trim() || proc.locked || mode !== 'standard') return sum;
+      return sum + (processHoursList[i] * (proc.actualHourlyRate ?? proc.hourlyRate ?? 3000));
+    }, 0);
+    const nonStdClientCostCurrent = calc.processCosts.reduce((sum, cost, i) => {
+      const proc = target.processes[i];
+      if (!proc || !proc.processName.trim() || proc.locked) return sum;
+      return getProcessCalcMode(proc) !== 'standard' ? sum + cost : sum;
+    }, 0);
+    let draftProcesses = [...target.processes];
+    const sgaMode = target.adjustments.sgaCalcMode || 'markup';
+    const SGA_MIN = 5, SGA_MAX = 25;
+    let finalSgaPercent = Math.min(SGA_MAX, Math.max(SGA_MIN, target.adjustments.sgaRatePercent || 15));
+    const materialCost = calc.netMaterialCost;
+    const targetPrimeCost = costFromSell(Y, finalSgaPercent, sgaMode);
+    const totalCurrentClientCost = currentStdCostTemp + nonStdClientCostCurrent;
+    const targetTotalProcessCost = Math.max(0, targetPrimeCost - materialCost - lockedClientCost);
+    if (totalCurrentClientCost > 0) {
+      const multiplier = Math.max(0.1, targetTotalProcessCost / totalCurrentClientCost);
+      draftProcesses = target.processes.map((proc) => {
+        if (!proc.processName.trim() || proc.locked) return proc;
+        const mode = getProcessCalcMode(proc);
+        if (mode === 'standard') {
+          const actRate = proc.actualHourlyRate ?? proc.hourlyRate ?? 3000;
+          return { ...proc, hourlyRate: Math.max(1000, Math.round((actRate * multiplier) / 100) * 100) };
+        } else if (mode === 'direct') {
+          const actual = proc.actualDirectProcessingCost ?? proc.directProcessingCost;
+          return { ...proc, directProcessingCost: parseFloat(((actual || 0) * multiplier).toFixed(2)) };
+        } else if (mode === 'kg') {
+          const actual = proc.actualKgPrice ?? proc.kgPrice;
+          return { ...proc, kgPrice: parseFloat(((actual || 0) * multiplier).toFixed(2)) };
+        } else if (mode === 'lump') {
+          const actual = proc.actualLumpSumPrice ?? proc.lumpSumPrice;
+          return { ...proc, lumpSumPrice: parseFloat(((actual || 0) * multiplier).toFixed(2)) };
+        }
+        return proc;
+      });
+    }
+    const tempPrimeCost = materialCost + draftProcesses.reduce((sum, proc, i) => {
+      if (!proc.processName.trim()) return sum;
+      const mode = getProcessCalcMode(proc);
+      if (mode === 'direct') return sum + (proc.directProcessingCost || 0);
+      if (mode === 'kg') return sum + (target.finishedWeightG > 0 ? (target.finishedWeightG / 1000) * (proc.kgPrice || 0) : 0);
+      if (mode === 'lump') return sum + (lotSize > 0 ? (proc.lumpSumPrice || 0) / lotSize : 0);
+      return sum + (processHoursList[i] * (proc.hourlyRate || 0));
+    }, 0);
+    if (tempPrimeCost > 0) {
+      const rawSga = Math.round(rateFromCostSell(tempPrimeCost, Y, sgaMode) * 100) / 100;
+      if (rawSga < SGA_MIN) {
+        if (isNew && !locked) {
+          const requiredY = sellFromCost(tempPrimeCost, SGA_MIN, sgaMode);
+          const raisedPrice = Math.ceil(requiredY + (reconciledUnitPrice - Y));
+          reconciledUnitPrice = raisedPrice;
+          updatedAdjustments.targetUnitPrice = raisedPrice;
+          const adjustedY = raisedPrice - calc.shippingCostPerUnit - (target.adjustments.otherAdjustment || 0) - sgaFixed;
+          finalSgaPercent = Math.min(SGA_MAX, Math.max(SGA_MIN, Math.round(rateFromCostSell(tempPrimeCost, adjustedY, sgaMode) * 100) / 100));
+        } else { finalSgaPercent = SGA_MIN; }
+      } else if (rawSga > SGA_MAX) {
+        finalSgaPercent = SGA_MAX;
+      } else {
+        finalSgaPercent = Math.min(SGA_MAX, Math.max(SGA_MIN, rawSga));
+      }
+    }
+    updatedAdjustments.sgaRatePercent = finalSgaPercent;
+    const finalSgaCost = sgaMode === 'markup'
+      ? (finalSgaPercent < 100 ? tempPrimeCost * (finalSgaPercent / 100) / (1 - finalSgaPercent / 100) : 0)
+      : tempPrimeCost * (finalSgaPercent / 100);
+    const finalGrand = tempPrimeCost + finalSgaCost + sgaFixed + calc.shippingCostPerUnit + otherAdj;
+    const residual = finalGrand - reconciledUnitPrice;
+    if (Math.abs(residual) < 1) {
+      updatedAdjustments.sgaFixedAdjustment = Math.round((sgaFixed - residual) * 100) / 100;
+    }
+    return { ...target, processes: draftProcesses, adjustments: updatedAdjustments };
+  };
+
+  const applyAiAutoReconcileToEstimate = async (est: DetailedEstimate, isNew: boolean): Promise<DetailedEstimate> => {
+    const targetSellPrice = est.adjustments.targetUnitPrice;
+    if (!targetSellPrice || targetSellPrice <= 0) return est;
+    const response = await apiPost('/api/ai-auto-reconcile', { estimate: est, targetSellPrice, isNew });
+    const result = await response.json();
+    const adjustments: any[] = Array.isArray(result.processAdjustments) ? result.processAdjustments : [];
+    const updatedProcesses = est.processes.map((proc) => {
+      if (proc.locked) return proc;
+      const mode = getProcessCalcMode(proc);
+      if (mode !== 'standard') return proc;
+      const adj = adjustments.find((a: any) => a?.index === proc.index);
+      if (!adj || typeof adj.suggestedHourlyRate !== 'number' || adj.suggestedHourlyRate <= 0) return proc;
+      return { ...proc, hourlyRate: Math.round(adj.suggestedHourlyRate / 100) * 100 };
+    });
+    const suggestedSga = typeof result.suggestedSgaPercent === 'number' ? result.suggestedSgaPercent : est.adjustments.sgaRatePercent;
+    return { ...est, processes: updatedProcesses, adjustments: { ...est.adjustments, sgaRatePercent: suggestedSga } };
+  };
+
+  const handleOneShotAiReconcile = async () => {
+    if (!user) { alert('AI機能はログインが必要です。'); return; }
+    const hasProcesses = newEstimate.processes.some(p => p.processName.trim()) || oldEstimate.processes.some(p => p.processName.trim());
+    if (!hasProcesses) { alert('先に工程名を入力してください。'); return; }
+
+    const STEPS = [
+      { id: 'infer_new', label: '新単価：工程AI自動設定（出来高・賃率）' },
+      { id: 'infer_old', label: '旧単価：工程AI自動設定（出来高・賃率）' },
+      { id: 'reconcile_physicals', label: '新旧物理諸元整合（出来高・段取を統一）' },
+      { id: 'reconcile_old', label: '旧単価：自動補正（賃率比例スケール）' },
+      { id: 'reconcile_new', label: '新単価：自動補正（賃率比例スケール）' },
+      { id: 'ai_reconcile_new', label: '新単価：AI賃率補正（業界相場から微調整）' },
+    ];
+    setOneShotModal({ steps: STEPS.map(s => ({ ...s, status: 'pending' as const })), isRunning: true, isDone: false });
+
+    const updateStep = (id: string, status: 'pending' | 'running' | 'done' | 'skipped' | 'error', message?: string) => {
+      setOneShotModal(prev => prev ? { ...prev, steps: prev.steps.map(s => s.id === id ? { ...s, status, message } : s) } : null);
+    };
+
+    let workingNew = JSON.parse(JSON.stringify(newEstimate)) as DetailedEstimate;
+    let workingOld = JSON.parse(JSON.stringify(oldEstimate)) as DetailedEstimate;
+    let rateWarnings: string[] = [];
+
+    try {
+      // Step 1: Infer new
+      updateStep('infer_new', 'running');
+      if (workingNew.processes.some(p => p.processName.trim()) && needsParamInference(workingNew)) {
+        workingNew = await inferParamsForEstimate(workingNew);
+        updateStep('infer_new', 'done');
+      } else {
+        updateStep('infer_new', 'skipped', 'パラメータ設定済み');
+      }
+
+      // Step 2: Infer old
+      updateStep('infer_old', 'running');
+      if (workingOld.processes.some(p => p.processName.trim()) && needsParamInference(workingOld)) {
+        workingOld = await inferParamsForEstimate(workingOld);
+        updateStep('infer_old', 'done');
+      } else {
+        updateStep('infer_old', 'skipped', 'パラメータ設定済み');
+      }
+
+      // Step 3: Reconcile physicals
+      updateStep('reconcile_physicals', 'running');
+      const reconciled = await reconcilePhysicalsForEstimates(workingOld, workingNew);
+      workingOld = reconciled.oldEst;
+      workingNew = reconciled.newEst;
+      const pairsExisted = workingOld.processes.some((op, _) =>
+        workingNew.processes.some(np => np.processName.trim() && np.processName.trim() === op.processName.trim() && (op.yieldPerHour || 0) > 0)
+      );
+      updateStep('reconcile_physicals', pairsExisted ? 'done' : 'skipped', pairsExisted ? undefined : '整合対象の共通工程なし');
+
+      // Step 4: Auto reconcile old
+      updateStep('reconcile_old', 'running');
+      if ((workingOld.adjustments.targetUnitPrice || 0) > 0) {
+        const reconcOld = computeAutoReconcile(workingOld, false);
+        if (reconcOld) workingOld = reconcOld;
+        updateStep('reconcile_old', 'done');
+      } else {
+        updateStep('reconcile_old', 'skipped', '目標売値未設定');
+      }
+
+      // Step 5: Auto reconcile new
+      updateStep('reconcile_new', 'running');
+      if ((workingNew.adjustments.targetUnitPrice || 0) > 0) {
+        const reconcNew = computeAutoReconcile(workingNew, true);
+        if (reconcNew) workingNew = reconcNew;
+        // Rate check: warn if any new rate < old rate for same process
+        const oldRateByName = new Map<string, number>();
+        workingOld.processes.forEach(p => { if (p.processName.trim() && (p.hourlyRate || 0) > 0) oldRateByName.set(p.processName.trim(), p.hourlyRate); });
+        workingNew.processes.forEach(p => {
+          const oldRate = oldRateByName.get(p.processName.trim());
+          if (oldRate && (p.hourlyRate || 0) < oldRate) {
+            rateWarnings.push(`「${p.processName}」新賃率(${(p.hourlyRate || 0).toLocaleString()}円/h) < 旧(${oldRate.toLocaleString()}円/h)`);
+          }
+        });
+        updateStep('reconcile_new', 'done');
+      } else {
+        updateStep('reconcile_new', 'skipped', '目標売値未設定');
+      }
+
+      // Step 6: AI auto reconcile new
+      updateStep('ai_reconcile_new', 'running');
+      if ((workingNew.adjustments.targetUnitPrice || 0) > 0) {
+        workingNew = await applyAiAutoReconcileToEstimate(workingNew, true);
+        updateStep('ai_reconcile_new', 'done');
+      } else {
+        updateStep('ai_reconcile_new', 'skipped', '目標売値未設定');
+      }
+
+      setNewEstimate(workingNew);
+      setOldEstimate(workingOld);
+      setOneShotModal(prev => prev ? {
+        ...prev, isRunning: false, isDone: true,
+        steps: rateWarnings.length > 0
+          ? prev.steps.map(s => s.id === 'reconcile_new' ? { ...s, message: `⚠ 新旧逆転: ${rateWarnings.join(' / ')}` } : s)
+          : prev.steps,
+      } : null);
+
+    } catch (err: any) {
+      const msg = err?.message || 'エラーが発生しました';
+      setOneShotModal(prev => prev ? {
+        ...prev, isRunning: false, isDone: true,
+        steps: prev.steps.map(s => s.status === 'running' ? { ...s, status: 'error', message: msg } : s),
+      } : null);
+    }
   };
 
   // ─── 3-way linkage for ㉘/㉙/㉚ ───────────────────────────────────────────────
@@ -906,6 +1262,13 @@ export default function App() {
 
   const showFixedHeader = activeView === 'workspace' && activeSheetTab === 'workspace';
 
+  // この品番の保存済みシナリオ（現在表示中と同じ品番、異なるシナリオID）
+  const historyScenarios = customScenarios.filter(
+    (s) => s.newEstimate.partNumber.trim() !== '' &&
+           s.newEstimate.partNumber === newEstimate.partNumber &&
+           s.id !== activeScenarioId
+  );
+
   // SGA率が不自然な範囲かどうか（5%未満 or 30%超）
   const sgaWarnOld = (+(oldEstimate.adjustments.sgaRatePercent || 0)) > 0 &&
     ((+(oldEstimate.adjustments.sgaRatePercent || 0)) < 5 || (+(oldEstimate.adjustments.sgaRatePercent || 0)) > 30);
@@ -971,87 +1334,151 @@ export default function App() {
   return (
     <div className="h-screen bg-[#F7F6F2] flex flex-col text-[#18130F] font-sans antialiased selection:bg-[#FDE6DC] overflow-hidden">
 
-      {/* HEADER */}
-      <header className={`sticky top-0 z-50 flex-none flex flex-col ${sgaWarnActive ? 'bg-[#7C1A0A]' : 'bg-[#18130F]'} transition-colors`}>
-        <div className="max-w-full px-3 sm:px-6 py-2.5 sm:py-3 flex flex-row items-center justify-between gap-2 sm:gap-4">
+      {/* ── TOP STICKY ZONE: title bar + history banner + sheet tabs ── */}
+      <div className="flex-none z-50 flex flex-col">
 
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <div className="bg-[#B5451B] p-1.5 sm:p-2 rounded text-white flex items-center justify-center shrink-0">
-              <FileSpreadsheet className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[9px] bg-[#B5451B] px-1.5 py-0.5 rounded text-white font-black tracking-widest uppercase">
-                  EstiCompare
-                </span>
-                <span className="text-[9px] bg-[#2A2018] px-1.5 py-0.5 rounded text-[#5C5248] font-mono font-bold hidden sm:inline">
-                  互換Webエミュレート
-                </span>
-              </div>
-              <h1 className="text-xs sm:text-sm font-bold tracking-tight text-white mt-0.5 truncate max-w-[160px] sm:max-w-none">
-                {newEstimate.partNumber
-                  ? <span>{newEstimate.partNumber}_新旧比率積算.xlsm</span>
-                  : <span className="text-[#5C5248]">新規シート (未保存)</span>
-                }
-              </h1>
-            </div>
-          </div>
+        {/* Title bar */}
+        <header className={`flex flex-col ${sgaWarnActive ? 'bg-[#7C1A0A]' : 'bg-[#18130F]'} transition-colors`}>
+          <div className="max-w-full px-3 sm:px-6 py-2.5 sm:py-3 flex flex-row items-center justify-between gap-2 sm:gap-4">
 
-          <div className="flex items-center gap-2 shrink-0">
-            {isAuthLoading ? (
-              <span className="text-[10px] text-[#5C5248] font-mono">読込中...</span>
-            ) : user ? (
-              <div className="flex items-center gap-1.5 sm:gap-2 bg-[#2A2018] px-2 sm:px-3 py-1.5 rounded border border-[#3D3228]">
-                <img
-                  src={user.photoURL || undefined}
-                  alt={user.displayName || 'User'}
-                  referrerPolicy="no-referrer"
-                  className="w-5 h-5 rounded-full border border-[#B5451B] shrink-0"
-                />
-                <span className="text-[10px] font-bold text-white max-w-[70px] sm:max-w-[100px] truncate hidden xs:block">
-                  {user.displayName}
-                </span>
-                <span className="inline-block w-2 h-2 bg-[#B5451B] rounded-full shrink-0" title="クラウド自動同期有効" />
-                <button
-                  onClick={logout}
-                  className="ml-0.5 sm:ml-1 text-[10px] text-[#5C5248] hover:text-[#F8C9BB] border-l border-[#3D3228] pl-1.5 sm:pl-2 font-bold cursor-pointer transition-colors"
-                >
-                  切断
-                </button>
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <div className="bg-[#B5451B] p-1.5 sm:p-2 rounded text-white flex items-center justify-center shrink-0">
+                <FileSpreadsheet className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
               </div>
-            ) : (
-              <button
-                onClick={loginWithGoogle}
-                className="bg-[#B5451B] hover:bg-[#8A3215] active:bg-[#6B260F] text-white px-2.5 sm:px-3 py-1.5 rounded border border-[#8A3215] text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all"
-                title="Googleアカウントでサインイン"
-              >
-                <div className="bg-white p-0.5 rounded flex items-center justify-center shrink-0">
-                  <span className="text-[10px] text-[#8A3215] font-black px-0.5 leading-none">G</span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[9px] bg-[#B5451B] px-1.5 py-0.5 rounded text-white font-black tracking-widest uppercase">
+                    EstiCompare
+                  </span>
+                  <span className="text-[9px] bg-[#2A2018] px-1.5 py-0.5 rounded text-[#5C5248] font-mono font-bold hidden sm:inline">
+                    互換Webエミュレート
+                  </span>
                 </div>
-                <span className="hidden sm:inline">クラウド同期ログイン</span>
-                <span className="sm:hidden">ログイン</span>
-              </button>
-            )}
-          </div>
-
-        </div>
-        {sgaWarnActive && (
-          <div className="px-3 sm:px-6 py-2 bg-[#B5451B] border-t border-[#D4603A] text-white">
-            <div className="max-w-4xl mx-auto flex flex-col items-center text-center">
-              <div className="flex items-center justify-center gap-2 mb-1 w-full">
-                <AlertTriangle className="w-4 h-4 shrink-0 text-[#FFD0C0]" />
-                <span className="font-black text-sm text-[#FFD0C0]">【審議警告】利管費%が不自然な範囲(5%未満/30%超)</span>
-                <span className="ml-auto font-mono font-bold text-sm text-[#FFD0C0] shrink-0">
-                  旧={((+(oldEstimate.adjustments.sgaRatePercent || 0)).toFixed(2))}% / 新={((+(newEstimate.adjustments.sgaRatePercent || 0)).toFixed(2))}%
-                </span>
+                <h1 className="text-xs sm:text-sm font-bold tracking-tight text-white mt-0.5 truncate max-w-[160px] sm:max-w-none">
+                  {newEstimate.partNumber
+                    ? <span>{newEstimate.partNumber}_新旧比率積算.xlsm</span>
+                    : <span className="text-[#5C5248]">新規シート (未保存)</span>
+                  }
+                </h1>
               </div>
-              <p className="text-xs text-white/90 leading-relaxed">
-                賃率だけでなく<strong className="text-white">工程の出来高・段取時間の前提</strong>も見直してください。賃率調整だけで辻褄を合わせようとすると利管費率が不自然な数値になります。
-              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {/* History badge — prominent in title bar */}
+              {historyScenarios.length > 0 && activeView === 'workspace' && (
+                <button
+                  onClick={() => setActiveView('library')}
+                  className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1.5 rounded border border-amber-400 text-[10px] font-black cursor-pointer transition-all shrink-0 animate-pulse"
+                  title="この品番の保存済み見積があります。クリックでライブラリを開きます"
+                >
+                  <History className="w-3 h-3 shrink-0" />
+                  <span className="hidden sm:inline">この品番の保存済み見積</span>
+                  <span className="bg-white text-amber-600 rounded-full px-1.5 py-0.5 text-[9px] font-black leading-none">{historyScenarios.length}</span>
+                </button>
+              )}
+
+              {isAuthLoading ? (
+                <span className="text-[10px] text-[#5C5248] font-mono">読込中...</span>
+              ) : user ? (
+                <div className="flex items-center gap-1.5 sm:gap-2 bg-[#2A2018] px-2 sm:px-3 py-1.5 rounded border border-[#3D3228]">
+                  <img
+                    src={user.photoURL || undefined}
+                    alt={user.displayName || 'User'}
+                    referrerPolicy="no-referrer"
+                    className="w-5 h-5 rounded-full border border-[#B5451B] shrink-0"
+                  />
+                  <span className="text-[10px] font-bold text-white max-w-[70px] sm:max-w-[100px] truncate hidden xs:block">
+                    {user.displayName}
+                  </span>
+                  <span className="inline-block w-2 h-2 bg-[#B5451B] rounded-full shrink-0" title="クラウド自動同期有効" />
+                  <button
+                    onClick={logout}
+                    className="ml-0.5 sm:ml-1 text-[10px] text-[#5C5248] hover:text-[#F8C9BB] border-l border-[#3D3228] pl-1.5 sm:pl-2 font-bold cursor-pointer transition-colors"
+                  >
+                    切断
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={loginWithGoogle}
+                  className="bg-[#B5451B] hover:bg-[#8A3215] active:bg-[#6B260F] text-white px-2.5 sm:px-3 py-1.5 rounded border border-[#8A3215] text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all"
+                  title="Googleアカウントでサインイン"
+                >
+                  <div className="bg-white p-0.5 rounded flex items-center justify-center shrink-0">
+                    <span className="text-[10px] text-[#8A3215] font-black px-0.5 leading-none">G</span>
+                  </div>
+                  <span className="hidden sm:inline">クラウド同期ログイン</span>
+                  <span className="sm:hidden">ログイン</span>
+                </button>
+              )}
+            </div>
+
+          </div>
+          {sgaWarnActive && (
+            <div className="px-3 sm:px-6 py-2 bg-[#B5451B] border-t border-[#D4603A] text-white">
+              <div className="max-w-4xl mx-auto flex flex-col items-center text-center">
+                <div className="flex items-center justify-center gap-2 mb-1 w-full">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-[#FFD0C0]" />
+                  <span className="font-black text-sm text-[#FFD0C0]">【審議警告】利管費%が不自然な範囲(5%未満/30%超)</span>
+                  <span className="ml-auto font-mono font-bold text-sm text-[#FFD0C0] shrink-0">
+                    旧={((+(oldEstimate.adjustments.sgaRatePercent || 0)).toFixed(2))}% / 新={((+(newEstimate.adjustments.sgaRatePercent || 0)).toFixed(2))}%
+                  </span>
+                </div>
+                <p className="text-xs text-white/90 leading-relaxed">
+                  賃率だけでなく<strong className="text-white">工程の出来高・段取時間の前提</strong>も見直してください。賃率調整だけで辻褄を合わせようとすると利管費率が不自然な数値になります。
+                </p>
+              </div>
+            </div>
+          )}
+        </header>
+
+        {/* Sheet tabs strip — compact, aligned with right pane */}
+        {activeView === 'workspace' && (
+          <div className="flex flex-row bg-white border-b-2 border-[#A09488]">
+            <div className="flex-none border-r border-[#D6D0C8] bg-[#F7F6F2]" style={{ width: sidebarWidthPx + 8 }} />
+            <div className="flex flex-row flex-1 divide-x divide-[#EEEBE6] overflow-x-auto">
+              <button
+                onClick={() => setActiveSheetTab('workspace')}
+                className={`px-4 py-2 font-black flex items-center justify-center gap-1.5 cursor-pointer text-xs transition-all flex-1 border-t-2 whitespace-nowrap ${
+                  activeSheetTab === 'workspace'
+                    ? 'border-t-[#B5451B] bg-[#FEF0EB] text-[#B5451B]'
+                    : 'border-t-transparent bg-white text-[#5C5248] hover:text-[#6B6057] hover:bg-[#F7F6F2]'
+                }`}
+              >
+                <span className="text-[#5C5248] font-mono text-[9px] shrink-0">Sheet1!</span>
+                <span className="hidden md:inline">1. 新旧見開き調整</span>
+                <span className="md:hidden">入力・調整</span>
+              </button>
+              <button
+                onClick={() => setActiveSheetTab('compare')}
+                className={`px-4 py-2 font-black flex items-center justify-center gap-1.5 cursor-pointer text-xs transition-all flex-1 border-t-2 whitespace-nowrap ${
+                  activeSheetTab === 'compare'
+                    ? 'border-t-[#B5451B] bg-[#FEF0EB] text-[#B5451B]'
+                    : 'border-t-transparent bg-white text-[#5C5248] hover:text-[#B5451B] hover:bg-[#F7F6F2]'
+                }`}
+              >
+                <span className={`font-mono text-[9px] font-black shrink-0 ${activeSheetTab === 'compare' ? 'text-[#B5451B]' : 'text-[#5C5248]'}`}>Sheet2!</span>
+                <span className="hidden md:inline">2. 差額要因分析・監査</span>
+                <span className="md:hidden">差額分析</span>
+              </button>
+              <button
+                onClick={() => setActiveSheetTab('print')}
+                className={`px-4 py-2 font-black flex items-center justify-center gap-1.5 cursor-pointer text-xs transition-all flex-1 border-t-2 whitespace-nowrap ${
+                  activeSheetTab === 'print'
+                    ? 'border-t-[#2A4A7F] bg-[#EBF0FA] text-[#2A4A7F]'
+                    : 'border-t-transparent bg-white text-[#5C5248] hover:text-[#2A4A7F] hover:bg-[#F0F4FB]'
+                }`}
+              >
+                <Printer className={`w-3 h-3 shrink-0 ${activeSheetTab === 'print' ? 'text-[#2A4A7F]' : 'text-[#5C5248]'}`} />
+                <span className={`font-mono text-[9px] font-black shrink-0 ${activeSheetTab === 'print' ? 'text-[#2A4A7F]' : 'text-[#5C5248]'}`}>Sheet3!</span>
+                <span className="hidden md:inline">3. 見積書 印刷・出力</span>
+                <span className="md:hidden">印刷・出力</span>
+              </button>
             </div>
           </div>
         )}
-      </header>
+
+      </div>{/* end TOP STICKY ZONE */}
 
       {/* MIDDLE AREA: sidebar + right pane */}
       <div ref={middleAreaRef} className="flex-1 flex overflow-hidden">
@@ -2187,11 +2614,7 @@ export default function App() {
                     onChangeOld={setOldEstimate}
                     newEstimate={newEstimate}
                     onChangeNew={setNewEstimate}
-                    historyScenarios={customScenarios.filter(
-                      (s) => s.newEstimate.partNumber.trim() !== '' &&
-                             s.newEstimate.partNumber === newEstimate.partNumber &&
-                             s.id !== activeScenarioId
-                    )}
+                    historyScenarios={historyScenarios}
                     onLoadHistory={handleScenarioLoad}
                   />
                 )}
@@ -2341,62 +2764,85 @@ export default function App() {
         </div>
       )}
 
-      {/* BOTTOM TAB BAR — hidden in library view */}
+      {/* BOTTOM OPERATION BAR — workspace only, aligned with right pane */}
       {activeView === 'workspace' && (
-        <nav className="bg-white border-t-2 border-[#A09488] flex-none z-40 select-none">
-          <div className="px-3 sm:px-6 flex flex-row items-center justify-between gap-2 text-xs">
-
-            <div className="flex items-stretch divide-x divide-[#EEEBE6] flex-1">
-
-              <button
-                onClick={() => setActiveSheetTab('workspace')}
-                className={`px-3 sm:px-5 py-3.5 sm:py-4 font-black flex items-center justify-center gap-1.5 sm:gap-2 cursor-pointer text-xs transition-all flex-1 border-t-2 ${
-                  activeSheetTab === 'workspace'
-                    ? 'border-t-[#B5451B] bg-[#FEF0EB] text-[#B5451B]'
-                    : 'border-t-transparent bg-white text-[#5C5248] hover:text-[#6B6057] hover:bg-[#F7F6F2]'
-                }`}
-              >
-                <span className="text-[#5C5248] font-mono text-[9px] sm:text-[10px] shrink-0">Sheet1!</span>
-                <span className="hidden sm:inline">1. 新旧見開き調整ワークスペース (Workspace)</span>
-                <span className="sm:hidden">入力・調整</span>
-              </button>
-
-              <button
-                onClick={() => setActiveSheetTab('compare')}
-                className={`px-3 sm:px-5 py-3.5 sm:py-4 font-black flex items-center justify-center gap-1.5 sm:gap-2 cursor-pointer text-xs transition-all flex-1 border-t-2 ${
-                  activeSheetTab === 'compare'
-                    ? 'border-t-[#B5451B] bg-[#FEF0EB] text-[#B5451B]'
-                    : 'border-t-transparent bg-white text-[#5C5248] hover:text-[#B5451B] hover:bg-[#F7F6F2]'
-                }`}
-              >
-                <span className={`font-mono text-[9px] sm:text-[10px] font-black shrink-0 ${activeSheetTab === 'compare' ? 'text-[#B5451B]' : 'text-[#5C5248]'}`}>Sheet2!</span>
-                <span className="hidden sm:inline">2. 差額要因分析・説明調整監査報告 (Audit)</span>
-                <span className="sm:hidden">差額分析</span>
-              </button>
-
-              <button
-                onClick={() => setActiveSheetTab('print')}
-                className={`px-3 sm:px-5 py-3.5 sm:py-4 font-black flex items-center justify-center gap-1.5 sm:gap-2 cursor-pointer text-xs transition-all flex-1 border-t-2 ${
-                  activeSheetTab === 'print'
-                    ? 'border-t-[#2A4A7F] bg-[#EBF0FA] text-[#2A4A7F]'
-                    : 'border-t-transparent bg-white text-[#5C5248] hover:text-[#2A4A7F] hover:bg-[#F0F4FB]'
-                }`}
-              >
-                <Printer className={`w-3.5 h-3.5 shrink-0 ${activeSheetTab === 'print' ? 'text-[#2A4A7F]' : 'text-[#5C5248]'}`} />
-                <span className={`font-mono text-[9px] sm:text-[10px] font-black shrink-0 ${activeSheetTab === 'print' ? 'text-[#2A4A7F]' : 'text-[#5C5248]'}`}>Sheet3!</span>
-                <span className="hidden sm:inline">3. 見積書 印刷・Excel出力 (Print)</span>
-                <span className="sm:hidden">印刷・出力</span>
-              </button>
-
-            </div>
-
-            <div className="text-[10px] text-[#5C5248] font-bold select-none py-3 hidden lg:flex items-center gap-2 shrink-0">
-              <Info className="w-3.5 h-3.5 text-[#5C5248]" />
-              <span>仕入値や目標単価を入力すると、すべてのExcelセル連動公式が即時反映されます。</span>
-            </div>
-
+        <div className="flex-none flex flex-row bg-[#F0EDE8] border-t-2 border-[#A09488] z-40 select-none">
+          <div className="flex-none bg-white border-r border-[#D6D0C8]" style={{ width: sidebarWidthPx + 8 }} />
+          <div className="flex items-center gap-2 px-3 py-2 flex-1 overflow-x-auto">
+            <button
+              onClick={handleOneShotAiReconcile}
+              disabled={!user || oneShotModal?.isRunning}
+              className="flex items-center gap-2 bg-gradient-to-r from-[#6B3FA0] to-[#B5451B] hover:from-[#56308A] hover:to-[#8A3215] text-white px-4 py-2 rounded-lg font-black text-xs border border-[#8A5A70] cursor-pointer disabled:opacity-50 transition-all shadow-sm shrink-0"
+              title="工程名を入力するだけで、AI自動設定→新旧整合→自動補正→AI賃率補正を一気通貫で実行します"
+            >
+              <Wand2 className="w-4 h-4 shrink-0" />
+              <span className="hidden sm:inline">一気通貫 AI自動補正</span>
+              <span className="sm:hidden">AI一発補正</span>
+              <span className="text-[9px] bg-white/20 rounded px-1 py-0.5 leading-none font-bold">NEW</span>
+            </button>
+            <div className="h-5 w-px bg-[#C8C2B8] shrink-0" />
+            <span className="text-[10px] text-[#5C5248] hidden lg:block shrink-0">
+              工程名を入れてこのボタンを押すだけで、AI自動設定→新旧整合→自動補正→AI賃率補正を一括実行します
+            </span>
+            {!user && (
+              <span className="text-[10px] text-[#B5451B] font-bold shrink-0">※ログインが必要です</span>
+            )}
           </div>
-        </nav>
+        </div>
+      )}
+
+      {/* 一気通貫AI自動補正 進捗モーダル */}
+      {oneShotModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl border border-[#A09488] px-6 py-5 max-w-md w-full mx-4">
+            <div className="flex items-center gap-2 mb-4">
+              <Wand2 className="w-5 h-5 text-[#6B3FA0] shrink-0" />
+              <h3 className="text-sm font-black text-[#18130F]">一気通貫 AI自動補正</h3>
+              {oneShotModal.isRunning && <Loader2 className="w-4 h-4 text-amber-500 animate-spin ml-auto" />}
+              {oneShotModal.isDone && <CheckCircle2 className="w-4 h-4 text-emerald-500 ml-auto" />}
+            </div>
+            <div className="space-y-2">
+              {oneShotModal.steps.map((step) => (
+                <div key={step.id} className={`flex items-start gap-2.5 p-2 rounded text-xs ${
+                  step.status === 'running' ? 'bg-amber-50 border border-amber-200' :
+                  step.status === 'done' ? 'bg-emerald-50 border border-emerald-200' :
+                  step.status === 'error' ? 'bg-red-50 border border-red-200' :
+                  step.status === 'skipped' ? 'bg-[#F7F6F2] border border-[#E2DED7]' :
+                  'bg-[#F7F6F2] border border-[#EEEBE6]'
+                }`}>
+                  <div className="shrink-0 mt-0.5">
+                    {step.status === 'running' && <Loader2 className="w-3.5 h-3.5 text-amber-500 animate-spin" />}
+                    {step.status === 'done' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />}
+                    {step.status === 'error' && <XCircle className="w-3.5 h-3.5 text-red-500" />}
+                    {step.status === 'skipped' && <MinusCircle className="w-3.5 h-3.5 text-[#9C9490]" />}
+                    {step.status === 'pending' && <div className="w-3.5 h-3.5 rounded-full border-2 border-[#C8C2B8]" />}
+                  </div>
+                  <div className="min-w-0">
+                    <div className={`font-bold leading-tight ${
+                      step.status === 'running' ? 'text-amber-700' :
+                      step.status === 'done' ? 'text-emerald-700' :
+                      step.status === 'error' ? 'text-red-600' :
+                      step.status === 'skipped' ? 'text-[#9C9490]' : 'text-[#6B6057]'
+                    }`}>{step.label}</div>
+                    {step.message && (
+                      <div className={`text-[10px] mt-0.5 leading-tight ${step.status === 'error' ? 'text-red-500' : 'text-[#6B6057]'}`}>
+                        {step.message}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {oneShotModal.isDone && (
+              <button
+                onClick={() => setOneShotModal(null)}
+                className="mt-4 w-full py-2 text-xs font-bold bg-[#18130F] hover:bg-[#2D2219] text-white rounded cursor-pointer transition-all"
+              >
+                閉じる（補正結果を確認）
+              </button>
+            )}
+          </div>
+        </div>
       )}
 
     </div>
