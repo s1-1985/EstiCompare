@@ -1,7 +1,7 @@
 # EstiCompare — 引継ぎドキュメント
 
-最終更新: 2026-06-08（GitHub障害復旧セッション終了時点）
-ブランチ: `claude/fervent-heisenberg-Kgj1f`（**PR #76 open・`mergeable_state: clean`／ユーザーが手動マージ予定**）。`origin/main` は PR #75 まで反映済み。
+最終更新: 2026-06-11（第12セッション終了時点）
+ブランチ: `claude/handover-claude-md-review-acin7l`（**PR #79 open・CI無し・ユーザーが手動マージ予定**）。`origin/main` は PR #76 まで反映済み（ユーザーが #76 をマージ後デプロイ確認済み）。
 
 ---
 
@@ -445,9 +445,46 @@ auditVariance = grandTotalUnitPrice - sellingPrice
 - 数日で復旧。復旧後、ローカルに溜まっていた `cdc30d4`・Part3 を `origin/main` にリベース（重複PR#74/#75分は自動スキップ）して force-push、PR #76 を更新。
 - **教訓**: 短時間に大量の自動PR操作を避ける。
 
+## 第12セッション（2026-06-11）で実施した変更（PR #79）
+
+全て同一ブランチ `claude/handover-claude-md-review-acin7l`・PR #79 にまとまっている。
+
+### コミット 20f57b9: 自動整合の端数完全消込・SGA初期値改善・Geminiプロンプト全面精密化
+- `computeAutoReconcile`: 100円丸め後の残差を `sgaFixedAdjustment` で吸収し `auditVariance` を厳密ゼロにする
+- SGA率の初期値を健全レンジ内に自動補正
+- 各AIエンドポイントのプロンプトを大幅強化（業界相場・外掛け/内掛け区別・制約の明記）
+
+### コミット 8dfb1e0: UI刷新 + 「AI全自動最適化」ボタン追加（旧称「一気通貫」）
+- **シートタブ移動**: 画面下部 → 固定KPIヘッダーの直上にコンパクトな水平ストリップとして配置
+- **品番履歴バッジ**: タイトルバーに「この品番の保存済み見積が N 件あります」を琥珀色パルスで常時表示
+- **サイドバー**: 画面フル高さに伸長
+- **下部操作バー**: 旧タブ領域に操作ボタン群を配置。右ペイン幅に揃えて整合
+- **新旧整合ボタン**: 旧単価列のみに表示（新単価側から操作する意味がないため）
+- 6ステップの逐次AI呼び出し `handleOneShotAiReconcile` を実装（後のコミットで1コールに刷新）
+
+### コミット 7846284: AI全自動最適化（専用エンドポイント・架空利管費上限を新単価にも・追加指示）
+- **`/api/one-shot-reconcile`** 新設（`server.ts`）: 単一 Gemini 呼び出しで新旧両見積のパラメータ推定・物理諸元整合・賃率補正・SGA率調整を一括処理。入力 `{oldEstimate, newEstimate, userInstructions}`、出力 `{oldProcesses, newProcesses, oldSgaRatePercent, newSgaRatePercent, summary, warnings}`
+- **ボタン改名**: "一気通貫AI自動補正" → **"AI全自動最適化"**
+- **追加指示フィールド**: 下部操作バーに `oneShotInstructions` テキスト入力を追加。「旧単価の架空利益率は10%以下にして」等の補足指示を送信可能
+- **架空利管費上限 (maxProfitRate) を新単価にも追加**: 新単価サイドバーに「上限利益率 / 架空利管費上率 (%)」フィールド追加。`computeAutoReconcile` / `handleAutoReconcile` の `SGA_MAX` を `Math.min(25, target.adjustments.maxProfitRate || 25)` に変更してこの値を尊重
+- **モーダルUI簡略化**: 6ステップリスト → スピナー＋サマリー＋警告リストのシンプルな表示に変更
+- `handleOneShotAiReconcile` を `/api/one-shot-reconcile` 単発呼び出しに書き換え（AI結果適用後 `computeAutoReconcile` で端数消込）
+- `types.ts`: `maxProfitRate` のコメントを「旧単価専用」から「新旧共通」に更新
+
+### コミット 3f8452e: サイドバーUI整理（このセッション）
+- **削除（旧単価）**: 「利益・利管費設定」サブセクション（利管費率トグル・客向け内掛け率・利管費固定調整・その他調整）
+- **削除（新単価）**: 「利益・利管費設定」サブセクション + 「得意先用目標利益率」変換フォーム（外→内掛け連動・内→外掛け連動）
+- **ラベル変更**:
+  - 旧: `上限利益率 (%)` → `上限利益率 / 架空利管費率 (%)`
+  - 新: `㉜ 下限利益率 (%)` → `下限利益率 / 実態利益率 (%)` （番号削除）
+  - 新: `㉝ 上限利益率 / 架空利管費上限 (%)` → `上限利益率 / 架空利管費上率 (%)` （番号削除）
+- **見積ロット移動**: ExcelGrid の各列ヘッダーから削除 → サイドバーの旧単価・新単価それぞれの「仕入実費」直上に追加
+
+---
+
 ## 既知の課題・次セッションの予定
 
-- **PR #76 をユーザーがマージ → mainデプロイ自動実行 → 本番反映を確認**（マージは本人が行う方針）
+- **PR #79 をユーザーがマージ → mainデプロイ自動実行 → 本番反映を確認**（マージは本人が行う方針）
 - その他UIの改善（次回指示予定）
 - **入力検証のスキーマ化（zod等）**: AIレスポンス・APIボディが `any` 依存。堅牢性向上の余地（監査で指摘・未対応）
 - **CIのOIDC移行**: 長期SAキー使用中。Workload Identity Federation化（WIFプール設定が必要）

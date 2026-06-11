@@ -91,8 +91,11 @@ Adjusts client-facing rates proportionally so `auditVariance → 0`:
 1. Back-calculates target `primeCost` from target sell price and SGA constraints
 2. Scales all process `hourlyRate` / `kgPrice` / `lumpSumPrice` / `directProcessingCost` proportionally
 3. Rounds rates to nearest 100 yen
-4. Fine-tunes residual via SGA rate (clamped 5–15%)
+4. Fine-tunes residual via SGA rate (clamped 5–`SGA_MAX`%)
+   - `SGA_MAX = Math.min(25, target.adjustments.maxProfitRate || 25)` — respects user-set 架空利管費上率
 5. Old estimate: sell price is fixed; new estimate: adjusts `targetUnitPrice` if not locked
+
+`computeAutoReconcile` is the pure (no side-effects) version; `handleAutoReconcile` wraps it with state updates and alerts.
 
 ### API Endpoints (server.ts)
 
@@ -111,6 +114,7 @@ All endpoints require **Firebase ID token** (`Authorization: Bearer <token>`) an
 | `POST /api/get-scrap-price` | AI scrap market price |
 | `POST /api/get-material-price` | AI material base-price market estimate |
 | `POST /api/ai-auto-reconcile` | AI rate-adjustment proposal toward target sell price |
+| `POST /api/one-shot-reconcile` | Single Gemini call: infer params + reconcile physicals + set rates for both old & new simultaneously |
 | `POST /api/analyze-scenario` | Scenario pattern analysis (persisted to Firestore) |
 
 ### Firestore Schema
@@ -121,7 +125,7 @@ Collection: `scenarios` — each doc has `userId`, `name`, `notes`, `newEstimate
 
 - **Do not change** `yieldPerHour` or `totalHours` (setup time) during auto-reconcile — these reflect real production constraints
 - Adjusted rates must be rounded to nearest **100 yen** to avoid suspicion
-- SGA rate healthy range: 5–25%; warn outside this range
+- SGA rate healthy range: 5–25%; further capped by `maxProfitRate` (架空利管費上率) per estimate; warn outside range
 - Gemini calls use a 4-second interval queue to avoid rate limits
 
 ---
