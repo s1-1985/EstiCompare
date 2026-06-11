@@ -968,6 +968,12 @@ export default function App() {
     if (!user) { alert('AI機能はログインが必要です。'); return; }
     const hasProcesses = newEstimate.processes.some(p => p.processName.trim()) || oldEstimate.processes.some(p => p.processName.trim());
     if (!hasProcesses) { alert('先に工程名を入力してください。'); return; }
+    const missingMaterialPrice = (est: DetailedEstimate) =>
+      !!(est.material.materialName?.trim()) && (est.material.basePricePerKg || 0) <= 0;
+    if (missingMaterialPrice(oldEstimate) || missingMaterialPrice(newEstimate)) {
+      alert('材料建値（¥/kg）が未入力です。\n特殊鋼など材料価格はAIで調べられないため、先に入力してください。');
+      return;
+    }
 
     setOneShotModal({ steps: [], isRunning: true, isDone: false });
 
