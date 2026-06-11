@@ -84,8 +84,9 @@ export default function App() {
 
   type OneShotStepStatus = 'pending' | 'running' | 'done' | 'skipped' | 'error';
   interface OneShotStep { id: string; label: string; status: OneShotStepStatus; message?: string; }
-  interface OneShotModalState { steps: OneShotStep[]; isRunning: boolean; isDone: boolean; }
+  interface OneShotModalState { steps: OneShotStep[]; isRunning: boolean; isDone: boolean; summary?: string; }
   const [oneShotModal, setOneShotModal] = useState<OneShotModalState | null>(null);
+  const [oneShotInstructions, setOneShotInstructions] = useState('');
 
   const [headerHeightPct, setHeaderHeightPct] = useState(40);
   const [sidebarWidthPx, setSidebarWidthPx] = useState(230);
@@ -583,7 +584,7 @@ export default function App() {
     // 利管費率の健全範囲。KNOWLEDGE §4-4 の正常範囲(5〜25%)に合わせ、複数Lot/複数品番と統一。
     // （旧実装は上限15%と狭く、17〜25%の自然な率でも辻褄が残り「計算がおかしい」原因になっていた）
     const SGA_MIN = 5;
-    const SGA_MAX = 25;
+    const SGA_MAX = Math.min(25, target.adjustments.maxProfitRate || 25);
     // 未設定(0)のときは下限5%に張り付かせず、最も怪しまれない中庸値15%（KNOWLEDGE §5-3）を起点にする
     let finalSgaPercent = Math.min(SGA_MAX, Math.max(SGA_MIN, target.adjustments.sgaRatePercent || 15));
     const materialCost = calc.netMaterialCost;
@@ -881,7 +882,7 @@ export default function App() {
     }, 0);
     let draftProcesses = [...target.processes];
     const sgaMode = target.adjustments.sgaCalcMode || 'markup';
-    const SGA_MIN = 5, SGA_MAX = 25;
+    const SGA_MIN = 5, SGA_MAX = Math.min(25, target.adjustments.maxProfitRate || 25);
     let finalSgaPercent = Math.min(SGA_MAX, Math.max(SGA_MIN, target.adjustments.sgaRatePercent || 15));
     const materialCost = calc.netMaterialCost;
     const targetPrimeCost = costFromSell(Y, finalSgaPercent, sgaMode);
@@ -968,106 +969,66 @@ export default function App() {
     const hasProcesses = newEstimate.processes.some(p => p.processName.trim()) || oldEstimate.processes.some(p => p.processName.trim());
     if (!hasProcesses) { alert('先に工程名を入力してください。'); return; }
 
-    const STEPS = [
-      { id: 'infer_new', label: '新単価：工程AI自動設定（出来高・賃率）' },
-      { id: 'infer_old', label: '旧単価：工程AI自動設定（出来高・賃率）' },
-      { id: 'reconcile_physicals', label: '新旧物理諸元整合（出来高・段取を統一）' },
-      { id: 'reconcile_old', label: '旧単価：自動補正（賃率比例スケール）' },
-      { id: 'reconcile_new', label: '新単価：自動補正（賃率比例スケール）' },
-      { id: 'ai_reconcile_new', label: '新単価：AI賃率補正（業界相場から微調整）' },
-    ];
-    setOneShotModal({ steps: STEPS.map(s => ({ ...s, status: 'pending' as const })), isRunning: true, isDone: false });
-
-    const updateStep = (id: string, status: 'pending' | 'running' | 'done' | 'skipped' | 'error', message?: string) => {
-      setOneShotModal(prev => prev ? { ...prev, steps: prev.steps.map(s => s.id === id ? { ...s, status, message } : s) } : null);
-    };
-
-    let workingNew = JSON.parse(JSON.stringify(newEstimate)) as DetailedEstimate;
-    let workingOld = JSON.parse(JSON.stringify(oldEstimate)) as DetailedEstimate;
-    let rateWarnings: string[] = [];
+    setOneShotModal({ steps: [], isRunning: true, isDone: false });
 
     try {
-      // Step 1: Infer new
-      updateStep('infer_new', 'running');
-      if (workingNew.processes.some(p => p.processName.trim()) && needsParamInference(workingNew)) {
-        workingNew = await inferParamsForEstimate(workingNew);
-        updateStep('infer_new', 'done');
-      } else {
-        updateStep('infer_new', 'skipped', 'パラメータ設定済み');
-      }
+      const response = await apiPost('/api/one-shot-reconcile', {
+        oldEstimate,
+        newEstimate,
+        userInstructions: oneShotInstructions.trim() || undefined,
+      });
+      const result = await response.json();
 
-      // Step 2: Infer old
-      updateStep('infer_old', 'running');
-      if (workingOld.processes.some(p => p.processName.trim()) && needsParamInference(workingOld)) {
-        workingOld = await inferParamsForEstimate(workingOld);
-        updateStep('infer_old', 'done');
-      } else {
-        updateStep('infer_old', 'skipped', 'パラメータ設定済み');
-      }
-
-      // Step 3: Reconcile physicals
-      updateStep('reconcile_physicals', 'running');
-      const reconciled = await reconcilePhysicalsForEstimates(workingOld, workingNew);
-      workingOld = reconciled.oldEst;
-      workingNew = reconciled.newEst;
-      const pairsExisted = workingOld.processes.some((op, _) =>
-        workingNew.processes.some(np => np.processName.trim() && np.processName.trim() === op.processName.trim() && (op.yieldPerHour || 0) > 0)
-      );
-      updateStep('reconcile_physicals', pairsExisted ? 'done' : 'skipped', pairsExisted ? undefined : '整合対象の共通工程なし');
-
-      // Step 4: Auto reconcile old
-      updateStep('reconcile_old', 'running');
-      if ((workingOld.adjustments.targetUnitPrice || 0) > 0) {
-        const reconcOld = computeAutoReconcile(workingOld, false);
-        if (reconcOld) workingOld = reconcOld;
-        updateStep('reconcile_old', 'done');
-      } else {
-        updateStep('reconcile_old', 'skipped', '目標売値未設定');
-      }
-
-      // Step 5: Auto reconcile new
-      updateStep('reconcile_new', 'running');
-      if ((workingNew.adjustments.targetUnitPrice || 0) > 0) {
-        const reconcNew = computeAutoReconcile(workingNew, true);
-        if (reconcNew) workingNew = reconcNew;
-        // Rate check: warn if any new rate < old rate for same process
-        const oldRateByName = new Map<string, number>();
-        workingOld.processes.forEach(p => { if (p.processName.trim() && (p.hourlyRate || 0) > 0) oldRateByName.set(p.processName.trim(), p.hourlyRate); });
-        workingNew.processes.forEach(p => {
-          const oldRate = oldRateByName.get(p.processName.trim());
-          if (oldRate && (p.hourlyRate || 0) < oldRate) {
-            rateWarnings.push(`「${p.processName}」新賃率(${(p.hourlyRate || 0).toLocaleString()}円/h) < 旧(${oldRate.toLocaleString()}円/h)`);
-          }
+      const applyProcessUpdates = (est: DetailedEstimate, procs: any[]): DetailedEstimate => {
+        const updatedProcesses = est.processes.map(proc => {
+          if (proc.locked) return proc;
+          const update = procs.find((p: any) => p.index === proc.index);
+          if (!update) return proc;
+          return {
+            ...proc,
+            yieldPerHour: (update.yieldPerHour > 0) ? update.yieldPerHour : proc.yieldPerHour,
+            totalHours: typeof update.totalHours === 'number' ? update.totalHours : proc.totalHours,
+            hourlyRate: (update.hourlyRate > 0) ? Math.round(update.hourlyRate / 100) * 100 : proc.hourlyRate,
+            actualHourlyRate: (update.hourlyRate > 0) ? Math.round(update.hourlyRate / 100) * 100 : proc.actualHourlyRate,
+          };
         });
-        updateStep('reconcile_new', 'done');
-      } else {
-        updateStep('reconcile_new', 'skipped', '目標売値未設定');
+        return { ...est, processes: updatedProcesses };
+      };
+
+      let workingOld = applyProcessUpdates(oldEstimate, Array.isArray(result.oldProcesses) ? result.oldProcesses : []);
+      let workingNew = applyProcessUpdates(newEstimate, Array.isArray(result.newProcesses) ? result.newProcesses : []);
+
+      if (typeof result.oldSgaRatePercent === 'number' && result.oldSgaRatePercent > 0) {
+        workingOld = { ...workingOld, adjustments: { ...workingOld.adjustments, sgaRatePercent: result.oldSgaRatePercent } };
+      }
+      if (typeof result.newSgaRatePercent === 'number' && result.newSgaRatePercent > 0) {
+        workingNew = { ...workingNew, adjustments: { ...workingNew.adjustments, sgaRatePercent: result.newSgaRatePercent } };
       }
 
-      // Step 6: AI auto reconcile new
-      updateStep('ai_reconcile_new', 'running');
-      if ((workingNew.adjustments.targetUnitPrice || 0) > 0) {
-        workingNew = await applyAiAutoReconcileToEstimate(workingNew, true);
-        updateStep('ai_reconcile_new', 'done');
-      } else {
-        updateStep('ai_reconcile_new', 'skipped', '目標売値未設定');
-      }
+      // Fine-tune with pure math to handle 100-yen rounding residuals → auditVariance → 0
+      const finedOld = computeAutoReconcile(workingOld, false);
+      if (finedOld) workingOld = finedOld;
+      const finedNew = computeAutoReconcile(workingNew, true);
+      if (finedNew) workingNew = finedNew;
 
-      setNewEstimate(workingNew);
       setOldEstimate(workingOld);
-      setOneShotModal(prev => prev ? {
-        ...prev, isRunning: false, isDone: true,
-        steps: rateWarnings.length > 0
-          ? prev.steps.map(s => s.id === 'reconcile_new' ? { ...s, message: `⚠ 新旧逆転: ${rateWarnings.join(' / ')}` } : s)
-          : prev.steps,
-      } : null);
+      setNewEstimate(workingNew);
+
+      setOneShotModal({
+        steps: (result.warnings || []).map((w: string, i: number) => ({
+          id: `w${i}`, label: w, status: 'error' as const,
+        })),
+        isRunning: false,
+        isDone: true,
+        summary: result.summary,
+      });
 
     } catch (err: any) {
-      const msg = err?.message || 'エラーが発生しました';
-      setOneShotModal(prev => prev ? {
-        ...prev, isRunning: false, isDone: true,
-        steps: prev.steps.map(s => s.status === 'running' ? { ...s, status: 'error', message: msg } : s),
-      } : null);
+      setOneShotModal({
+        steps: [{ id: 'err', label: err?.message || 'エラーが発生しました', status: 'error' as const }],
+        isRunning: false,
+        isDone: true,
+      });
     }
   };
 
@@ -1998,6 +1959,18 @@ export default function App() {
               />
             </div>
 
+            <div>
+              <label className="block text-xs font-bold text-[#18130F] mb-0.5">㉝ 上限利益率 / 架空利管費上限 (%)</label>
+              <input
+                type="number"
+                value={newEstimate.adjustments.maxProfitRate || ''}
+                onChange={(e) => updateNewAdj('maxProfitRate', e.target.value)}
+                placeholder="例: 15"
+                className={sideInp}
+              />
+              <p className="text-[9px] text-[#5C5248] mt-0.5 leading-tight">対外提示の架空利管費率(SGA)をこの値以下に抑えます。AI自動補正・自動最適化で参照されます。</p>
+            </div>
+
             {/* 利益・利管費設定 for 新単価 */}
             <div className="pt-1.5 border-t border-[#C5D8EE]">
               <div className="text-[9px] font-black text-[#1E3A5F] uppercase tracking-wide mb-1">利益・利管費設定</div>
@@ -2773,73 +2746,69 @@ export default function App() {
               onClick={handleOneShotAiReconcile}
               disabled={!user || oneShotModal?.isRunning}
               className="flex items-center gap-2 bg-gradient-to-r from-[#6B3FA0] to-[#B5451B] hover:from-[#56308A] hover:to-[#8A3215] text-white px-4 py-2 rounded-lg font-black text-xs border border-[#8A5A70] cursor-pointer disabled:opacity-50 transition-all shadow-sm shrink-0"
-              title="工程名を入力するだけで、AI自動設定→新旧整合→自動補正→AI賃率補正を一気通貫で実行します"
+              title="工程名を入れてこのボタンを押すだけで、AI工程推定→新旧整合→賃率最適化を一括実行します"
             >
               <Wand2 className="w-4 h-4 shrink-0" />
-              <span className="hidden sm:inline">一気通貫 AI自動補正</span>
-              <span className="sm:hidden">AI一発補正</span>
-              <span className="text-[9px] bg-white/20 rounded px-1 py-0.5 leading-none font-bold">NEW</span>
+              <span>AI全自動最適化</span>
             </button>
             <div className="h-5 w-px bg-[#C8C2B8] shrink-0" />
-            <span className="text-[10px] text-[#5C5248] hidden lg:block shrink-0">
-              工程名を入れてこのボタンを押すだけで、AI自動設定→新旧整合→自動補正→AI賃率補正を一括実行します
-            </span>
+            <input
+              type="text"
+              value={oneShotInstructions}
+              onChange={(e) => setOneShotInstructions(e.target.value)}
+              placeholder="追加指示（例: 旧単価の架空利管費率は10%以下に）"
+              className="flex-1 min-w-0 px-2.5 py-1.5 text-xs rounded border border-[#C8C2B8] bg-white outline-none focus:ring-1 focus:border-[#6B3FA0] focus:ring-[#6B3FA0]/20 transition-all placeholder:text-[#9C9490]"
+            />
             {!user && (
-              <span className="text-[10px] text-[#B5451B] font-bold shrink-0">※ログインが必要です</span>
+              <span className="text-[10px] text-[#B5451B] font-bold shrink-0">※ログインが必要</span>
             )}
           </div>
         </div>
       )}
 
-      {/* 一気通貫AI自動補正 進捗モーダル */}
+      {/* AI全自動最適化 モーダル */}
       {oneShotModal && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-2xl border border-[#A09488] px-6 py-5 max-w-md w-full mx-4">
             <div className="flex items-center gap-2 mb-4">
               <Wand2 className="w-5 h-5 text-[#6B3FA0] shrink-0" />
-              <h3 className="text-sm font-black text-[#18130F]">一気通貫 AI自動補正</h3>
+              <h3 className="text-sm font-black text-[#18130F]">AI全自動最適化</h3>
               {oneShotModal.isRunning && <Loader2 className="w-4 h-4 text-amber-500 animate-spin ml-auto" />}
-              {oneShotModal.isDone && <CheckCircle2 className="w-4 h-4 text-emerald-500 ml-auto" />}
+              {oneShotModal.isDone && !oneShotModal.steps.some(s => s.status === 'error') && <CheckCircle2 className="w-4 h-4 text-emerald-500 ml-auto" />}
             </div>
-            <div className="space-y-2">
-              {oneShotModal.steps.map((step) => (
-                <div key={step.id} className={`flex items-start gap-2.5 p-2 rounded text-xs ${
-                  step.status === 'running' ? 'bg-amber-50 border border-amber-200' :
-                  step.status === 'done' ? 'bg-emerald-50 border border-emerald-200' :
-                  step.status === 'error' ? 'bg-red-50 border border-red-200' :
-                  step.status === 'skipped' ? 'bg-[#F7F6F2] border border-[#E2DED7]' :
-                  'bg-[#F7F6F2] border border-[#EEEBE6]'
-                }`}>
-                  <div className="shrink-0 mt-0.5">
-                    {step.status === 'running' && <Loader2 className="w-3.5 h-3.5 text-amber-500 animate-spin" />}
-                    {step.status === 'done' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />}
-                    {step.status === 'error' && <XCircle className="w-3.5 h-3.5 text-red-500" />}
-                    {step.status === 'skipped' && <MinusCircle className="w-3.5 h-3.5 text-[#9C9490]" />}
-                    {step.status === 'pending' && <div className="w-3.5 h-3.5 rounded-full border-2 border-[#C8C2B8]" />}
-                  </div>
-                  <div className="min-w-0">
-                    <div className={`font-bold leading-tight ${
-                      step.status === 'running' ? 'text-amber-700' :
-                      step.status === 'done' ? 'text-emerald-700' :
-                      step.status === 'error' ? 'text-red-600' :
-                      step.status === 'skipped' ? 'text-[#9C9490]' : 'text-[#6B6057]'
-                    }`}>{step.label}</div>
-                    {step.message && (
-                      <div className={`text-[10px] mt-0.5 leading-tight ${step.status === 'error' ? 'text-red-500' : 'text-[#6B6057]'}`}>
-                        {step.message}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+            {oneShotModal.isRunning && (
+              <div className="flex flex-col items-center gap-3 py-6">
+                <div className="w-8 h-8 border-4 border-[#6B3FA0] border-t-transparent rounded-full animate-spin" />
+                <p className="text-sm font-bold text-[#18130F]">旧単価・新単価を一括分析中...</p>
+                <p className="text-xs text-[#6B6057]">工程推定→新旧整合→賃率最適化を1回のAI処理で完結させています</p>
+              </div>
+            )}
             {oneShotModal.isDone && (
-              <button
-                onClick={() => setOneShotModal(null)}
-                className="mt-4 w-full py-2 text-xs font-bold bg-[#18130F] hover:bg-[#2D2219] text-white rounded cursor-pointer transition-all"
-              >
-                閉じる（補正結果を確認）
-              </button>
+              <div className="space-y-3">
+                {oneShotModal.summary && (
+                  <p className="text-xs text-[#3A3028] bg-[#F7F6F2] rounded p-2.5 border border-[#E2DED7] leading-relaxed">{oneShotModal.summary}</p>
+                )}
+                {oneShotModal.steps.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold text-[#B5451B] uppercase tracking-wide">注意事項</p>
+                    {oneShotModal.steps.map((step) => (
+                      <div key={step.id} className="flex items-start gap-1.5 text-xs text-[#B5451B] bg-red-50 rounded p-1.5 border border-red-200">
+                        <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
+                        {step.label}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {oneShotModal.steps.length === 0 && !oneShotModal.summary && (
+                  <p className="text-xs text-[#6B6057] text-center py-2">最適化が完了しました</p>
+                )}
+                <button
+                  onClick={() => setOneShotModal(null)}
+                  className="w-full py-2 text-xs font-bold bg-[#18130F] hover:bg-[#2D2219] text-white rounded cursor-pointer transition-all"
+                >
+                  閉じる（結果を確認）
+                </button>
+              </div>
             )}
           </div>
         </div>
