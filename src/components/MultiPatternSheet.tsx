@@ -277,7 +277,7 @@ export const MultiPatternSheet: React.FC<MultiPatternSheetProps> = ({
     const sell = c.pattern.targetUnitPrice || 0;
     const primeCost = c.calc.primeCost;
     if (sell <= 0 || primeCost <= 0) return null;
-    const baseSell = sell - c.calc.shippingCostPerUnit - (c.pattern.otherAdjustment || 0);
+    const baseSell = sell - c.calc.shippingCostPerUnit - (c.pattern.otherAdjustment || 0) - (c.pattern.sgaFixedAdjustment || 0);
     if (baseSell <= 0) return null;
     const mode = c.pattern.sgaCalcMode || base.adjustments.sgaCalcMode || 'markup';
     return rateFromCostSell(primeCost, baseSell, mode);
